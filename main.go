@@ -29,15 +29,42 @@ type ScanReport struct {
 	Sockets            []scanners.SocketResult            `json:"sockets,omitempty"`
 	SudoPrivileges     []scanners.SudoPrivilegeResult     `json:"sudo_privileges,omitempty"`
 	SUID               []scanners.SUIDResult              `json:"suid,omitempty"`
+	SGID               []scanners.SGIDResult              `json:"sgid,omitempty"`
 	Vulnerabilities    []scanners.VersionInfo             `json:"vulnerabilities,omitempty"`
 	Writeable          []scanners.WriteableResult         `json:"writeable,omitempty"`
 	SystemdTimers      []scanners.SystemdTimerResult      `json:"systemd_timers,omitempty"`
 	Groups             []scanners.GroupResult             `json:"groups,omitempty"`
 	PATHHijack         []scanners.PATHHijackResult        `json:"path_hijack,omitempty"`
+	SSHKeys            []scanners.SSHKeyResult            `json:"ssh_keys,omitempty"`
+	PtraceScope        *scanners.PtraceScopeResult        `json:"ptrace_scope,omitempty"`
+	ContainerEscape    []scanners.ContainerEscapeResult   `json:"container_escape,omitempty"`
+	DBusPolicy         []scanners.DBusPolicyResult        `json:"dbus_policy,omitempty"`
 }
 
 func main() {
-	scanInput := flag.String("scan", "all", "Modules: secrets, suid, processes, groups, cronjobs, etc.")
+	scanInput := flag.String("scan", "all",
+		"Comma-separated list of modules to run. Use 'all' to run everything.\n"+
+			"  Available modules:\n"+
+			"    secrets        - Sensitive files & credentials (SSH keys, .env, config files)\n"+
+			"    suid           - SUID binaries (GTFOBins-matched dangerous list)\n"+
+			"    sgid           - SGID binaries (privileged group ownership detection)\n"+
+			"    sudo           - sudo -l analysis (NOPASSWD, SETENV, LD_PRELOAD env_keep)\n"+
+			"    capabilities   - Linux capabilities (cap_setuid, cap_sys_admin, etc.)\n"+
+			"    cronjobs       - Cron jobs, systemd timers, wildcard injection\n"+
+			"    processes      - Running processes (credentials in args, ptrace scope)\n"+
+			"    ptrace         - ptrace_scope check (process injection vector)\n"+
+			"    nfs            - NFS exports (no_root_squash detection)\n"+
+			"    network        - Open ports & internal services\n"+
+			"    writeable      - Writable files/dirs owned by root or other users\n"+
+			"    sockets        - Unix sockets (Docker sock, privileged service sockets)\n"+
+			"    filepermissions- Critical system file misconfigurations\n"+
+			"    filepermsexploit- SUID/SGID scripts with relative binary calls (PATH hijack)\n"+
+			"    groups         - Privileged group membership (docker, lxd, disk, shadow)\n"+
+			"    pathhijack     - Writable/dot entries in $PATH\n"+
+			"    sshkeys        - SSH authorized_keys writability & private key exposure\n"+
+			"    vulnerabilities- Kernel & software version CVE checks (Dirty COW, PwnKit)\n"+
+			"    container      - Container escape vectors (--privileged, docker.sock mount)\n"+
+			"    dbus           - D-Bus policy misconfigurations")
 	searchPath := flag.String("path", "/", "Start directory")
 	outputFile := flag.String("o", "", "Save results to file")
 	outputFormat := flag.String("format", "text", "text or json")
@@ -150,6 +177,29 @@ func main() {
 		}()
 	}
 
+	// --- SGID MODULE ---
+	if runAll || selectedModules["sgid"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			fmt.Printf("\033[1;32m[+] Scanning SGID Binaries...\033[0m\n")
+			ioSemaphore <- struct{}{}
+			results, err := scanners.ScanSGID(*searchPath)
+			<-ioSemaphore
+			if err == nil {
+				mu.Lock()
+				report.SGID = results
+				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] SGID (privileged group '%s'): %s\033[0m\n", r.OwnerGroup, r.Path)
+					}
+				}
+			}
+		}()
+	}
+
 	// --- PROCESSES MODULE ---
 	if runAll || selectedModules["processes"] {
 		wg.Add(1)
@@ -219,7 +269,9 @@ func main() {
 				report.SudoPrivileges = results
 				mu.Unlock()
 				for _, r := range results {
-					if r.IsDangerous {
+					if r.HasLDPreload {
+						fmt.Printf("\033[1;35m[CRITICAL] LD_PRELOAD in env_keep: %s\033[0m\n", r.Reason)
+					} else if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] Sudo Privilege: %s\033[0m\n", r.Command)
 					} else if r.NoPassword {
 						fmt.Printf("\033[1;33m[HIGH] Sudo NOPASSWD: %s\033[0m\n", r.Command)
@@ -419,46 +471,236 @@ func main() {
 		}()
 	}
 
+	// --- SSH KEYS MODULE ---
+	if runAll || selectedModules["sshkeys"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			fmt.Printf("\033[1;32m[+] Scanning SSH Keys...\033[0m\n")
+			ioSemaphore <- struct{}{}
+			results, _ := scanners.ScanSSHKeys()
+			<-ioSemaphore
+			mu.Lock()
+			report.SSHKeys = results
+			mu.Unlock()
+			for _, r := range results {
+				if r.IsDangerous {
+					fmt.Printf("\033[1;31m[CRITICAL] SSH Key: %s (%s)\033[0m\n", r.Path, r.Reason)
+				}
+			}
+		}()
+	}
+
+	// --- PTRACE SCOPE MODULE ---
+	if runAll || selectedModules["ptrace"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			fmt.Printf("\033[1;32m[+] Scanning ptrace Scope...\033[0m\n")
+			if result, err := scanners.ScanPtraceScope(); err == nil {
+				mu.Lock()
+				report.PtraceScope = result
+				mu.Unlock()
+				if result.IsDangerous {
+					fmt.Printf("\033[1;31m[CRITICAL] ptrace: %s\033[0m\n", result.Reason)
+				}
+			}
+		}()
+	}
+
+	// --- CONTAINER ESCAPE MODULE ---
+	if runAll || selectedModules["container"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			fmt.Printf("\033[1;32m[+] Scanning Container Escape Vectors...\033[0m\n")
+			// Container scan reads /proc and /etc — lightweight but still I/O
+			ioSemaphore <- struct{}{}
+			results, err := scanners.ScanContainer()
+			<-ioSemaphore
+			if err == nil {
+				mu.Lock()
+				report.ContainerEscape = results
+				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] Container Escape: %s\033[0m\n", r.Reason)
+					} else {
+						fmt.Printf("\033[1;33m[INFO] %s\033[0m\n", r.Vector)
+					}
+				}
+			}
+		}()
+	}
+
+	// --- DBUS POLICY MODULE ---
+	if runAll || selectedModules["dbus"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			fmt.Printf("\033[1;32m[+] Scanning D-Bus Policies...\033[0m\n")
+			ioSemaphore <- struct{}{}
+			results, err := scanners.ScanDBusPolicy()
+			<-ioSemaphore
+			if err == nil {
+				mu.Lock()
+				report.DBusPolicy = results
+				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] D-Bus: %s -> %s\033[0m\n", r.ServiceName, r.Reason)
+					}
+				}
+			}
+		}()
+	}
+
 	wg.Wait()
 
-	// --- CROSS-REFERENCING (Analysis Phase) I am so proud of this section ---
-	// Match writeable files against Cron jobs and Sudo privileges to find the most critical vulnerabilities in seconds 
+	// --- CROSS-REFERENCING (Analysis Phase) ---
+	// Post-scan correlation engine: matches findings across modules to surface
+	// confirmed, chained attack vectors that individual scanners cannot see alone.
 	fmt.Printf("\n\033[1;34m[!] Performing Cross-Reference Analysis...\033[0m\n")
 	hasCrossReference := false
 
+	// ── CHAIN 1: Writable script/binary vs. scheduled execution ──────────────
 	for _, w := range report.Writeable {
-		if w.IsExecutable || strings.HasSuffix(w.Path, ".sh") || strings.HasSuffix(w.Path, ".py") {
-			
-			// 1. Check if the writeable file is run by a Root CronJob its writable and executes regularyl (JACKPOT!!)
+		if w.IsExecutable || strings.HasSuffix(w.Path, ".sh") || strings.HasSuffix(w.Path, ".py") ||
+			strings.HasSuffix(w.Path, ".pl") || strings.HasSuffix(w.Path, ".rb") {
+
+			// 1a. Writable file executed by a root CronJob → instant root
 			for _, cron := range report.CronJobs {
 				if cron.IsRootJob && strings.Contains(cron.Command, w.Path) {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED CRITICAL] Writeable file '%s' is executed by root CronJob: %s\033[0m\n", w.Path, cron.Command)
+					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable '%s' is executed by root CronJob: %s\033[0m\n", w.Path, cron.Command)
 					hasCrossReference = true
 				}
 			}
 
-			// 2. Check if the writeable file can be run via Sudo its writable and executes regularly by a sudo user (JACKPOT!!)
+			// 1b. Writable file runnable via Sudo → instant root
 			for _, sudo := range report.SudoPrivileges {
 				if strings.Contains(sudo.Command, w.Path) {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED CRITICAL] Writeable file '%s' can be executed via Sudo: %s\033[0m\n", w.Path, sudo.Command)
+					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable '%s' can be run via Sudo: %s\033[0m\n", w.Path, sudo.Command)
 					hasCrossReference = true
 				}
 			}
 
-			// 3. Check Systemd Timers still same logic we can write but can we trigger it ?
+			// 1c. Writable Systemd unit file → root on next timer trigger
 			for _, sysd := range report.SystemdTimers {
-				// A crude but effective check: does the systemd path itself match, or does it run our script?
-				// (Parsing ExecStart from the file would be better, but path match works for hijacked units)
 				if sysd.Path == w.Path {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED CRITICAL] Writeable Systemd unit file: %s\033[0m\n", w.Path)
+					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable systemd unit: %s\033[0m\n", w.Path)
 					hasCrossReference = true
 				}
 			}
 		}
 	}
-	
+
+	// ── CHAIN 2: LD_PRELOAD env_keep + any NOPASSWD entry → instant root ─────
+	hasLDPreload := false
+	hasNoPassword := false
+	for _, s := range report.SudoPrivileges {
+		if s.HasLDPreload {
+			hasLDPreload = true
+		}
+		if s.NoPassword {
+			hasNoPassword = true
+		}
+	}
+	if hasLDPreload && hasNoPassword {
+		fmt.Printf("\033[1;35m[100%% CONFIRMED] LD_PRELOAD in env_keep + NOPASSWD entry detected:\n"+
+			"  Compile a .so with __attribute__((constructor)) { setuid(0); system('/bin/bash'); }\n"+
+			"  Set LD_PRELOAD=<your.so>, run any NOPASSWD sudo command → root shell.\033[0m\n")
+		hasCrossReference = true
+	}
+
+	// ── CHAIN 3: SGID binary owned by 'shadow' group → /etc/shadow readable ─
+	for _, sgid := range report.SGID {
+		if sgid.IsDangerous && strings.EqualFold(sgid.OwnerGroup, "shadow") {
+			fmt.Printf("\033[1;35m[100%% CONFIRMED] SGID binary '%s' owned by shadow group.\n"+
+				"  Execute it to gain shadow group privileges → read /etc/shadow → crack hashes.\033[0m\n", sgid.Path)
+			hasCrossReference = true
+		}
+	}
+
+	// ── CHAIN 4: Writable authorized_keys + active SSH service ───────────────
+	for _, sshKey := range report.SSHKeys {
+		if sshKey.IsDangerous && sshKey.Type == "authorized_keys" {
+			for _, netConn := range report.NetworkConnections {
+				if netConn.LocalPort == 22 && netConn.State == "LISTEN" {
+					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable authorized_keys for '%s' + SSH listening on :22.\n"+
+						"  Append your public key to '%s' -> ssh %s@localhost\033[0m\n",
+						sshKey.TargetUser, sshKey.Path, sshKey.TargetUser)
+					hasCrossReference = true
+				}
+			}
+		}
+	}
+
+	// ── CHAIN 5: Writable .ssh directory + SSH service ───────────────────────
+	for _, sshKey := range report.SSHKeys {
+		if sshKey.IsDangerous && sshKey.Type == ".ssh directory" {
+			for _, netConn := range report.NetworkConnections {
+				if netConn.LocalPort == 22 && netConn.State == "LISTEN" {
+					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable .ssh/ dir for '%s' + SSH on :22.\n"+
+						"  Create '%s/authorized_keys' with your pubkey -> ssh %s@localhost\033[0m\n",
+						sshKey.TargetUser, sshKey.Path, sshKey.TargetUser)
+					hasCrossReference = true
+				}
+			}
+		}
+	}
+
+	// ── CHAIN 6: ptrace scope=0 + root process running → process injection ───
+	if report.PtraceScope != nil && report.PtraceScope.IsDangerous {
+		for _, proc := range report.Processes {
+			if proc.UID == 0 {
+				fmt.Printf("\033[1;35m[100%% CONFIRMED] ptrace unrestricted + root process PID %d (%s).\n"+
+					"  Attach with gdb/ptrace, inject shellcode into root process → root shell.\033[0m\n",
+					proc.PID, proc.Command)
+				hasCrossReference = true
+				break // Report once — first root process is enough
+			}
+		}
+	}
+
+	// ── CHAIN 7: Docker socket accessible + docker group membership ──────────
+	hasDockerSocket := false
+	for _, sock := range report.Sockets {
+		if strings.Contains(sock.Service, "docker") && sock.IsDangerous {
+			hasDockerSocket = true
+		}
+	}
+	hasDockerGroup := false
+	for _, grp := range report.Groups {
+		if strings.EqualFold(grp.GroupName, "docker") {
+			hasDockerGroup = true
+		}
+	}
+	if hasDockerSocket || hasDockerGroup {
+		fmt.Printf("\033[1;35m[100%% CONFIRMED] Docker socket accessible (group=%v, socket=%v).\n"+
+			"  Run: docker run -v /:/mnt --rm -it alpine chroot /mnt sh\033[0m\n",
+			hasDockerGroup, hasDockerSocket)
+		hasCrossReference = true
+	}
+
+	// ── CHAIN 8: Container with docker.sock mount → host escape ──────────────
+	for _, ce := range report.ContainerEscape {
+		if ce.IsDangerous && strings.Contains(ce.Vector, "Docker Socket") {
+			for _, sock := range report.Sockets {
+				if strings.Contains(sock.Service, "docker") {
+					fmt.Printf("\033[1;35m[100%% CONFIRMED] Docker socket mounted INSIDE container.\n"+
+						"  Run: docker run -v /:/host --rm -it alpine chroot /host sh → full host root.\033[0m\n")
+					hasCrossReference = true
+				}
+			}
+		}
+	}
+
 	if !hasCrossReference {
-		fmt.Printf("\033[1;32m[+] No direct cross-reference execution vectors found.\033[0m\n")
+		fmt.Printf("\033[1;32m[+] No confirmed chained attack vectors found via cross-reference.\033[0m\n")
 	}
 
 	if *outputFile != "" {

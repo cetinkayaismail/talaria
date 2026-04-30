@@ -29,14 +29,18 @@ var ConditionalSudoCommands = []string{
 }
 
 type SudoPrivilegeResult struct {
-	Command     string
-	RunAs       string
-	NoPassword  bool
-	IsDangerous bool
-	HasSetEnv   bool
-	RiskLevel   string // CRITICAL, HIGH, MEDIUM, LOW
-	Reason      string
+	Command       string
+	RunAs         string
+	NoPassword    bool
+	IsDangerous   bool
+	HasSetEnv     bool
+	HasLDPreload  bool   // env_keep contains LD_PRELOAD or LD_LIBRARY_PATH
+	RiskLevel     string // CRITICAL, HIGH, MEDIUM, LOW
+	Reason        string
 }
+
+// LDPreloadEnvVars: If any of these appear in env_keep, a NOPASSWD sudo becomes instant root
+var LDPreloadEnvVars = []string{"LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "LD_DEBUG"}
 
 func ScanSudoPrivileges(timeout time.Duration, password string) ([]SudoPrivilegeResult, error) {
 	var results []SudoPrivilegeResult
@@ -59,6 +63,35 @@ func ScanSudoPrivileges(timeout time.Duration, password string) ([]SudoPrivilege
 	}
 
 	lines := strings.Split(string(output), "\n")
+
+	// First pass: scan for env_keep lines containing dangerous LD_* vars
+	// This is the LD_PRELOAD privesc vector: env_keep += LD_PRELOAD + NOPASSWD = instant root
+	hasLDPreloadInEnvKeep := false
+	for _, line := range lines {
+		lineLower := strings.ToLower(strings.TrimSpace(line))
+		if strings.Contains(lineLower, "env_keep") {
+			for _, ldVar := range LDPreloadEnvVars {
+				if strings.Contains(line, ldVar) {
+					hasLDPreloadInEnvKeep = true
+					break
+				}
+			}
+		}
+	}
+
+	// Inject a synthetic result for LD_PRELOAD env_keep if detected
+	if hasLDPreloadInEnvKeep {
+		results = append(results, SudoPrivilegeResult{
+			Command:      "env_keep contains LD_PRELOAD/LD_LIBRARY_PATH",
+			RunAs:        "root",
+			NoPassword:   false,
+			IsDangerous:  true,
+			HasSetEnv:    true,
+			HasLDPreload: true,
+			RiskLevel:    "CRITICAL",
+			Reason:       "sudoers env_keep preserves LD_PRELOAD/LD_LIBRARY_PATH: compile a .so, set LD_PRELOAD, run any NOPASSWD command -> instant root",
+		})
+	}
 
 	// Regex to extract (User) [Flags] Command
 	re := regexp.MustCompile(`\((.*?)\)\s+(?:(.*?):)?\s*(.*)`)
@@ -91,13 +124,25 @@ func ScanSudoPrivileges(timeout time.Duration, password string) ([]SudoPrivilege
 			}
 
 			isDangerous := checkSudoDanger(cmdEntry)
+			riskLevel := "LOW"
+			reason := ""
+			if isDangerous || hasSetEnv {
+				riskLevel = "CRITICAL"
+				reason = "Direct shell escape or SETENV privilege"
+			} else if noPassword {
+				riskLevel = "HIGH"
+				reason = "NOPASSWD entry without dangerous command — context-dependent"
+			}
 
 			results = append(results, SudoPrivilegeResult{
-				Command:     cmdEntry,
-				RunAs:       runAs,
-				NoPassword:  noPassword,
-				IsDangerous: isDangerous || hasSetEnv,
-				HasSetEnv:   hasSetEnv,
+				Command:      cmdEntry,
+				RunAs:        runAs,
+				NoPassword:   noPassword,
+				IsDangerous:  isDangerous || hasSetEnv,
+				HasSetEnv:    hasSetEnv,
+				HasLDPreload: hasLDPreloadInEnvKeep,
+				RiskLevel:    riskLevel,
+				Reason:       reason,
 			})
 		}
 	}

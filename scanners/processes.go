@@ -173,3 +173,39 @@ func checkProcessDanger(cmdline string, uid int) bool {
 
 	return false
 }
+
+// PtraceScopeResult holds the ptrace_scope value and whether it's exploitable
+type PtraceScopeResult struct {
+	Scope       int
+	IsDangerous bool
+	Reason      string
+}
+
+// ScanPtraceScope checks /proc/sys/kernel/yama/ptrace_scope.
+// 0 = unrestricted (classic ptrace): any process can attach to any other.
+// This means you can inject shellcode directly into a root process.
+func ScanPtraceScope() (*PtraceScopeResult, error) {
+	data, err := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+	if err != nil {
+		// File may not exist if Yama is not loaded -> also unrestricted
+		return &PtraceScopeResult{
+			Scope:       0,
+			IsDangerous: true,
+			Reason:      "Yama LSM not loaded: ptrace unrestricted (equivalent to scope=0)",
+		}, nil
+	}
+	val, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+	isDangerous := val == 0
+	reason := ""
+	switch val {
+	case 0:
+		reason = "ptrace_scope=0: unrestricted — any process can ptrace any other process. Inject shellcode into a root process."
+	case 1:
+		reason = "ptrace_scope=1: restricted to parent/child (default on most distros)"
+	case 2:
+		reason = "ptrace_scope=2: only CAP_SYS_PTRACE can use ptrace"
+	case 3:
+		reason = "ptrace_scope=3: ptrace fully disabled"
+	}
+	return &PtraceScopeResult{Scope: val, IsDangerous: isDangerous, Reason: reason}, nil
+}

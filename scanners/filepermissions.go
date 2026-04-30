@@ -34,6 +34,8 @@ var CriticalFiles = []struct {
 	{"/etc/sudoers", 0440, "Sudo config"},
 	{"/etc/ssh/sshd_config", 0600, "SSH config"},
 	{"/etc/crontab", 0644, "System crontab"},
+	{"/etc/ld.so.conf", 0644, "Shared library config"},
+	{"/etc/logrotate.conf", 0644, "Logrotate config"},
 }
 
 // ScanFilePermissions checks for misconfigurations in system files and common writable areas 
@@ -43,7 +45,7 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 	currUser, _ := user.Current()
 	uid, _ := strconv.Atoi(currUser.Uid)
 
-	// 1. Check Specific Critical System Files for standart permissions
+	// 1. Check Specific Critical System Files for standard permissions
 	for _, cf := range CriticalFiles {
 		res := checkSingleFile(cf.Path, cf.ExpectedPerms, uid)
 		if res != nil {
@@ -51,13 +53,62 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 		}
 	}
 
-	// 2. Checking World Writable Directories (usefull for privescalation running scripts etc)
+	// 2. Check World Writable Directories (useful for privescalation running scripts etc)
 	wwPaths := []string{"/tmp", "/var/tmp", "/dev/shm", "/var/run", "/opt"}
 	for _, p := range wwPaths {
 		res := checkSingleFile(p, 0, uid)
 		if res != nil && res.IsWorldWritable {
 			res.Issue = "World-writable directory detected"
 			results = append(results, *res)
+		}
+	}
+
+	// 3. Direct /etc/shadow readability confirmation
+	// Groups check infers access; this actually tries to open the file to ensure its readable.
+	if f, err := os.Open("/etc/shadow"); err == nil {
+		f.Close()
+		results = append(results, FilePermissionResult{
+			Path:            "/etc/shadow",
+			Permissions:     "readable",
+			IsWorldReadable: true,
+			IsDangerous:     true,
+			Issue:           "CONFIRMED: /etc/shadow is readable by current user — extract and crack hashes offline",
+		})
+	}
+
+	// 4. /etc/ld.so.conf.d/ directory entries writable
+	if entries, err := os.ReadDir("/etc/ld.so.conf.d"); err == nil {
+		for _, e := range entries {
+			p := "/etc/ld.so.conf.d/" + e.Name()
+			if res := checkSingleFile(p, 0644, uid); res != nil && (res.IsWorldWritable || res.IsGroupWritable) {
+				res.IsDangerous = true
+				res.Issue = "Writable ld.so.conf.d entry: inject a malicious shared library path to hijack privileged binary loads"
+				results = append(results, *res)
+			}
+		}
+	}
+
+	// 5. /etc/logrotate.d/ entries writable
+	if entries, err := os.ReadDir("/etc/logrotate.d"); err == nil {
+		for _, e := range entries {
+			p := "/etc/logrotate.d/" + e.Name()
+			if res := checkSingleFile(p, 0644, uid); res != nil && (res.IsWorldWritable || res.IsGroupWritable) {
+				res.IsDangerous = true
+				res.Issue = fmt.Sprintf("Writable logrotate config: %s — inject 'postrotate' commands to execute as root during log rotation", p)
+				results = append(results, *res)
+			}
+		}
+	}
+
+	// 6. /etc/sudoers.d/ entries writable (catch drop-in files)
+	if entries, err := os.ReadDir("/etc/sudoers.d"); err == nil {
+		for _, e := range entries {
+			p := "/etc/sudoers.d/" + e.Name()
+			if res := checkSingleFile(p, 0440, uid); res != nil && (res.IsWorldWritable || res.IsGroupWritable) {
+				res.IsDangerous = true
+				res.Issue = fmt.Sprintf("Writable sudoers drop-in: %s — add 'ALL=(ALL) NOPASSWD: ALL' to gain instant root", p)
+				results = append(results, *res)
+			}
 		}
 	}
 

@@ -145,13 +145,18 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 					riskLevel = "CRITICAL"
 				}
 
-				// Check for sensitive root files
-				sensitiveFiles := []string{"/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/crontab"}
+				// Check for sensitive root files — world-writable is ALWAYS critical regardless of exec bit
+				sensitiveFiles := []string{"/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/crontab", "/etc/hosts"}
 				for _, sf := range sensitiveFiles {
 					if path == sf {
 						isDangerous = true
 						riskLevel = "CRITICAL"
 					}
+				}
+				// Also flag any file under /etc/sudoers.d/ as critical
+				if strings.HasPrefix(path, "/etc/sudoers.d/") {
+					isDangerous = true
+					riskLevel = "CRITICAL"
 				}
 
 				// Check for dangerous binaries owned by root directly writeable for privilege escalation
