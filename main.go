@@ -156,7 +156,7 @@ func main() {
 							}
 						}
 					}
-					fmt.Printf("%s[!!!] %s: %s - Reason: %s\033[0m\n", color, f.RiskLevel, f.Path, reason)
+					fmt.Printf("%s[%s] Secret Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", color, f.RiskLevel, f.Path, reason)
 				}
 			}
 		}()
@@ -178,9 +178,9 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] SUID: %s\033[0m\n", r.Path)
+						fmt.Printf("\033[1;31m[CRITICAL] SUID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
 					} else {
-						fmt.Printf("\033[1;33m[INFO] SUID: %s\033[0m\n", r.Path)
+						fmt.Printf("\033[1;33m[INFO] SUID Binary\033[0m\n └─ Path   : %s\n", r.Path)
 					}
 				}
 			}
@@ -203,7 +203,7 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] SGID (privileged group '%s'): %s\033[0m\n", r.OwnerGroup, r.Path)
+						fmt.Printf("\033[1;31m[CRITICAL] SGID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
 					}
 				}
 			}
@@ -242,9 +242,9 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] CronJob %s: %s\033[0m\n", r.Reason, r.Command)
+						fmt.Printf("\033[1;31m[CRITICAL] CronJob Found\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
 					} else if r.IsRootJob {
-						fmt.Printf("\033[1;33m[INFO] Root CronJob: %s\033[0m\n", r.Command)
+						fmt.Printf("\033[1;33m[INFO] Root CronJob\033[0m\n └─ Command: %s\n", r.Command)
 					}
 				}
 			}
@@ -259,7 +259,7 @@ func main() {
 				mu.Unlock()
 				for _, r := range systemdResults {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Systemd %s: %s\033[0m\n", r.Reason, r.Path)
+						fmt.Printf("\033[1;31m[CRITICAL] Systemd Timer Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
 					}
 				}
 			}
@@ -280,11 +280,11 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.HasLDPreload {
-						fmt.Printf("\033[1;35m[CRITICAL] LD_PRELOAD in env_keep: %s\033[0m\n", r.Reason)
+						fmt.Printf("\033[1;35m[CRITICAL] Sudo Privilege (LD_PRELOAD)\033[0m\n └─ Reason : %s\n", r.Reason)
 					} else if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Sudo Privilege: %s\033[0m\n", r.Command)
+						fmt.Printf("\033[1;31m[CRITICAL] Sudo Privilege Found\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
 					} else if r.NoPassword {
-						fmt.Printf("\033[1;33m[HIGH] Sudo NOPASSWD: %s\033[0m\n", r.Command)
+						fmt.Printf("\033[1;33m[HIGH] Sudo NOPASSWD\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
 					}
 				}
 			}
@@ -307,7 +307,7 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Capability %s on %s\033[0m\n", r.Capabilities, r.Path)
+						fmt.Printf("\033[1;31m[CRITICAL] Capability Found\033[0m\n └─ Path   : %s\n └─ Capabs : %s\n", r.Path, r.Capabilities)
 					}
 				}
 			}
@@ -381,6 +381,17 @@ func main() {
 				mu.Lock()
 				report.Writeable = results
 				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						color := "\033[1;33m" // HIGH
+						if r.RiskLevel == "CRITICAL" {
+							color = "\033[1;31m"
+						} else if r.RiskLevel == "MEDIUM" {
+							color = "\033[1;34m"
+						}
+						fmt.Printf("%s[%s] Writable File Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", color, r.RiskLevel, r.Path, r.Reason)
+					}
+				}
 			}
 		}()
 	}
@@ -453,7 +464,7 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Member of privileged group '%s': %s\033[0m\n", r.GroupName, r.Reason)
+						fmt.Printf("\033[1;31m[CRITICAL] Privileged Group Membership\033[0m\n └─ Group  : %s\n └─ Reason : %s\n", r.GroupName, r.Reason)
 					}
 				}
 			}
@@ -474,7 +485,7 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] PATH Hijacking: %s -> %s\033[0m\n", r.Reason, r.Directory)
+						fmt.Printf("\033[1;31m[CRITICAL] PATH Hijacking Vector\033[0m\n └─ Dir    : %s\n └─ Reason : %s\n", r.Directory, r.Reason)
 					}
 				}
 			}
@@ -496,7 +507,7 @@ func main() {
 			mu.Unlock()
 			for _, r := range results {
 				if r.IsDangerous {
-					fmt.Printf("\033[1;31m[CRITICAL] SSH Key: %s (%s)\033[0m\n", r.Path, r.Reason)
+					fmt.Printf("\033[1;31m[CRITICAL] SSH Key Vulnerability\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
 				}
 			}
 		}()
@@ -514,7 +525,7 @@ func main() {
 				report.PtraceScope = result
 				mu.Unlock()
 				if result.IsDangerous {
-					fmt.Printf("\033[1;31m[CRITICAL] ptrace: %s\033[0m\n", result.Reason)
+					fmt.Printf("\033[1;31m[CRITICAL] Ptrace Scope Vulnerability\033[0m\n └─ Scope  : %d\n └─ Reason : %s\n", result.Scope, result.Reason)
 				}
 			}
 		}()
@@ -537,7 +548,7 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Container Escape: %s\033[0m\n", r.Reason)
+						fmt.Printf("\033[1;31m[CRITICAL] Container Escape Vector\033[0m\n └─ Vector : %s\n └─ Reason : %s\n", r.Vector, r.Reason)
 					} else {
 						fmt.Printf("\033[1;33m[INFO] %s\033[0m\n", r.Vector)
 					}
@@ -562,7 +573,7 @@ func main() {
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] D-Bus: %s -> %s\033[0m\n", r.ServiceName, r.Reason)
+						fmt.Printf("\033[1;31m[CRITICAL] D-Bus Policy Flaw\033[0m\n └─ Service: %s\n └─ Reason : %s\n", r.ServiceName, r.Reason)
 					}
 				}
 			}
@@ -724,15 +735,42 @@ func saveReport(report *ScanReport, path string, format string) {
 	if strings.ToLower(format) == "json" {
 		data, _ = json.MarshalIndent(report, "", "  ")
 	} else {
-		data = []byte(fmt.Sprintf(
-			"Scan Time: %s\nSecrets Found: %d\nSUID Found: %d\nCronJobs Found: %d\nSudo Privs Found: %d\nCapabilities Found: %d\n",
-			report.ScanTime,
-			len(report.Secrets),
-			len(report.SUID),
-			len(report.CronJobs),
-			len(report.SudoPrivileges),
-			len(report.Capabilities),
-		))
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Talaria Scan Report\n===================\nScan Time: %s\nTarget: %s @ %s\n\n", report.ScanTime, report.TargetUser, report.TargetScanPath))
+		
+		if len(report.SUID) > 0 {
+			sb.WriteString("=== SUID Binaries ===\n")
+			for _, r := range report.SUID {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[CRITICAL] %s\n  Reason: %s\n", r.Path, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+		
+		if len(report.Writeable) > 0 {
+			sb.WriteString("=== Writable Files ===\n")
+			for _, r := range report.Writeable {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s\n  Reason: %s\n", r.RiskLevel, r.Path, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.CronJobs) > 0 {
+			sb.WriteString("=== Cron Jobs ===\n")
+			for _, r := range report.CronJobs {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[CRITICAL] %s\n  Reason: %s\n", r.Command, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString(fmt.Sprintf("\nSummary Counts:\nSecrets: %d\nCronJobs: %d\nSudo Privs: %d\nCapabilities: %d\n",
+			len(report.Secrets), len(report.CronJobs), len(report.SudoPrivileges), len(report.Capabilities)))
+		data = []byte(sb.String())
 	}
 	_ = os.WriteFile(path, data, 0644)
 	fmt.Printf("\033[1;32m[+] Report saved to %s\033[0m\n", path)

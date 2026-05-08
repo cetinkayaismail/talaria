@@ -13,6 +13,7 @@ import (
 type SUIDResult struct {
 	Path        string
 	IsDangerous bool
+	Reason      string
 }
 
 // SGIDResult holds findings for SGID binaries
@@ -20,6 +21,7 @@ type SGIDResult struct {
 	Path        string
 	OwnerGroup  string
 	IsDangerous bool
+	Reason      string
 }
 
 // PrivilegedGroupsForSGID: owning group of an SGID binary makes it dangerous
@@ -85,13 +87,16 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 
 			// Logic: Is it in our GTFOBins-like high-risk list?
 			isDangerous := false
+			reason := ""
 			if _, ok := trueDangerousBinaries[strings.ToLower(fileName)]; ok {
 				isDangerous = true
+				reason = "Matches known GTFOBins executable. Can be abused for privilege escalation."
 			}
 
 			results = append(results, SUIDResult{
 				Path:        path,
 				IsDangerous: isDangerous,
+				Reason:      reason,
 			})
 		}
 		return nil
@@ -150,6 +155,11 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				isDangerous = false
 			}
 
+			reason := ""
+			if isDangerous {
+				reason = "SGID binary owned by privileged group '" + ownerGroup + "'. Can be abused to gain group privileges."
+			}
+
 			// Standard system SGID binaries (skip to reduce noise)
 			skipSystemSGID := map[string]bool{
 				"write": true, "wall": true, "crontab": true, "ssh-agent": true,
@@ -163,6 +173,7 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				Path:        path,
 				OwnerGroup:  ownerGroup,
 				IsDangerous: isDangerous,
+				Reason:      reason,
 			})
 		}
 		return nil

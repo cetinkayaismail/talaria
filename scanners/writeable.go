@@ -19,6 +19,7 @@ type WriteableResult struct {
 	IsDangerous     bool
 	Type            string // Writable (Own), Writable (Root), Writable (Other User), SUID Writable to decide are we go lateral or vertical movement
 	RiskLevel       string // CRITICAL, HIGH, MEDIUM, LOW
+	Reason          string
 }
 
 func ScanWriteable(root string) ([]WriteableResult, error) {
@@ -99,6 +100,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 					IsDangerous:     true,
 					Type:            "SUID Writable",
 					RiskLevel:       "CRITICAL",
+					Reason:          "SUID binary is writable. Attackers can overwrite it to gain immediate root access.",
 				})
 			}
 
@@ -123,6 +125,11 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 					}
 				}
 
+				reason := "Writable file owned by another user. Can be modified for lateral movement."
+				if isExecutable {
+					reason = "Writable executable owned by another user. High risk of lateral movement via malicious modification."
+				}
+
 				results = append(results, WriteableResult{
 					Path:            path,
 					OwnerUID:        int(stat.Uid),
@@ -131,6 +138,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 					IsDangerous:     isDangerous,
 					Type:            "Writable (Other User)",
 					RiskLevel:       riskLevel,
+					Reason:          reason,
 				})
 			}
 
@@ -170,6 +178,13 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 				}
 
 				if isDangerous {
+					reason := "Root-owned file is writable. Can be abused for privilege escalation."
+					if isExecutable {
+						reason = "Root-owned executable is writable. Critical privilege escalation vector."
+					} else if riskLevel == "CRITICAL" {
+						reason = "Critical system file is world-writable. High risk of system compromise."
+					}
+
 					results = append(results, WriteableResult{
 						Path:            path,
 						OwnerUID:        0,
@@ -178,6 +193,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 						IsDangerous:     true,
 						Type:            "Writable (Root)",
 						RiskLevel:       riskLevel,
+						Reason:          reason,
 					})
 				}
 			}
