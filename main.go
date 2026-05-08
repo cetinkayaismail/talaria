@@ -146,7 +146,17 @@ func main() {
 					if f.RiskLevel == "CRITICAL" {
 						color = "\033[1;31m" // Red
 					}
-					fmt.Printf("%s[!!!] %s: %s\033[0m\n", color, f.RiskLevel, f.Path)
+					
+					reason := f.Type
+					if f.Type == "Content Match" {
+						for _, c := range content {
+							if c.Path == f.Path {
+								reason += " (" + c.Snippet + ")"
+								break
+							}
+						}
+					}
+					fmt.Printf("%s[!!!] %s: %s - Reason: %s\033[0m\n", color, f.RiskLevel, f.Path, reason)
 				}
 			}
 		}()

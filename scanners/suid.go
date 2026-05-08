@@ -139,8 +139,18 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				}
 			}
 
-			// Standard system SGID binaries (skip to reduce noise)
 			fileName := strings.ToLower(filepath.Base(path))
+
+			// Safe privileged SGID binaries that are NOT exploitable for privilege escalation
+			safePrivilegedSGID := map[string]bool{
+				"chage": true, "expiry": true, "unix_chkpwd": true, "pam_extrausers_chkpwd": true, "bsd-write": true,
+			}
+
+			if isDangerous && safePrivilegedSGID[fileName] {
+				isDangerous = false
+			}
+
+			// Standard system SGID binaries (skip to reduce noise)
 			skipSystemSGID := map[string]bool{
 				"write": true, "wall": true, "crontab": true, "ssh-agent": true,
 				"dotlock.mailutils": true, "mail": true, "mailx": true,
