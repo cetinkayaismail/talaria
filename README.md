@@ -55,7 +55,7 @@ Talaria audits a wide range of local privilege escalation (LPE) vectors:
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/cetinkayaismail/talaria.git
+git clone https://github.com/cetinkayaismail/talaria-privesc.git
 
 # Enter the directory
 cd talaria
