@@ -772,7 +772,7 @@ func saveReport(report *ScanReport, path string, format string) {
 			len(report.Secrets), len(report.CronJobs), len(report.SudoPrivileges), len(report.Capabilities)))
 		data = []byte(sb.String())
 	}
-	_ = os.WriteFile(path, data, 0644)
+	_ = os.WriteFile(path, data, 0600)
 	fmt.Printf("\033[1;32m[+] Report saved to %s\033[0m\n", path)
 }
 

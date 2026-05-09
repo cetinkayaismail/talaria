@@ -99,6 +99,11 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 }
 
 func scanFileContent(path string, keywords []string) string {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return ""
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return ""
