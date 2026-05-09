@@ -17,6 +17,7 @@ By default, Talaria prints the output directly to your terminal using colored te
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-scan` | `all` | Comma-separated list of modules to run (e.g., `suid,secrets,capabilities`). |
+| `-exclude` | `""` | Comma-separated list of modules to skip (e.g., `network,vulnerabilities`). |
 | `-path` | `/` | The directory to start filesystem scans from. |
 | `-o` | `""` (none) | File path to save the report to. |
 | `-format` | `text` | The output format of the report file (`text` or `json`). |
@@ -39,7 +40,13 @@ If you want to scan for writable files and secrets only inside a web server dire
 ./talaria -scan writeable,secrets -path /var/www/html
 ```
 
-### 3. Saving Output to JSON
+### 3. Excluding Noisy Modules
+If you want to run everything except the network and vulnerability scanners:
+```bash
+./talaria -scan all -exclude network,vulnerabilities
+```
+
+### 4. Saving Output to JSON
 If you are integrating Talaria into an automated pipeline or want to parse the results later:
 ```bash
 ./talaria -scan all -o report.json -format json

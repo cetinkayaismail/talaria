@@ -72,6 +72,7 @@ func main() {
 	customDelay := flag.Duration("delay", 0, "Base delay")
 	customJitter := flag.Duration("jitter", 0, "Max jitter")
 	sudoPassword := flag.String("pass", "", "Sudo password for sudo -l checks (optional)")
+	excludeInput := flag.String("exclude", "", "Comma-separated list of modules to skip (e.g., 'network,secrets')")
 	flag.Parse()
 
 	rand.Seed(time.Now().UnixNano())
@@ -101,6 +102,13 @@ func main() {
 		selectedModules[strings.TrimSpace(m)] = true
 	}
 
+	excludedModules := make(map[string]bool)
+	if *excludeInput != "" {
+		for _, m := range strings.Split(*excludeInput, ",") {
+			excludedModules[strings.TrimSpace(m)] = true
+		}
+	}
+
 	report := &ScanReport{
 		ScanTime:       time.Now().Format(time.RFC1123),
 		TargetUser:     os.Getenv("USER"),
@@ -117,7 +125,7 @@ func main() {
 	timeout := 2 * time.Second
 
 	// --- SECRETS MODULE one of the most noisy but very important for opsec and CTF ---
-	if runAll || selectedModules["secrets"] {
+	if (runAll || selectedModules["secrets"]) && !excludedModules["secrets"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -163,7 +171,7 @@ func main() {
 	}
 
 	// --- SUID MODULE ---
-	if runAll || selectedModules["suid"] {
+	if (runAll || selectedModules["suid"]) && !excludedModules["suid"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -188,7 +196,7 @@ func main() {
 	}
 
 	// --- SGID MODULE ---
-	if runAll || selectedModules["sgid"] {
+	if (runAll || selectedModules["sgid"]) && !excludedModules["sgid"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -211,7 +219,7 @@ func main() {
 	}
 
 	// --- PROCESSES MODULE ---
-	if runAll || selectedModules["processes"] {
+	if (runAll || selectedModules["processes"]) && !excludedModules["processes"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -227,7 +235,7 @@ func main() {
 	}
 
 	// --- CRONJOBS & SYSTEMD MODULE ---
-	if runAll || selectedModules["cronjobs"] {
+	if (runAll || selectedModules["cronjobs"]) && !excludedModules["cronjobs"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -267,7 +275,7 @@ func main() {
 	}
 
 	// --- SUDO PRIVILEGES MODULE ---
-	if runAll || selectedModules["sudo"] {
+	if (runAll || selectedModules["sudo"]) && !excludedModules["sudo"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -292,7 +300,7 @@ func main() {
 	}
 
 	// --- CAPABILITIES MODULE ---
-	if runAll || selectedModules["capabilities"] {
+	if (runAll || selectedModules["capabilities"]) && !excludedModules["capabilities"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -315,7 +323,7 @@ func main() {
 	}
 
 	// --- NFS EXPORTS MODULE ---
-	if runAll || selectedModules["nfs"] {
+	if (runAll || selectedModules["nfs"]) && !excludedModules["nfs"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -336,7 +344,7 @@ func main() {
 	}
 
 	// --- NETWORK CONNECTIONS MODULE ---
-	if runAll || selectedModules["network"] {
+	if (runAll || selectedModules["network"]) && !excludedModules["network"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -352,7 +360,7 @@ func main() {
 	}
 
 	// --- SYSTEM VULNERABILITIES MODULE ---
-	if runAll || selectedModules["vulnerabilities"] {
+	if (runAll || selectedModules["vulnerabilities"]) && !excludedModules["vulnerabilities"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -368,7 +376,7 @@ func main() {
 	}
 
 	// --- WRITEABLE MODULE ---
-	if runAll || selectedModules["writeable"] {
+	if (runAll || selectedModules["writeable"]) && !excludedModules["writeable"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -397,7 +405,7 @@ func main() {
 	}
 
 	// --- SOCKETS MODULE ---
-	if runAll || selectedModules["sockets"] {
+	if (runAll || selectedModules["sockets"]) && !excludedModules["sockets"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -415,7 +423,7 @@ func main() {
 	}
 
 	// --- FILE PERMISSIONS MODULE ---
-	if runAll || selectedModules["filepermissions"] {
+	if (runAll || selectedModules["filepermissions"]) && !excludedModules["filepermissions"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -433,7 +441,7 @@ func main() {
 	}
 
 	// --- FILE PERMS EXPLOIT MODULE ---
-	if runAll || selectedModules["filepermsexploit"] {
+	if (runAll || selectedModules["filepermsexploit"]) && !excludedModules["filepermsexploit"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -451,7 +459,7 @@ func main() {
 	}
 
 	// --- GROUPS MODULE ---
-	if runAll || selectedModules["groups"] {
+	if (runAll || selectedModules["groups"]) && !excludedModules["groups"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -472,7 +480,7 @@ func main() {
 	}
 
 	// --- PATH HIJACKING MODULE ---
-	if runAll || selectedModules["pathhijack"] {
+	if (runAll || selectedModules["pathhijack"]) && !excludedModules["pathhijack"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -493,7 +501,7 @@ func main() {
 	}
 
 	// --- SSH KEYS MODULE ---
-	if runAll || selectedModules["sshkeys"] {
+	if (runAll || selectedModules["sshkeys"]) && !excludedModules["sshkeys"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -514,7 +522,7 @@ func main() {
 	}
 
 	// --- PTRACE SCOPE MODULE ---
-	if runAll || selectedModules["ptrace"] {
+	if (runAll || selectedModules["ptrace"]) && !excludedModules["ptrace"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -532,7 +540,7 @@ func main() {
 	}
 
 	// --- CONTAINER ESCAPE MODULE ---
-	if runAll || selectedModules["container"] {
+	if (runAll || selectedModules["container"]) && !excludedModules["container"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -558,7 +566,7 @@ func main() {
 	}
 
 	// --- DBUS POLICY MODULE ---
-	if runAll || selectedModules["dbus"] {
+	if (runAll || selectedModules["dbus"]) && !excludedModules["dbus"] {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
