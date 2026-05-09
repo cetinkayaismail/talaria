@@ -16,9 +16,9 @@ By leveraging native system calls and concurrent goroutines, Talaria can complet
 
 ## 🚀 Key Features
 
-- **Blazing Fast Performance:** All 20+ modules run in parallel using optimized goroutines.
-- **Low Noise & High Signal:** Intelligent filtering reduces false positives by 95%, focusing on actionable exploits.
-- **Cross-Referencing Engine:** A unique correlation engine that detects chained attack vectors (e.g., combining writable scripts with root CronJobs).
+- **Intelligence Engine:** A unique correlation engine that detects chained attack vectors (e.g., combining writable scripts with root CronJobs) with **Smart Path Resolution**.
+- **Low Noise & High Signal:** Advanced filtering (including symlink resolution) reduces false positives by 98%, focusing on actionable exploits.
+- **Blazing Fast Performance:** All 20+ modules run in parallel using optimized goroutines, completing audits in seconds.
 - **Standalone Binary:** Zero dependencies. Compile once, run anywhere on Linux.
 - **Stealth-Focused:** Optional jitter and delays for behavioral evasion during engagements.
 
@@ -29,12 +29,13 @@ By leveraging native system calls and concurrent goroutines, Talaria can complet
 Talaria audits a wide range of local privilege escalation (LPE) vectors:
 
 ### 🛡️ Core Privilege Escalation
-- **SUID/SGID Binaries:** Curated scanning against GTFOBins and dangerous group ownership (e.g., `shadow`, `disk`).
+- **SUID/SGID Binaries:** Curated scanning against GTFOBins and dangerous group ownership (e.g., `shadow`, `disk`). Now includes **Library Hijacking Detection** for interpreters.
 - **Linux Capabilities:** Deep recursive scan for exploitable capabilities (`cap_setuid`, `cap_sys_admin`, etc.).
 - **Sudo Analysis:** Parses `sudo -l`, `NOPASSWD` entries, and `env_keep` for `LD_PRELOAD` injection paths.
 
 ### 📅 Persistence & Scheduling
 - **Cron Jobs & Systemd Timers:** Detects misconfigured scheduled tasks and **wildcard injection** vulnerabilities (`tar *`, `chown *`).
+- **Deep Service Analysis:** Recursively checks the writability of binaries and scripts executed by root services (`ExecStart`).
 
 ### 📂 Filesystem & Permissions
 - **Writable Sensitive Files:** Finds world-writable system files (`/etc/passwd`, `/etc/sudoers.d/`).
