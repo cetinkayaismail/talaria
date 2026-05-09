@@ -43,6 +43,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 	skipDirs := []string{
 		"/proc", "/sys", "/dev", "/run", "/var/lib/docker", "/snap",
 		"/usr/lib/python", "/usr/share", "/var/lib/apt", "/usr/src", "/lib/modules",
+		"/var/log", "/var/cache", "/var/lib/systemd", "/usr/lib/locale",
 		"/home/web/.nvm",
 	}
 
@@ -58,6 +59,12 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 					return filepath.SkipDir
 				}
 			}
+			return nil
+		}
+
+		// Skip Symlinks: Symlinks often show 777 permissions but are not directly writable for exploitation.
+		// Writing to a symlink typically replaces the link rather than the target content.
+		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
 
