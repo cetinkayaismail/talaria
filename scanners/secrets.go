@@ -3,8 +3,10 @@ package scanners
 import (
 	"bufio"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -98,6 +100,17 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 	return fileResults, contentResults
 }
 
+var (
+	// Regex for High-Confidence Secrets
+	awsKeyRegex       = regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)
+	googleApiKeyRegex = regexp.MustCompile(`\bAIza[0-9A-Za-z\-_]{35}\b`)
+	privateKeyRegex   = regexp.MustCompile(`-----BEGIN (RSA|DSA|EC|PGP|OPENSSH) PRIVATE KEY-----`)
+
+	// Regex for Generic Assignments: key = "value", password: 'value'
+	// Looks for a keyword, an assignment operator (= or :), and a value inside quotes
+	assignmentRegex = regexp.MustCompile(`(?i)(?:key|api|token|secret|password|pass|pwd|credential)[^a-z0-9]{0,5}(?:[=:]|\s+)\s*["']([^"'\s]{8,})["']`)
+)
+
 func scanFileContent(path string, keywords []string) string {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
@@ -110,23 +123,98 @@ func scanFileContent(path string, keywords []string) string {
 	}
 	defer file.Close()
 
+	// Check if file is truly binary by reading the first 512 bytes
+	header := make([]byte, 512)
+	n, err := file.Read(header)
+	if err == nil && n > 0 && isBinaryBytes(header[:n]) {
+		return ""
+	}
+	file.Seek(0, 0) // Reset to start
+
 	scanner := bufio.NewScanner(file)
-	for i := 0; scanner.Scan() && i < 50; i++ {
-		line := strings.ToLower(scanner.Text())
-		for _, key := range keywords {
-			if strings.Contains(line, key) {
-				return key
+	for i := 0; scanner.Scan() && i < 150; i++ { // Increased scan depth slightly
+		line := scanner.Text()
+
+		// 1. High-Confidence Pattern Matching (No entropy check needed)
+		if awsKeyRegex.MatchString(line) {
+			return "AWS Access Key"
+		}
+		if googleApiKeyRegex.MatchString(line) {
+			return "Google API Key"
+		}
+		if privateKeyRegex.MatchString(line) {
+			return "Private Key Header"
+		}
+
+		// 2. Assignment & Entropy Check
+		matches := assignmentRegex.FindStringSubmatch(line)
+		if len(matches) > 1 {
+			value := matches[1]
+			// Filter out common false positives
+			if isFalsePositive(value) {
+				continue
+			}
+			
+			entropy := calculateEntropy(value)
+			// A lower threshold for passwords since they can be shorter, but must still have some complexity
+			if entropy > 3.2 { 
+				return "High-Entropy Secret Assignment"
 			}
 		}
 	}
 	return ""
 }
 
+func isFalsePositive(val string) bool {
+	valLower := strings.ToLower(val)
+	falsePositives := []string{
+		"example", "password", "123456", "your_secret", "changeme",
+		"placeholder", "xxxxxxxx", "dummy", "default",
+	}
+	for _, fp := range falsePositives {
+		if strings.Contains(valLower, fp) {
+			return true
+		}
+	}
+	return false
+}
+
+// calculateEntropy calculates the Shannon entropy of a string
+func calculateEntropy(s string) float64 {
+	if len(s) == 0 {
+		return 0
+	}
+	
+	m := make(map[rune]int)
+	for _, r := range s {
+		m[r]++
+	}
+	
+	var entropy float64
+	for _, count := range m {
+		p := float64(count) / float64(len(s))
+		entropy -= p * math.Log2(p)
+	}
+	return entropy
+}
+
+// isBinary checks filename extension
 func isBinary(name string) bool {
 	ext := filepath.Ext(name)
 	binExts := map[string]bool{
 		".so": true, ".exe": true, ".bin": true, ".pyc": true,
 		".png": true, ".jpg": true, ".zip": true, ".gz": true,
+		".tar": true, ".pdf": true, ".mp4": true, ".mp3": true,
 	}
 	return binExts[ext]
+}
+
+// isBinaryBytes checks for null bytes in the file header
+func isBinaryBytes(data []byte) bool {
+	for _, b := range data {
+		if b == 0 {
+			return true // Null byte found, likely binary
+		}
+	}
+	return false
 }
