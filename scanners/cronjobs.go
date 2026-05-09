@@ -247,6 +247,39 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 						})
 					}
 				}
+
+				// Deep Service Analysis (Service Writeability Tracking)
+				// Even if the unit file is read-only, the script it executes might be writable!
+				if file, err := os.Open(p); err == nil {
+					defer file.Close()
+					scanner := bufio.NewScanner(file)
+					for scanner.Scan() {
+						line := strings.TrimSpace(scanner.Text())
+						if strings.HasPrefix(line, "ExecStart=") || strings.HasPrefix(line, "ExecStartPre=") || strings.HasPrefix(line, "ExecStartPost=") {
+							// Extract the command
+							cmdLine := strings.TrimPrefix(line, "ExecStart=")
+							cmdLine = strings.TrimPrefix(cmdLine, "ExecStartPre=")
+							cmdLine = strings.TrimPrefix(cmdLine, "ExecStartPost=")
+							
+							// Strip systemd modifiers (- ignore error, @ change argv0, + full privs, ! capabilities)
+							cmdLine = strings.TrimLeft(cmdLine, "-@+!")
+							fields := strings.Fields(cmdLine)
+							if len(fields) > 0 {
+								execPath := fields[0]
+								// Fast check if it's an absolute path
+								if strings.HasPrefix(execPath, "/") {
+									if writable, reason := checkWriteable(execPath); writable {
+										results = append(results, SystemdTimerResult{
+											Path:        p,
+											IsDangerous: true,
+											Reason:      fmt.Sprintf("Service executes a writable script/binary: %s (%s)", execPath, reason),
+										})
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 			return nil
 		})

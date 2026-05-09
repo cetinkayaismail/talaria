@@ -595,7 +595,7 @@ func main() {
 
 			// 1a. Writable file executed by a root CronJob → instant root
 			for _, cron := range report.CronJobs {
-				if cron.IsRootJob && strings.Contains(cron.Command, w.Path) {
+				if cron.IsRootJob && resolveCommandPath(cron.Command, w.Path) {
 					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable '%s' is executed by root CronJob: %s\033[0m\n", w.Path, cron.Command)
 					hasCrossReference = true
 				}
@@ -603,7 +603,7 @@ func main() {
 
 			// 1b. Writable file runnable via Sudo → instant root
 			for _, sudo := range report.SudoPrivileges {
-				if strings.Contains(sudo.Command, w.Path) {
+				if resolveCommandPath(sudo.Command, w.Path) {
 					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable '%s' can be run via Sudo: %s\033[0m\n", w.Path, sudo.Command)
 					hasCrossReference = true
 				}
@@ -774,4 +774,67 @@ func saveReport(report *ScanReport, path string, format string) {
 	}
 	_ = os.WriteFile(path, data, 0644)
 	fmt.Printf("\033[1;32m[+] Report saved to %s\033[0m\n", path)
+}
+
+// resolveCommandPath intelligently checks if a command string eventually targets a specific file path
+func resolveCommandPath(command string, targetPath string) bool {
+	// Direct match (absolute path used in command)
+	if strings.Contains(command, targetPath) {
+		return true
+	}
+
+	// Handle 'cd <dir> && <cmd>' or 'cd <dir>; <cmd>'
+	parts := strings.Split(command, "&&")
+	if len(parts) == 1 {
+		parts = strings.Split(command, ";")
+	}
+
+	var currentDir string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "cd ") {
+			currentDir = strings.TrimSpace(strings.TrimPrefix(part, "cd "))
+		} else if currentDir != "" {
+			// Extract binary name being executed
+			cmdFields := strings.Fields(part)
+			if len(cmdFields) > 0 {
+				var execName string
+				// If command is an interpreter (bash script.sh), script is usually the 2nd arg
+				interpreters := map[string]bool{"bash": true, "sh": true, "python": true, "python3": true, "perl": true, "ruby": true}
+				if interpreters[cmdFields[0]] && len(cmdFields) > 1 {
+					execName = cmdFields[1]
+				} else {
+					execName = cmdFields[0]
+				}
+
+				if execName != "" {
+					// Clean up potential ./ prefix
+					execName = strings.TrimPrefix(execName, "./")
+					
+					// Resolve assuming currentDir from previous cd command
+					// filepath.Join will handle trailing slashes correctly
+					// Since targetPath is absolute (from WalkDir), we construct the absolute path here
+					// Note: If currentDir is relative, this won't work perfectly without resolving against home, 
+					// but cron/sudo usually use absolute paths for cd.
+					
+					// Only proceed if currentDir is absolute to avoid false positives
+					// We'll just construct it.
+					// We can't easily use filepath here without importing, but main.go already imports path/filepath? 
+					// Let's check imports. Main.go doesn't import path/filepath currently. We should avoid adding imports if possible, or just use string concat safely.
+					
+					var resolvedPath string
+					if strings.HasSuffix(currentDir, "/") {
+						resolvedPath = currentDir + execName
+					} else {
+						resolvedPath = currentDir + "/" + execName
+					}
+					
+					if resolvedPath == targetPath {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }

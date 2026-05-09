@@ -11,9 +11,10 @@ import (
 )
 
 type SUIDResult struct {
-	Path        string
-	IsDangerous bool
-	Reason      string
+	Path                 string
+	IsDangerous          bool
+	Reason               string
+	WritableLibraryPaths []string
 }
 
 // SGIDResult holds findings for SGID binaries
@@ -88,15 +89,44 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 			// Logic: Is it in our GTFOBins-like high-risk list?
 			isDangerous := false
 			reason := ""
+			var writableLibs []string
+
 			if _, ok := trueDangerousBinaries[strings.ToLower(fileName)]; ok {
 				isDangerous = true
 				reason = "Matches known GTFOBins executable. Can be abused for privilege escalation."
+				
+				// SUID Library Path Tracking (Potential Library Hijacking)
+				// We check common paths. Safest approach to avoid false positives is only checking common ones.
+				switch strings.ToLower(fileName) {
+				case "python", "python2", "python3":
+					writableLibs = checkWritableDirs([]string{
+						"/usr/local/lib/python3.8/dist-packages", "/usr/local/lib/python3.9/dist-packages",
+						"/usr/local/lib/python3.10/dist-packages", "/usr/local/lib/python3.11/dist-packages",
+						"/usr/local/lib/python3.12/dist-packages",
+						"/usr/lib/python3/dist-packages", "/usr/lib/python3.8/site-packages",
+						"/usr/lib/python3.9/site-packages", "/usr/lib/python3.10/site-packages",
+					})
+				case "perl":
+					writableLibs = checkWritableDirs([]string{
+						"/usr/local/lib/site_perl", "/usr/lib/x86_64-linux-gnu/perl5/5.30",
+						"/usr/lib/x86_64-linux-gnu/perl5/5.34", "/usr/share/perl5",
+					})
+				case "ruby":
+					writableLibs = checkWritableDirs([]string{
+						"/usr/local/lib/site_ruby", "/var/lib/gems",
+					})
+				}
+				
+				if len(writableLibs) > 0 {
+					reason += " | POTENTIAL HIJACKING: Writable library paths found."
+				}
 			}
 
 			results = append(results, SUIDResult{
-				Path:        path,
-				IsDangerous: isDangerous,
-				Reason:      reason,
+				Path:                 path,
+				IsDangerous:          isDangerous,
+				Reason:               reason,
+				WritableLibraryPaths: writableLibs,
 			})
 		}
 		return nil
@@ -180,4 +210,48 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 	})
 
 	return results, err
+}
+
+// checkWritableDirs checks if any of the provided directories exist and are writable by the current user
+func checkWritableDirs(dirs []string) []string {
+	var writable []string
+	currUser, err := user.Current()
+	if err != nil {
+		return writable
+	}
+	uid, _ := strconv.Atoi(currUser.Uid)
+
+	gidStrings, _ := currUser.GroupIds()
+	userGids := make(map[int]bool)
+	for _, g := range gidStrings {
+		id, _ := strconv.Atoi(g)
+		userGids[id] = true
+	}
+
+	for _, dir := range dirs {
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			continue
+		}
+
+		mode := stat.Mode
+		canWrite := false
+		if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
+			canWrite = true
+		} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
+			canWrite = true
+		} else if mode&syscall.S_IWOTH != 0 {
+			canWrite = true
+		}
+
+		if canWrite {
+			writable = append(writable, dir)
+		}
+	}
+	return writable
 }
