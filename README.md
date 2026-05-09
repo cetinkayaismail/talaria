@@ -12,6 +12,9 @@
 
 By leveraging native system calls and concurrent goroutines, Talaria can complete a full system audit in seconds (often under 10 seconds), aggressively filtering out false positives to highlight only the most critical attack vectors.
 
+### 📸 Real-World Testing
+Examples of scan results from the **TryHackMe Common Linux Privesc** room can be found in the [screenshots/](screenshots/) directory. These shots demonstrate how Talaria identifies complex SUID vectors, NFS misconfigurations, and root cronjobs with minimal noise.
+
 ---
 
 ## 🚀 Key Features
