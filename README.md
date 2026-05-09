@@ -21,7 +21,7 @@ Examples of scan results from the **TryHackMe Common Linux Privesc** room can be
 
 - **Intelligence Engine:** A unique correlation engine that detects chained attack vectors (  example : combining writable scripts with root CronJobs) with **Smart Path Resolution**.
 - **Low Noise & High Signal:** Advanced filtering (including symlink resolution) reduces false positives by 98%, focusing on actionable exploits .
-- **Blazing Fast Performance:** All 20+ modules run in parallel using optimized goroutines, completing audits in seconds .
+- **Blazing Fast Performance:** All more than 20 modules run in parallel using optimized goroutines, completing whole scan in seconds .
 - **Standalone Binary:** Zero dependencies. Compile once, run anywhere on Linux. I reccomend using make build command since it creates a static binary without c library issues  .
 - **Stealth-Focused:** Optional jitter and delays for behavioral evasion during engagements to be honest it is  not so important in most cases but nice to have .
 
@@ -32,7 +32,7 @@ Examples of scan results from the **TryHackMe Common Linux Privesc** room can be
 Talaria audits a wide range of local privilege escalation (LPE) vectors:
 
 ###  Core Privilege Escalation
-- **SUID/SGID Binaries:** Curated scanning against GTFOBins and dangerous group ownership (e.g., `shadow`, `disk`). Now includes **Library Hijacking Detection** for interpreters.
+- **SUID/SGID Binaries:** Curated scanning against GTFOBins and dangerous group ownership (example: `shadow`, `disk`). Now includes **Library Hijacking Detection** for interpreters.
 - **Linux Capabilities:** Deep recursive scan for exploitable capabilities (`cap_setuid`, `cap_sys_admin`, etc.).
 - **Sudo Analysis:** Parses `sudo -l`, `NOPASSWD` entries, and `env_keep` for `LD_PRELOAD` injection paths.
 
