@@ -33,7 +33,7 @@ Examples of scan results from the **TryHackMe Common Linux Privesc** room can be
 
 ---
 
-##  Exploit Modules (20+ Total)
+##  Scanner Modules (20+ Total)
 
 Talaria audits a wide range of local privilege escalation (LPE) vectors:
 
