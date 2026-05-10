@@ -133,8 +133,16 @@ func main() {
 			if *searchPath != "/" {
 				searchTargets = []string{*searchPath}
 			} else {
-				// Limited to common CTF paths as requested and to prevent system crash or resource exhaustion you can also change this from -path flag
-				searchTargets = []string{"/home", "/var/www"}
+				// CTF-focused paths — targeted to avoid freezing (no /usr, /lib, etc.)
+				ctfPaths := []string{
+					"/home", "/var/www", "/opt", "/srv",
+					"/etc/openvpn", "/etc/vpn", "/etc/irssi",
+				}
+				// Try /root but with a lightweight stat first to avoid permission hangs
+				if _, err := os.Stat("/root"); err == nil {
+					ctfPaths = append(ctfPaths, "/root")
+				}
+				searchTargets = ctfPaths
 			}
 			for _, target := range searchTargets {
 				if _, err := os.Stat(target); os.IsNotExist(err) {
@@ -150,21 +158,20 @@ func main() {
 				report.SecretContent = append(report.SecretContent, content...)
 				mu.Unlock()
 				for _, f := range files {
-					color := "\033[1;33m" // Yellow
+					color := "\033[1;33m" // MEDIUM = Yellow
 					if f.RiskLevel == "CRITICAL" {
 						color = "\033[1;31m" // Red
+					} else if f.RiskLevel == "HIGH" {
+						color = "\033[1;35m" // Magenta
 					}
-					
 					reason := f.Type
-					if f.Type == "Content Match" {
-						for _, c := range content {
-							if c.Path == f.Path {
-								reason += " (" + c.Snippet + ")"
-								break
-							}
+					for _, c := range content {
+						if c.Path == f.Path {
+							reason += " | " + c.Snippet
+							break
 						}
 					}
-					fmt.Printf("%s[%s] Secret Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", color, f.RiskLevel, f.Path, reason)
+					fmt.Printf("%s[%s] Secret Found\033[0m\n └─ Path   : %s\n └─ Detail : %s\n", color, f.RiskLevel, f.Path, reason)
 				}
 			}
 		}()
@@ -366,11 +373,25 @@ func main() {
 			defer wg.Done()
 			applyEvasion()
 			fmt.Printf("\033[1;32m[+] Scanning System Vulnerabilities...\033[0m\n")
-			results, err := scanners.ScanSystemVersions(timeout)
+			results, err := scanners.ScanSystemVersions()
 			if err == nil {
 				mu.Lock()
 				report.Vulnerabilities = results
 				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						for _, v := range r.Vulnerabilities {
+							fmt.Printf("\033[1;31m[CRITICAL] %s Vulnerability\033[0m\n"+
+								" └─ CVE     : %s\n"+
+								" └─ Name    : %s\n"+
+								" └─ Version : %s\n"+
+								" └─ Exploit : %s\n",
+								r.Software, v.CVE, v.Name, r.Version, v.ExploitHint)
+						}
+					} else {
+						fmt.Printf("\033[1;32m[OK] %s %s — No known kernel CVEs matched\033[0m\n", r.Software, r.Version)
+					}
+				}
 			}
 		}()
 	}
@@ -515,7 +536,23 @@ func main() {
 			mu.Unlock()
 			for _, r := range results {
 				if r.IsDangerous {
-					fmt.Printf("\033[1;31m[CRITICAL] SSH Key Vulnerability\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
+					if r.Type == "private_key" {
+						fmt.Printf("\033[1;31m[CRITICAL] Readable SSH Private Key\033[0m\n"+
+							" └─ Path    : %s\n"+
+							" └─ Owner   : %s\n"+
+							" └─ Exploit : chmod 400 id_rsa && ssh -i id_rsa %s@<target>\n"+
+							" └─ Preview : %s\n",
+							r.Path, r.TargetUser, r.TargetUser, r.Preview)
+					} else {
+						fmt.Printf("\033[1;31m[CRITICAL] SSH Key Vector\033[0m\n"+
+							" └─ Path    : %s\n"+
+							" └─ Type    : %s\n"+
+							" └─ Reason  : %s\n",
+							r.Path, r.Type, r.Reason)
+					}
+				} else if r.Type == "private_key" && r.Preview == "" {
+					// Key exists but not readable — still useful info
+					fmt.Printf("\033[1;33m[INFO] SSH Private Key Exists (not readable)\033[0m\n └─ Path : %s | Owner: %s\n", r.Path, r.TargetUser)
 				}
 			}
 		}()

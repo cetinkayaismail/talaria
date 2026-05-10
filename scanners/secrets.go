@@ -7,42 +7,92 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
-// SensitiveFileResult represents a file that matches sensitive patterns looking for credentials it was taking too much time in ctf's for me
+// SensitiveFileResult represents a file that matches sensitive patterns
 type SensitiveFileResult struct {
 	Path      string
 	Type      string
 	RiskLevel string
 }
 
-// SensitiveContentResult represents content found in a file
+// SensitiveContentResult represents a specific credential found inside a file
 type SensitiveContentResult struct {
 	Path    string
-	Snippet string
+	Snippet string // What was found: "Password: p@ssw0rd", "OpenVPN user: admin"
 }
 
+// --- Pattern definitions ---
+
+// criticalFilePatterns: filenames that are ALWAYS critical regardless of content
+var criticalFilePatterns = []string{
+	"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa",
+	".p12", ".pfx", ".kdbx",
+	".bash_history", ".zsh_history", ".sh_history",
+	".netrc", // Contains plaintext FTP/HTTP credentials
+}
+
+// mediumFilePatterns: filenames that warrant content inspection
+var mediumFilePatterns = []string{
+	".env", "config.php", "settings.py", "database.yml", "database.yaml",
+	".tfvars", "terraform.tfvars",
+	"shadow", "sudoers",
+	".ovpn",                                    // OpenVPN config
+	"auth.txt", "credentials.txt", "creds.txt", // Plaintext cred files
+	"my.cnf", ".my.cnf",                        // MySQL credentials
+	"wp-config.php",                             // WordPress
+	".htpasswd",                                 // Apache passwords
+	"filezilla.xml",                             // FTP credentials
+	"recentservers.xml",                         // FileZilla
+}
+
+// ignoreDirs: never descend into these — they cause freezes and noise
+var ignoreDirs = []string{
+	"/etc/fonts", "/etc/X11", "/usr/share", "/var/lib/dpkg",
+	"/lib/modules", "/var/cache", "/run", "/sys", "/proc",
+	"/dev", "/snap", "/var/lib/apt", "/usr/lib", "/usr/src",
+	"/var/log", "/var/lib/docker", "/var/lib/systemd",
+}
+
+// Regexes compiled once at package init
+var (
+	// High-confidence specific patterns
+	awsKeyRegex       = regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)
+	googleApiKeyRegex = regexp.MustCompile(`\bAIza[0-9A-Za-z\-_]{35}\b`)
+	privateKeyRegex   = regexp.MustCompile(`-----BEGIN (RSA|DSA|EC|PGP|OPENSSH) PRIVATE KEY-----`)
+	dockerAuthRegex   = regexp.MustCompile(`"auth"\s*:\s*"([A-Za-z0-9+/]{20,}={0,2})"`)
+	gitCredRegex      = regexp.MustCompile(`https?://[^:]+:([^@\s]+)@`)
+	netrcPassRegex    = regexp.MustCompile(`(?i)password\s+(\S{6,})`)
+
+	// Assignment regex — supports BOTH quoted and unquoted values
+	// Matches: password = "secret", password = secret, password: secret;
+	assignmentRegex = regexp.MustCompile(
+		`(?i)(?:password|passwd|pass|pwd|secret|api[_-]?key|token|credential|auth)[^a-z0-9]{0,5}` +
+			`(?:[=:]\s*)` +
+			`(?:"([^"]{6,})"|'([^']{6,})'|([^\s;#"']{6,}))`,
+	)
+
+	// OpenVPN auth-user-pass points to a credentials file
+	ovpnAuthRegex = regexp.MustCompile(`(?i)^\s*auth-user-pass\s*(\S+)?`)
+
+	// IRSSI connect_password (tırnaksız, noktalı virgülle biter)
+	irssiPassRegex = regexp.MustCompile(`(?i)(?:connect_)?password\s*=\s*"?([^";\s]+)"?;?`)
+)
+
+// ScanSecrets walks the given root path searching for credentials and sensitive files.
+// It uses tiered detection: critical filenames → known config filenames → content analysis.
 func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResult) {
 	var fileResults []SensitiveFileResult
 	var contentResults []SensitiveContentResult
 
-	// Directories to skip to prevent freezing/useless noise this will make it much faster and less noise
-	ignoreDirs := []string{
-		"/etc/fonts", "/etc/X11", "/usr/share", "/var/lib/dpkg", "/lib/modules",
-		"/var/cache", "/run", "/sys", "/proc", "/dev", "/snap", "/var/lib/apt",
-	}
-
-	criticalPatterns := []string{"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa", ".p12", ".kdbx", ".bash_history", ".zsh_history"}
-	mediumPatterns := []string{".env", "config.php", "settings.py", "database.yml", ".tfvars", "shadow", "sudoers"}
-	searchKeywords := []string{"password", "api_key", "secret", "token", "private key"}
-
-	// WalkDir is the high-performance version of Walk I prefer this one because it is faster than bash commands
 	filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil 
+			return nil
 		}
 
+		// Skip noise directories
 		if d.IsDir() {
 			for _, ignore := range ignoreDirs {
 				if strings.HasPrefix(path, ignore) {
@@ -52,45 +102,68 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 			return nil
 		}
 
+		// Don't follow symlinks
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+
 		fileName := strings.ToLower(d.Name())
 		isInteresting := false
 
-		// 1. Critical Filenames (Instant Exit)
-		for _, pattern := range criticalPatterns {
+		// --- TIER 1: Critical filenames — always flag, skip content scan ---
+		for _, pattern := range criticalFilePatterns {
 			if strings.Contains(fileName, pattern) {
 				fileResults = append(fileResults, SensitiveFileResult{
-					Path: path, Type: "Critical File (" + pattern + ")", RiskLevel: "CRITICAL",
+					Path:      path,
+					Type:      "Critical File (" + pattern + ")",
+					RiskLevel: "CRITICAL",
 				})
-				return nil 
-			}
-		}
-
-		// 2. Medium Risk Filenames
-		for _, pattern := range mediumPatterns {
-			if strings.Contains(fileName, pattern) {
-				fileResults = append(fileResults, SensitiveFileResult{
-					Path: path, Type: "Medium Risk Config (" + pattern + ")", RiskLevel: "MEDIUM",
-				})
-				isInteresting = true
-				break 
-			}
-		}
-
-		// 3. Content Search (Fast Text Scan) looking for keywords this is also will be very usefull in some ctf engagements
-		info, _ := d.Info()
-		if info.Size() < 250000 && !isBinary(fileName) {
-			foundKey := scanFileContent(path, searchKeywords)
-			if foundKey != "" {
-				contentResults = append(contentResults, SensitiveContentResult{
-					Path:    path,
-					Snippet: "Keyword: " + foundKey,
-				})
-				
-				if !isInteresting {
-					fileResults = append(fileResults, SensitiveFileResult{
-						Path: path, Type: "Content Match", RiskLevel: "HIGH",
+				// Also try to grab the first line as a preview (confirms readability)
+				if snippet := previewFirstLine(path); snippet != "" {
+					contentResults = append(contentResults, SensitiveContentResult{
+						Path:    path,
+						Snippet: "Preview: " + snippet,
 					})
 				}
+				return nil
+			}
+		}
+
+		// --- TIER 2: Medium-risk filenames — flag + do content scan ---
+		for _, pattern := range mediumFilePatterns {
+			if strings.Contains(fileName, pattern) {
+				fileResults = append(fileResults, SensitiveFileResult{
+					Path:      path,
+					Type:      "Config File (" + pattern + ")",
+					RiskLevel: "MEDIUM",
+				})
+				isInteresting = true
+				break
+			}
+		}
+
+		// --- TIER 3: Content scan ---
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		// Skip large files and binaries
+		if info.Size() > 500000 || isBinary(fileName) {
+			return nil
+		}
+
+		snippet := analyzeFileContent(path, fileName)
+		if snippet != "" {
+			contentResults = append(contentResults, SensitiveContentResult{
+				Path:    path,
+				Snippet: snippet,
+			})
+			if !isInteresting {
+				fileResults = append(fileResults, SensitiveFileResult{
+					Path:      path,
+					Type:      "Content Match",
+					RiskLevel: "HIGH",
+				})
 			}
 		}
 
@@ -100,76 +173,268 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 	return fileResults, contentResults
 }
 
-var (
-	// Regex for High-Confidence Secrets
-	awsKeyRegex       = regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)
-	googleApiKeyRegex = regexp.MustCompile(`\bAIza[0-9A-Za-z\-_]{35}\b`)
-	privateKeyRegex   = regexp.MustCompile(`-----BEGIN (RSA|DSA|EC|PGP|OPENSSH) PRIVATE KEY-----`)
-
-	// Regex for Generic Assignments: key = "value", password: 'value'
-	// Looks for a keyword, an assignment operator (= or :), and a value inside quotes
-	assignmentRegex = regexp.MustCompile(`(?i)(?:key|api|token|secret|password|pass|pwd|credential)[^a-z0-9]{0,5}(?:[=:]|\s+)\s*["']([^"'\s]{8,})["']`)
-)
-
-func scanFileContent(path string, keywords []string) string {
+// analyzeFileContent performs deep content analysis on a single file.
+// Returns a human-readable snippet describing what was found, or "".
+func analyzeFileContent(path, fileName string) string {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return ""
 	}
 
-	file, err := os.Open(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
-	defer file.Close()
+	defer f.Close()
 
-	// Check if file is truly binary by reading the first 512 bytes
+	// Binary check via file header
 	header := make([]byte, 512)
-	n, err := file.Read(header)
+	n, err := f.Read(header)
 	if err == nil && n > 0 && isBinaryBytes(header[:n]) {
 		return ""
 	}
-	file.Seek(0, 0) // Reset to start
+	f.Seek(0, 0)
 
-	scanner := bufio.NewScanner(file)
-	for i := 0; scanner.Scan() && i < 150; i++ { // Increased scan depth slightly
+	// --- Special-case parsers for specific file types ---
+	// OpenVPN .ovpn files
+	if strings.HasSuffix(fileName, ".ovpn") {
+		return analyzeOVPN(f, path)
+	}
+
+	// IRSSI config
+	if strings.Contains(path, ".irssi") || fileName == "config" {
+		if result := analyzeIRSSI(f); result != "" {
+			return result
+		}
+		f.Seek(0, 0)
+	}
+
+	// MySQL .my.cnf
+	if strings.Contains(fileName, "my.cnf") {
+		if result := analyzeMySQL(f); result != "" {
+			return result
+		}
+		f.Seek(0, 0)
+	}
+
+	// auth.txt (OpenVPN-style: line1=user, line2=pass)
+	if strings.Contains(fileName, "auth") && strings.HasSuffix(fileName, ".txt") {
+		if result := analyzeAuthTxt(f); result != "" {
+			return result
+		}
+		f.Seek(0, 0)
+	}
+
+	// Docker config.json (base64 encoded auth)
+	if fileName == "config.json" && strings.Contains(path, ".docker") {
+		if result := analyzeDockerConfig(f); result != "" {
+			return result
+		}
+		f.Seek(0, 0)
+	}
+
+	// Git config (embedded credentials in URL)
+	if fileName == "config" && strings.Contains(path, ".git") {
+		if result := analyzeGitConfig(f); result != "" {
+			return result
+		}
+		f.Seek(0, 0)
+	}
+
+	// --- Generic content scan (max 300 lines) ---
+	return genericContentScan(f, path)
+}
+
+// analyzeOVPN reads an OpenVPN config and checks for auth-user-pass directive.
+// If it points to a file, it tries to read that file to get credentials.
+func analyzeOVPN(f *os.File, ovpnPath string) string {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
 		line := scanner.Text()
-
-		// 1. High-Confidence Pattern Matching (No entropy check needed)
-		if awsKeyRegex.MatchString(line) {
-			return "AWS Access Key"
-		}
-		if googleApiKeyRegex.MatchString(line) {
-			return "Google API Key"
-		}
-		if privateKeyRegex.MatchString(line) {
-			return "Private Key Header"
-		}
-
-		// 2. Assignment & Entropy Check
-		matches := assignmentRegex.FindStringSubmatch(line)
-		if len(matches) > 1 {
-			value := matches[1]
-			// Filter out common false positives
-			if isFalsePositive(value) {
-				continue
+		if m := ovpnAuthRegex.FindStringSubmatch(line); len(m) > 0 {
+			credFile := strings.TrimSpace(m[1])
+			if credFile == "" {
+				return "OpenVPN: auth-user-pass directive found (inline credentials)"
 			}
-			
-			entropy := calculateEntropy(value)
-			// A lower threshold for passwords since they can be shorter, but must still have some complexity
-			if entropy > 3.2 { 
-				return "High-Entropy Secret Assignment"
+			// Resolve relative paths
+			if !filepath.IsAbs(credFile) {
+				credFile = filepath.Join(filepath.Dir(ovpnPath), credFile)
+			}
+			// Try to read the credential file
+			if creds, err := os.ReadFile(credFile); err == nil {
+				lines := strings.Split(strings.TrimSpace(string(creds)), "\n")
+				if len(lines) >= 2 {
+					user := strings.TrimSpace(lines[0])
+					pass := strings.TrimSpace(lines[1])
+					return "OpenVPN Credentials → User: " + user + " | Password: " + pass + " (from " + credFile + ")"
+				}
+			}
+			return "OpenVPN: auth-user-pass → " + credFile + " (could not read credential file)"
+		}
+	}
+	return ""
+}
+
+// analyzeIRSSI extracts passwords from IRSSI config format
+func analyzeIRSSI(f *os.File) string {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if m := irssiPassRegex.FindStringSubmatch(line); len(m) > 1 {
+			pass := strings.TrimSpace(m[1])
+			if !isFalsePositive(pass) {
+				return "IRSSI Password: " + pass
 			}
 		}
 	}
 	return ""
 }
 
+// analyzeMySQL extracts passwords from .my.cnf format
+func analyzeMySQL(f *os.File) string {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(strings.ToLower(line), "password") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				pass := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+				if pass != "" && !isFalsePositive(pass) {
+					return "MySQL Password: " + pass
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// analyzeAuthTxt handles OpenVPN-style auth files (line1=user, line2=pass)
+func analyzeAuthTxt(f *os.File) string {
+	scanner := bufio.NewScanner(f)
+	lines := []string{}
+	for scanner.Scan() && len(lines) < 5 {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "#") {
+			lines = append(lines, line)
+		}
+	}
+	// OpenVPN auth format: exactly 2 non-comment lines
+	if len(lines) == 2 {
+		return "Plaintext Credentials → User: " + lines[0] + " | Password: " + lines[1]
+	}
+	// Also check if only password is listed
+	if len(lines) == 1 && len(lines[0]) >= 6 {
+		return "Plaintext Secret: " + lines[0]
+	}
+	return ""
+}
+
+// analyzeDockerConfig extracts auth from ~/.docker/config.json
+func analyzeDockerConfig(f *os.File) string {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if m := dockerAuthRegex.FindStringSubmatch(line); len(m) > 1 {
+			// The auth value is base64(user:pass) — we return it as-is
+			return "Docker Registry Auth (base64): " + m[1] + " → decode with: echo " + m[1] + " | base64 -d"
+		}
+	}
+	return ""
+}
+
+// analyzeGitConfig detects embedded credentials in git remote URLs
+func analyzeGitConfig(f *os.File) string {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if m := gitCredRegex.FindStringSubmatch(line); len(m) > 1 {
+			return "Git Embedded Credential in URL → Password: " + m[1]
+		}
+	}
+	return ""
+}
+
+// genericContentScan is the fallback scanner for unknown file types.
+// Scans up to 300 lines for high-confidence patterns and secret assignments.
+func genericContentScan(f *os.File, path string) string {
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() && lineNum < 300 {
+		lineNum++
+		line := scanner.Text()
+
+		// 1. High-confidence regex patterns
+		if awsKeyRegex.MatchString(line) {
+			return "AWS Access Key ID: " + awsKeyRegex.FindString(line)
+		}
+		if googleApiKeyRegex.MatchString(line) {
+			return "Google API Key: " + googleApiKeyRegex.FindString(line)
+		}
+		if privateKeyRegex.MatchString(line) {
+			return "Private Key Header detected"
+		}
+		if m := netrcPassRegex.FindStringSubmatch(line); len(m) > 1 && !isFalsePositive(m[1]) {
+			return "Netrc Password: " + m[1]
+		}
+
+		// 2. Assignment regex — all 3 capture groups (quoted double, quoted single, unquoted)
+		if m := assignmentRegex.FindStringSubmatch(line); len(m) > 1 {
+			value := ""
+			for _, candidate := range m[1:] {
+				if candidate != "" {
+					value = candidate
+					break
+				}
+			}
+			if value != "" && !isFalsePositive(value) {
+				entropy := calculateEntropy(value)
+				if entropy > 2.8 {
+					// Extract the key name for context
+					keyName := extractKeyName(line)
+					return keyName + ": " + value
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// extractKeyName finds the variable name before the assignment operator
+func extractKeyName(line string) string {
+	re := regexp.MustCompile(`(?i)([\w_-]+)\s*[=:]`)
+	if m := re.FindStringSubmatch(line); len(m) > 1 {
+		return strings.TrimSpace(m[1])
+	}
+	return "Secret"
+}
+
+// previewFirstLine returns the first non-empty line of a file (for private key confirmation)
+func previewFirstLine(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+// isFalsePositive filters out obvious placeholder values
 func isFalsePositive(val string) bool {
+	if len(val) < 4 {
+		return true
+	}
 	valLower := strings.ToLower(val)
 	falsePositives := []string{
-		"example", "password", "123456", "your_secret", "changeme",
-		"placeholder", "xxxxxxxx", "dummy", "default",
+		"example", "password", "passw0rd", "123456", "your_secret", "changeme",
+		"placeholder", "xxxxxxxx", "dummy", "default", "secret", "mypassword",
+		"test", "none", "null", "true", "false", "your", "sample",
 	}
 	for _, fp := range falsePositives {
 		if strings.Contains(valLower, fp) {
@@ -184,12 +449,10 @@ func calculateEntropy(s string) float64 {
 	if len(s) == 0 {
 		return 0
 	}
-	
 	m := make(map[rune]int)
 	for _, r := range s {
 		m[r]++
 	}
-	
 	var entropy float64
 	for _, count := range m {
 		p := float64(count) / float64(len(s))
@@ -198,13 +461,33 @@ func calculateEntropy(s string) float64 {
 	return entropy
 }
 
-// isBinary checks filename extension
+// isLikelyConfig returns true if the file extension or name suggests it's a config
+func isLikelyConfig(path string) bool {
+	fileName := strings.ToLower(filepath.Base(path))
+	configExts := []string{".conf", ".config", ".yaml", ".yml", ".json", ".xml", ".ini", ".inf", ".txt", ".sh", ".ovpn", ".cnf"}
+	for _, ext := range configExts {
+		if strings.HasSuffix(fileName, ext) {
+			return true
+		}
+	}
+	configNames := []string{"config", "settings", "credentials", "auth", "secret"}
+	for _, name := range configNames {
+		if strings.Contains(fileName, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// isBinary checks filename extension for known binary types
 func isBinary(name string) bool {
 	ext := filepath.Ext(name)
 	binExts := map[string]bool{
 		".so": true, ".exe": true, ".bin": true, ".pyc": true,
-		".png": true, ".jpg": true, ".zip": true, ".gz": true,
-		".tar": true, ".pdf": true, ".mp4": true, ".mp3": true,
+		".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
+		".zip": true, ".gz": true, ".tar": true, ".bz2": true,
+		".pdf": true, ".mp4": true, ".mp3": true, ".avi": true,
+		".deb": true, ".rpm": true, ".img": true, ".iso": true,
 	}
 	return binExts[ext]
 }
@@ -213,8 +496,25 @@ func isBinary(name string) bool {
 func isBinaryBytes(data []byte) bool {
 	for _, b := range data {
 		if b == 0 {
-			return true // Null byte found, likely binary
+			return true
 		}
 	}
 	return false
 }
+
+// --- Unused but kept for backward compat ---
+func scanFileContent(path string, keywords []string) string {
+	_ = keywords
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	return genericContentScan(f, path)
+}
+
+// scanBasicLine is kept to satisfy old callers
+func scanBasicLine(_ string) string { return "" }
+
+// intStr is a tiny helper used by analyzeAuthTxt
+func intStr(i int) string { return strconv.Itoa(i) }
