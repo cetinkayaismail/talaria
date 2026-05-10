@@ -8,6 +8,12 @@
 [![Go Version](https://img.shields.io/badge/Go-1.20%2B-blue.svg)](https://golang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey.svg)](https://en.wikipedia.org/wiki/Linux)
 
+Developing and maintaining an LPE framework requires constant research and testing against the latest kernel patches and security configurations (if ı miss a new vector pls open a pr). If Talaria helped you pwn a box, escalate your privileges in a annoying lab, or if you simply appreciate the craft . 
+
+  Star this repository ⭐ – It’s the best way to show support and keep the project alive (makes me happy and motivated :) )
+
+
+
 **Talaria** is a high performance and  highly optimized reconnaissance tool for **Linux Privilege Escalation**. Written in Go, it is designed for cybersecurity professionals  and CTF enthusiasts who need a fast, reliable, and low noise alternative to traditional scanners.
 
 By leveraging native system calls and concurrent goroutines, Talaria can complete a full system audit in seconds (often under 10 seconds), aggressively filtering out false positives to highlight only the most critical attack vectors.Sometimes it even shows direct attack chains !!!!
@@ -93,6 +99,11 @@ Contributions are what make the open-source community such an amazing place to l
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+Developing and maintaining an LPE framework requires constant research and testing against the latest kernel patches and security configurations. If Talaria helped you pwn a box, escalate your privileges in a annoyin lab, or if you simply appreciate the craft or you just want to be nice :
+
+  Star this repository ⭐ – It’s the best way to show support and keep the project alive (makes me happy and motivated :) )
+
+  
 ---
 
 ## ⚖️ Disclaimer
