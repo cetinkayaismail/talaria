@@ -125,10 +125,13 @@ func analyzeCronLine(line string, filePath string, currentUID int) *CronJobResul
 	}
 
 	// Check for Wildcard Injection vectors (Critical finding)
-	for _, vulnerableCmd := range []string{"tar", "chown", "chmod", "rsync"} {
-		if strings.Contains(command, vulnerableCmd) && strings.Contains(command, "*") {
+	vulnerableCmds := []string{"tar", "chown", "chmod", "rsync", "7z", "zip", "rar", "7zip"}
+	for _, vulnerableCmd := range vulnerableCmds {
+		// Look for command followed by space and a wildcard
+		pattern := vulnerableCmd + " "
+		if strings.Contains(command, pattern) && strings.Contains(command, "*") {
 			isDangerous = true
-			reason = "Cron executes command with wildcard (*) - vulnerable to Wildcard Injection"
+			reason = "Cron executes '" + vulnerableCmd + "' with wildcard (*) - vulnerable to Wildcard Injection"
 			break
 		}
 	}

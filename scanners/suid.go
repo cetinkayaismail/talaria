@@ -1,6 +1,7 @@
 package scanners
 
 import (
+	"debug/elf"
 	"io/fs"
 	"os"
 	"os/user"
@@ -15,6 +16,7 @@ type SUIDResult struct {
 	IsDangerous          bool
 	Reason               string
 	WritableLibraryPaths []string
+	ExploitHint          string
 }
 
 // SGIDResult holds findings for SGID binaries
@@ -23,6 +25,7 @@ type SGIDResult struct {
 	OwnerGroup  string
 	IsDangerous bool
 	Reason      string
+	ExploitHint string
 }
 
 // PrivilegedGroupsForSGID: owning group of an SGID binary makes it dangerous
@@ -122,17 +125,53 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 				}
 			}
 
+			// ELF RPATH/RUNPATH Analysis (SO Hijacking)
+			rpathDirs := checkRPATH(path)
+			if len(rpathDirs) > 0 {
+				isDangerous = true
+				reason += " | SO HIJACKING: Writable RPATH/RUNPATH found: " + strings.Join(rpathDirs, ", ")
+				writableLibs = append(writableLibs, rpathDirs...)
+			}
+
+			exploitHint := ""
+			if isDangerous {
+				exploitHint = "Create a malicious .so in one of the writable paths and run the binary."
+			}
+
 			results = append(results, SUIDResult{
 				Path:                 path,
 				IsDangerous:          isDangerous,
 				Reason:               reason,
 				WritableLibraryPaths: writableLibs,
+				ExploitHint:          exploitHint,
 			})
 		}
 		return nil
 	})
 
 	return results, err
+}
+
+// checkRPATH extracts RPATH and RUNPATH from ELF and checks if they are writable.
+func checkRPATH(path string) []string {
+	f, err := elf.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var paths []string
+	if tags, err := f.DynString(elf.DT_RPATH); err == nil {
+		paths = append(paths, tags...)
+	}
+	if tags, err := f.DynString(elf.DT_RUNPATH); err == nil {
+		paths = append(paths, tags...)
+	}
+
+	if len(paths) == 0 {
+		return nil
+	}
+	return checkWritableDirs(paths)
 }
 
 // ScanSGID finds binaries with the SGID bit set. If owned by a privileged group,
@@ -200,11 +239,17 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				return nil
 			}
 
+			exploitHint := ""
+			if isDangerous {
+				exploitHint = "Binary is owned by privileged group '" + ownerGroup + "'. Exploit to gain group access (e.g., read files owned by this group)."
+			}
+
 			results = append(results, SGIDResult{
 				Path:        path,
 				OwnerGroup:  ownerGroup,
 				IsDangerous: isDangerous,
 				Reason:      reason,
+				ExploitHint: exploitHint,
 			})
 		}
 		return nil

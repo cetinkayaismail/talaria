@@ -39,6 +39,7 @@ type ScanReport struct {
 	PtraceScope        *scanners.PtraceScopeResult        `json:"ptrace_scope,omitempty"`
 	ContainerEscape    []scanners.ContainerEscapeResult   `json:"container_escape,omitempty"`
 	DBusPolicy         []scanners.DBusPolicyResult        `json:"dbus_policy,omitempty"`
+	Services           []scanners.ServiceAuditResult      `json:"services,omitempty"`
 }
 
 func main() {
@@ -64,12 +65,15 @@ func main() {
 			"    sshkeys         - SSH authorized_keys writability & private key exposure\n"+
 			"    vulnerabilities - Kernel & software version CVE checks (Dirty COW, PwnKit)\n"+
 			"    container       - Container escape vectors (--privileged, docker.sock mount)\n"+
-			"    dbus            - D-Bus policy misconfigurations")
+			"    dbus            - D-Bus policy misconfigurations\n"+
+			"    services        - Local service audits (MySQL, Redis blank passwords)")
 	searchPath   := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
 	outputFile   := flag.String("o", "", "Save report to file (combine with --format)")
 	outputFormat := flag.String("format", "text", "Report format: text or json")
 	sudoPassword := flag.String("pass", "", "Sudo password for sudo -l checks (optional)")
 	excludeInput := flag.String("exclude", "", "Comma-separated modules to skip (e.g. network,secrets)")
+	professionalMode := flag.Bool("professional", false, "Professional reporting mode (hides exploit hints, cleaner output)")
+	pMode := flag.Bool("p", false, "Professional reporting mode (shorthand)")
 
 	// ── Delay/jitter (existing stealth tier 1) ────────────────────────────────
 	isStealth   := flag.Bool("stealth", false, "[STEALTH] Enable random delays between module launches")
@@ -92,12 +96,19 @@ func main() {
 		"[STEALTH] Encrypt report with AES-256-GCM using this passphrase.\n"+
 		"          Requires -o to be set. Output is base64-encoded ciphertext.")
 
-	// Custom usage printer — groups core and stealth flags visually
+	// Custom usage printer — groups core, stealth and reporting flags visually
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Talaria - Linux Privilege Escalation Scanner\n")
 		fmt.Fprintf(os.Stderr, "Usage: talaria [flags]\n\n")
 		fmt.Fprintf(os.Stderr, "CORE FLAGS:\n")
 		for _, name := range []string{"scan", "exclude", "path", "o", "format", "pass"} {
+			f := flag.Lookup(name)
+			if f != nil {
+				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "\nREPORTING FLAGS:\n")
+		for _, name := range []string{"professional", "p"} {
 			f := flag.Lookup(name)
 			if f != nil {
 				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
@@ -114,6 +125,8 @@ func main() {
 	}
 
 	flag.Parse()
+
+	isProfessional := *professionalMode || *pMode
 
 	rand.Seed(time.Now().UnixNano())
 	baseDelay := *customDelay
@@ -248,6 +261,27 @@ func main() {
 					fmt.Printf("%s[%s] Secret Found\033[0m\n └─ Path   : %s\n └─ Detail : %s\n", color, f.RiskLevel, f.Path, reason)
 				}
 			}
+
+			// Add Targeted Root Secret Scan (/.ssh, /.aws, etc.)
+			rootFiles, rootContent := scanners.ScanRootSecrets()
+			if len(rootFiles) > 0 {
+				mu.Lock()
+				report.Secrets = append(report.Secrets, rootFiles...)
+				report.SecretContent = append(report.SecretContent, rootContent...)
+				mu.Unlock()
+
+				for _, f := range rootFiles {
+					color := "\033[1;31m" // CRITICAL
+					reason := f.Type
+					for _, c := range rootContent {
+						if c.Path == f.Path {
+							reason += " | " + c.Snippet
+							break
+						}
+					}
+					fmt.Printf("%s[%s] Root Secret Found\033[0m\n └─ Path   : %s\n └─ Detail : %s\n", color, f.RiskLevel, f.Path, reason)
+				}
+			}
 		}()
 	}
 
@@ -268,6 +302,9 @@ func main() {
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] SUID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
+						if !isProfessional && r.ExploitHint != "" {
+							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
+						}
 					} else {
 						fmt.Printf("\033[1;33m[INFO] SUID Binary\033[0m\n └─ Path   : %s\n", r.Path)
 					}
@@ -293,6 +330,9 @@ func main() {
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] SGID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
+						if !isProfessional && r.ExploitHint != "" {
+							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
+						}
 					}
 				}
 			}
@@ -560,6 +600,14 @@ func main() {
 				mu.Lock()
 				report.FilePermsExploit = results
 				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] File Permissions Exploit\033[0m\n └─ Path   : %s\n └─ Method : %s\n └─ Vector : %s\n", r.Path, r.ExploitMethod, r.PotentialAttackVector)
+						if !isProfessional {
+							fmt.Printf(" └─ Exploit: Prepend a malicious binary to your PATH and run the target.\n")
+						}
+					}
+				}
 			}
 		}()
 	}
@@ -579,6 +627,33 @@ func main() {
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] Privileged Group Membership\033[0m\n └─ Group  : %s\n └─ Reason : %s\n", r.GroupName, r.Reason)
+						if !isProfessional && r.ExploitHint != "" {
+							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- SERVICES MODULE (MySQL/Redis Blank Pass) ---
+	if runAll || selectedModules["services"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			fmt.Printf("\033[1;32m[+] Scanning Local Services (MySQL/Redis)...\033[0m\n")
+			results, err := scanners.ScanLocalServices()
+			if err == nil {
+				mu.Lock()
+				report.Services = results
+				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] %s Vulnerability Found\033[0m\n └─ Service : %s\n └─ Reason  : %s\n", r.ServiceName, r.ServiceName, r.Reason)
+						if !isProfessional && r.ExploitHint != "" {
+							fmt.Printf(" └─ Exploit : %s\n", r.ExploitHint)
+						}
 					}
 				}
 			}

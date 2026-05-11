@@ -26,6 +26,7 @@ By default, Talaria prints the output directly to your terminal using colored te
 | `-o` | `""` | File path to save the report to. |
 | `--format` | `text` | Output format of the report file (`text` or `json`). |
 | `--pass` | `""` | Sudo password for `sudo -l` checks. |
+| `--professional` / `-p` | `false` | Professional reporting mode. Hides CTF-style exploit hints and provides cleaner output for auditors. |
 
 ### Stealth Flags
 
@@ -138,3 +139,4 @@ make stealth-bundle
 | `vulnerabilities` | Kernel and software CVE checks |
 | `container` | Container escape vectors |
 | `dbus` | D-Bus policy misconfigurations |
+| `services` | Local service audits (MySQL, Redis) |
