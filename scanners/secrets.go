@@ -260,8 +260,8 @@ func analyzeOVPN(f *os.File, ovpnPath string) string {
 			if !filepath.IsAbs(credFile) {
 				credFile = filepath.Join(filepath.Dir(ovpnPath), credFile)
 			}
-			// Try to read the credential file
-			if creds, err := os.ReadFile(credFile); err == nil {
+			// Read credential file stealthily (restores atime if --atime-restore)
+			if creds, err := ReadFileStealthy(credFile); err == nil {
 				lines := strings.Split(strings.TrimSpace(string(creds)), "\n")
 				if len(lines) >= 2 {
 					user := strings.TrimSpace(lines[0])
@@ -408,16 +408,15 @@ func extractKeyName(line string) string {
 	return "Secret"
 }
 
-// previewFirstLine returns the first non-empty line of a file (for private key confirmation)
+// previewFirstLine returns the first non-empty line of a file (for private key confirmation).
+// Uses ReadFileStealthy so that --atime-restore applies to critical credential reads.
 func previewFirstLine(path string) string {
-	f, err := os.Open(path)
+	data, err := ReadFileStealthy(path)
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for _, line := range strings.SplitN(string(data), "\n", 10) {
+		line = strings.TrimSpace(line)
 		if line != "" {
 			return line
 		}

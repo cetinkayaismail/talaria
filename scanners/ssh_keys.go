@@ -1,7 +1,6 @@
 package scanners
 
 import (
-	"bufio"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -107,17 +106,14 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 			// --- VECTOR 2: Readable private key (theft) ---
 			for _, keyName := range privateKeyNames {
 				if strings.EqualFold(fileName, keyName) && ownerUID != currentUID {
-					// Try to read it — confirms it's actually accessible
+					// Try to read via stealthy helper — confirms accessibility
+					// and restores atime if --atime-restore is set.
 					preview := ""
-					if f, err := os.Open(filePath); err == nil {
-						scanner := bufio.NewScanner(f)
-						if scanner.Scan() {
-							line := scanner.Text()
-							if strings.HasPrefix(line, "-----BEGIN") {
-								preview = line
-							}
+					if rawData, err := ReadFileStealthy(filePath); err == nil {
+						lines := strings.SplitN(string(rawData), "\n", 2)
+						if len(lines) > 0 && strings.HasPrefix(lines[0], "-----BEGIN") {
+							preview = lines[0]
 						}
-						f.Close()
 					}
 
 					isDangerous := false
@@ -146,18 +142,15 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 			// --- VECTOR 3: Writable authorized_keys (injection) ---
 			if fileName == "authorized_keys" && ownerUID != currentUID {
 				if isWritableBy(fileInfo, currentUID, userGids) {
-					// Peek at existing authorized keys for context
+					// Count existing authorized keys (stealthy read restores atime)
 					preview := ""
-					if f, err := os.Open(filePath); err == nil {
-						scanner := bufio.NewScanner(f)
+					if rawData, err := ReadFileStealthy(filePath); err == nil {
 						count := 0
-						for scanner.Scan() {
-							line := scanner.Text()
+						for _, line := range strings.Split(string(rawData), "\n") {
 							if strings.HasPrefix(line, "ssh-") || strings.HasPrefix(line, "ecdsa-") {
 								count++
 							}
 						}
-						f.Close()
 						if count > 0 {
 							preview = strconv.Itoa(count) + " existing key(s)"
 						}

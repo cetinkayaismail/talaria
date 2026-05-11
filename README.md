@@ -25,11 +25,11 @@ Examples of scan results from the **TryHackMe Common Linux Privesc** room can be
 
 ##  Key Features
 
-- **Intelligence Engine:** A unique correlation engine that detects chained attack vectors (  example : combining writable scripts with root CronJobs) with **Smart Path Resolution**.
-- **Low Noise & High Signal:** Advanced filtering (including symlink resolution) reduces false positives by 98%, focusing on actionable exploits .
-- **Blazing Fast Performance:** All more than 20 modules run in parallel using optimized goroutines, completing whole scan in seconds .
-- **Standalone Binary:** Zero dependencies. Compile once, run anywhere on Linux. I reccomend using make build command since it creates a static binary without c library issues  .
-- **Stealth-Focused:** Optional jitter and delays for behavioral evasion during engagements to be honest it is  not so important in most cases but nice to have .
+- **Intelligence Engine:** A unique correlation engine that detects chained attack vectors (example: combining writable scripts with root CronJobs) with **Smart Path Resolution**.
+- **Low Noise & High Signal:** Advanced filtering (including symlink resolution) reduces false positives by 98%, focusing on actionable exploits.
+- **Blazing Fast Performance:** All more than 20 modules run in parallel using optimized goroutines, completing whole scan in seconds.
+- **Standalone Binary:** Zero dependencies. Compile once, run anywhere on Linux. Recommended to use `make build` since it creates a static binary without C library issues.
+- **Operational Security:** A dedicated stealth layer with process name masking, adaptive I/O throttling, atime restoration, AES-256-GCM encrypted reports, post-scan self-deletion, and RAM-only execution via `make stealth-bundle`. All features are opt-in and do not affect default scan performance.
 
 ---
 

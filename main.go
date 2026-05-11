@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"Talaria/scanners" // Ensure this matches  go.mod module name
+	"Talaria/scanners" // Ensure this matches go.mod module name
 	"math/rand"
 	"os"
 	"strings"
@@ -45,34 +45,74 @@ func main() {
 	scanInput := flag.String("scan", "all",
 		"Comma-separated list of modules to run. Use 'all' to run everything.\n"+
 			"  Available modules:\n"+
-			"    secrets        - Sensitive files & credentials (SSH keys, .env, config files)\n"+
-			"    suid           - SUID binaries (GTFOBins-matched dangerous list)\n"+
-			"    sgid           - SGID binaries (privileged group ownership detection)\n"+
-			"    sudo           - sudo -l analysis (NOPASSWD, SETENV, LD_PRELOAD env_keep)\n"+
-			"    capabilities   - Linux capabilities (cap_setuid, cap_sys_admin, etc.)\n"+
-			"    cronjobs       - Cron jobs, systemd timers, wildcard injection\n"+
-			"    processes      - Running processes (credentials in args, ptrace scope)\n"+
-			"    ptrace         - ptrace_scope check (process injection vector)\n"+
-			"    nfs            - NFS exports (no_root_squash detection)\n"+
-			"    network        - Open ports & internal services\n"+
-			"    writeable      - Writable files/dirs owned by root or other users\n"+
-			"    sockets        - Unix sockets (Docker sock, privileged service sockets)\n"+
-			"    filepermissions- Critical system file misconfigurations\n"+
+			"    secrets         - Sensitive files & credentials (SSH keys, .env, config files)\n"+
+			"    suid            - SUID binaries (GTFOBins-matched dangerous list)\n"+
+			"    sgid            - SGID binaries (privileged group ownership detection)\n"+
+			"    sudo            - sudo -l analysis (NOPASSWD, SETENV, LD_PRELOAD env_keep)\n"+
+			"    capabilities    - Linux capabilities (cap_setuid, cap_sys_admin, etc.)\n"+
+			"    cronjobs        - Cron jobs, systemd timers, wildcard injection\n"+
+			"    processes       - Running processes (credentials in args, ptrace scope)\n"+
+			"    ptrace          - ptrace_scope check (process injection vector)\n"+
+			"    nfs             - NFS exports (no_root_squash detection)\n"+
+			"    network         - Open ports & internal services\n"+
+			"    writeable       - Writable files/dirs owned by root or other users\n"+
+			"    sockets         - Unix sockets (Docker sock, privileged service sockets)\n"+
+			"    filepermissions - Critical system file misconfigurations\n"+
 			"    filepermsexploit- SUID/SGID scripts with relative binary calls (PATH hijack)\n"+
-			"    groups         - Privileged group membership (docker, lxd, disk, shadow)\n"+
-			"    pathhijack     - Writable/dot entries in $PATH\n"+
-			"    sshkeys        - SSH authorized_keys writability & private key exposure\n"+
-			"    vulnerabilities- Kernel & software version CVE checks (Dirty COW, PwnKit)\n"+
-			"    container      - Container escape vectors (--privileged, docker.sock mount)\n"+
-			"    dbus           - D-Bus policy misconfigurations")
-	searchPath := flag.String("path", "/", "Start directory")
-	outputFile := flag.String("o", "", "Save results to file")
-	outputFormat := flag.String("format", "text", "text or json")
-	isStealth := flag.Bool("stealth", false, "Enable delays")
-	customDelay := flag.Duration("delay", 0, "Base delay")
-	customJitter := flag.Duration("jitter", 0, "Max jitter")
+			"    groups          - Privileged group membership (docker, lxd, disk, shadow)\n"+
+			"    pathhijack      - Writable/dot entries in $PATH\n"+
+			"    sshkeys         - SSH authorized_keys writability & private key exposure\n"+
+			"    vulnerabilities - Kernel & software version CVE checks (Dirty COW, PwnKit)\n"+
+			"    container       - Container escape vectors (--privileged, docker.sock mount)\n"+
+			"    dbus            - D-Bus policy misconfigurations")
+	searchPath   := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
+	outputFile   := flag.String("o", "", "Save report to file (combine with --format)")
+	outputFormat := flag.String("format", "text", "Report format: text or json")
 	sudoPassword := flag.String("pass", "", "Sudo password for sudo -l checks (optional)")
-	excludeInput := flag.String("exclude", "", "Comma-separated list of modules to skip (e.g., 'network,secrets')")
+	excludeInput := flag.String("exclude", "", "Comma-separated modules to skip (e.g. network,secrets)")
+
+	// ── Delay/jitter (existing stealth tier 1) ────────────────────────────────
+	isStealth   := flag.Bool("stealth", false, "[STEALTH] Enable random delays between module launches")
+	customDelay := flag.Duration("delay", 0, "[STEALTH] Base delay between module launches (e.g. 150ms)")
+	customJitter:= flag.Duration("jitter", 0, "[STEALTH] Max random jitter added on top of base delay")
+
+	// ── Advanced stealth flags (inactive by default) ──────────────────────────
+	maskName     := flag.String("mask", "",
+		"[STEALTH] Overwrite process name in ps/top/htop.\n"+
+		"          Example: --mask '[kworker/u2:1]'")
+	selfDestruct := flag.Bool("self-destruct", false,
+		"[STEALTH] Delete the binary from disk after scan completes (report written first)")
+	atimeRestore := flag.Bool("atime-restore", false,
+		"[STEALTH] Restore file access timestamps after reading sensitive files.\n"+
+		"          Prevents atime-based forensic detection.")
+	throttleLoad := flag.Float64("throttle", 0,
+		"[STEALTH] Pause when system load/CPU exceeds this ratio (e.g. 0.8 = 80%).\n"+
+		"          Reduces I/O burst anomaly signatures. 0 = disabled.")
+	encryptKey   := flag.String("encrypt", "",
+		"[STEALTH] Encrypt report with AES-256-GCM using this passphrase.\n"+
+		"          Requires -o to be set. Output is base64-encoded ciphertext.")
+
+	// Custom usage printer — groups core and stealth flags visually
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Talaria - Linux Privilege Escalation Scanner\n")
+		fmt.Fprintf(os.Stderr, "Usage: talaria [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "CORE FLAGS:\n")
+		for _, name := range []string{"scan", "exclude", "path", "o", "format", "pass"} {
+			f := flag.Lookup(name)
+			if f != nil {
+				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "\nSTEALTH FLAGS (all inactive by default):\n")
+		for _, name := range []string{"stealth", "delay", "jitter", "mask", "atime-restore", "throttle", "encrypt", "self-destruct"} {
+			f := flag.Lookup(name)
+			if f != nil {
+				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "\nSee USAGE.md for detailed examples and the stealth bundle workflow.\n")
+	}
+
 	flag.Parse()
 
 	rand.Seed(time.Now().UnixNano())
@@ -87,13 +127,47 @@ func main() {
 		}
 	}
 
+	// ── Stealth: activate package-level config (no-op when flags not set) ────
+	if *maskName != "" {
+		scanners.MaskProcess(*maskName)
+		fmt.Printf("\033[1;90m[stealth] Process masked as: %s\033[0m\n", *maskName)
+	}
+	if *atimeRestore {
+		scanners.StealthCfg.AtimeRestore = true
+		fmt.Printf("\033[1;90m[stealth] atime-restore: enabled\033[0m\n")
+	}
+
+	// ── Lazy CPU count for adaptive throttle (computed once) ─────────────────
+	numCPUs := 1
+	if *throttleLoad > 0 {
+		numCPUs = scanners.GetNumCPUs()
+		fmt.Printf("\033[1;90m[stealth] Adaptive throttle: load/cpu > %.2f → extra pause (cpus=%d)\033[0m\n",
+			*throttleLoad, numCPUs)
+	}
+
 	applyEvasion := func() {
-		if baseDelay > 0 {
+		delay := baseDelay
+
+		// Adaptive throttle: if system is already busy, slow down to blend in
+		if *throttleLoad > 0 {
+			load := scanners.GetSystemLoad()
+			loadPerCPU := load / float64(numCPUs)
+			if loadPerCPU > *throttleLoad {
+				// Scale extra pause with how far over threshold we are
+				extra := time.Duration((loadPerCPU-*throttleLoad)*1000) * time.Millisecond
+				if extra > 5*time.Second {
+					extra = 5 * time.Second // cap at 5s so we don't hang forever
+				}
+				delay += extra
+			}
+		}
+
+		if delay > 0 {
 			jitter := 0
 			if maxJitter > 0 {
 				jitter = rand.Intn(int(maxJitter))
 			}
-			time.Sleep(baseDelay + time.Duration(jitter))
+			time.Sleep(delay + time.Duration(jitter))
 		}
 	}
 
@@ -770,12 +844,24 @@ func main() {
 	}
 
 	if *outputFile != "" {
-		saveReport(report, *outputFile, *outputFormat)
+		saveReport(report, *outputFile, *outputFormat, *encryptKey)
 	}
 	fmt.Println("\n\033[1;34m[*] Scan Complete!\033[0m")
+
+	// ── Self-Destruct: wipe binary AFTER report is safely written ────────────
+	if *selfDestruct {
+		exePath, err := os.Executable()
+		if err == nil {
+			if err := os.Remove(exePath); err == nil {
+				fmt.Printf("\033[1;90m[stealth] Binary removed: %s\033[0m\n", exePath)
+			} else {
+				fmt.Printf("\033[1;31m[stealth] Self-destruct failed: %v\033[0m\n", err)
+			}
+		}
+	}
 }
 
-func saveReport(report *ScanReport, path string, format string) {
+func saveReport(report *ScanReport, path string, format string, encryptKey string) {
 	var data []byte
 	if strings.ToLower(format) == "json" {
 		data, _ = json.MarshalIndent(report, "", "  ")
@@ -817,6 +903,18 @@ func saveReport(report *ScanReport, path string, format string) {
 			len(report.Secrets), len(report.CronJobs), len(report.SudoPrivileges), len(report.Capabilities)))
 		data = []byte(sb.String())
 	}
+
+	// ── Optional AES-256-GCM encryption ─────────────────────────────────────
+	if encryptKey != "" {
+		encrypted, err := scanners.EncryptReport(data, encryptKey)
+		if err != nil {
+			fmt.Printf("\033[1;31m[stealth] Encryption failed: %v — saving plaintext\033[0m\n", err)
+		} else {
+			data = encrypted
+			fmt.Printf("\033[1;90m[stealth] Report encrypted with AES-256-GCM\033[0m\n")
+		}
+	}
+
 	_ = os.WriteFile(path, data, 0600)
 	fmt.Printf("\033[1;32m[+] Report saved to %s\033[0m\n", path)
 }
