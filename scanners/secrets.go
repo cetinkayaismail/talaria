@@ -32,6 +32,7 @@ var criticalFilePatterns = []string{
 	".p12", ".pfx", ".kdbx",
 	".bash_history", ".zsh_history", ".sh_history", ".history",
 	".netrc", ".aws/credentials", ".kube/config",
+	"logins.json", "Cookies", "Login Data", "Web Data", // Browser secrets
 }
 
 // mediumFilePatterns: filenames that warrant content inspection
@@ -46,6 +47,7 @@ var mediumFilePatterns = []string{
 	".htpasswd",                                 // Apache passwords
 	"filezilla.xml",                             // FTP credentials
 	"recentservers.xml",                         // FileZilla
+	"Places.sqlite", "History", "Top Sites",    // Browser history
 }
 
 // ignoreDirs: never descend into these — they cause freezes and noise

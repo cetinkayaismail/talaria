@@ -140,3 +140,4 @@ make stealth-bundle
 | `container` | Container escape vectors |
 | `dbus` | D-Bus policy misconfigurations |
 | `services` | Local service audits (MySQL, Redis) |
+| `packages` | Package manager audits (doas, snap) |

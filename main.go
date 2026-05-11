@@ -40,6 +40,7 @@ type ScanReport struct {
 	ContainerEscape    []scanners.ContainerEscapeResult   `json:"container_escape,omitempty"`
 	DBusPolicy         []scanners.DBusPolicyResult        `json:"dbus_policy,omitempty"`
 	Services           []scanners.ServiceAuditResult      `json:"services,omitempty"`
+	Packages           []scanners.PackageAuditResult      `json:"packages,omitempty"`
 }
 
 func main() {
@@ -66,7 +67,8 @@ func main() {
 			"    vulnerabilities - Kernel & software version CVE checks (Dirty COW, PwnKit)\n"+
 			"    container       - Container escape vectors (--privileged, docker.sock mount)\n"+
 			"    dbus            - D-Bus policy misconfigurations\n"+
-			"    services        - Local service audits (MySQL, Redis blank passwords)")
+			"    services        - Local service audits (MySQL, Redis blank passwords)\n"+
+			"    packages        - Package manager audits (doas, snap, flatpak)")
 	searchPath   := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
 	outputFile   := flag.String("o", "", "Save report to file (combine with --format)")
 	outputFormat := flag.String("format", "text", "Report format: text or json")
@@ -653,6 +655,30 @@ func main() {
 						fmt.Printf("\033[1;31m[CRITICAL] %s Vulnerability Found\033[0m\n └─ Service : %s\n └─ Reason  : %s\n", r.ServiceName, r.ServiceName, r.Reason)
 						if !isProfessional && r.ExploitHint != "" {
 							fmt.Printf(" └─ Exploit : %s\n", r.ExploitHint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- PACKAGES MODULE (doas, snap, flatpak) ---
+	if runAll || selectedModules["packages"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			fmt.Printf("\033[1;32m[+] Scanning Package Managers (doas, snap, flatpak)...\033[0m\n")
+			results, err := scanners.ScanPackages()
+			if err == nil {
+				mu.Lock()
+				report.Packages = results
+				mu.Unlock()
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] %s Misconfiguration Found\033[0m\n └─ Tool   : %s\n └─ Reason : %s\n", r.Name, r.Name, r.Reason)
+						if !isProfessional && r.ExploitHint != "" {
+							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
 						}
 					}
 				}
