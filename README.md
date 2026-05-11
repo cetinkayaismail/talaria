@@ -104,10 +104,10 @@ Contributions are what make the open-source community such an amazing place to l
   
 ---
 
-## ⚖️ Disclaimer
+##  Disclaimer
 
 Talaria is intended for educational purposes, authorized security auditing, and penetration testing only. Do not use this tool on systems you do not have explicit permission to test. The author is not responsible for any misuse or damage caused by this tool.
 
-## 📄 License
+##  License
 
 Distributed under the MIT License. See `LICENSE` for more information.
