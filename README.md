@@ -8,61 +8,53 @@
 [![Go Version](https://img.shields.io/badge/Go-1.20%2B-blue.svg)](https://golang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey.svg)](https://en.wikipedia.org/wiki/Linux)
 
-Developing and maintaining an LPE framework requires constant research and testing against the latest kernel patches and security configurations (if ı miss a new vector pls open a pr). If Talaria helped you pwn a box, escalate your privileges in a annoying lab, or if you simply appreciate the craft . 
+Developing and maintaining an LPE framework requires constant research and testing against the latest kernel patches and security configurations (if ı miss a new vector pls open a pr). If Talaria helped you pwn a box, escalate your privileges in a annoying lab, or if you simply appreciate the craft.
 
-  Star this repository  – It’s the best way to show support and keep the project alive (makes me happy and motivated :) )
+**Star this repository** – It’s the best way to show support and keep the project alive (makes me happy and motivated :) )
 
+Talaria is a high-performance reconnaissance framework designed for Linux Privilege Escalation. Built with Go, it provides cybersecurity professionals and auditors with a fast, low-noise, and reliable alternative to traditional LPE scripts. 
 
+By leveraging native system calls and concurrent execution, Talaria completes comprehensive system audits in seconds, prioritizing high-signal attack vectors while maintaining a minimal footprint.
 
-**Talaria** is a high performance and  highly optimized reconnaissance tool for **Linux Privilege Escalation**. Written in Go, it is designed for cybersecurity professionals  and CTF enthusiasts who need a fast, reliable, and low noise alternative to traditional scanners.
+## Core Advantages
 
-By leveraging native system calls and concurrent goroutines, Talaria can complete a full system audit in seconds (often under 10 seconds), aggressively filtering out false positives to highlight only the most critical attack vectors.Sometimes it even shows direct attack chains !!!!
-
-###  Real-World Testing
-Examples of scan results from the **TryHackMe Common Linux Privesc** room can be found in the [screenshots/](screenshots/) directory. These shots demonstrate how Talaria identifies complex SUID vectors, NFS misconfigurations, and root cronjobs with minimal noise if you want you can just eliminate secrets module but to be honest it can be really usefull in some cases but creates a little bit noise  .
-
----
-
-##  Key Features
-
-- **Intelligence Engine:** A unique correlation engine that detects chained attack vectors (example: combining writable scripts with root CronJobs) with **Smart Path Resolution**.
-- **Low Noise & High Signal:** Advanced filtering (including symlink resolution) reduces false positives by 98%, focusing on actionable exploits.
-- **Blazing Fast Performance:** All more than 20 modules run in parallel using optimized goroutines, completing whole scan in seconds.
-- **Standalone Binary:** Zero dependencies. Compile once, run anywhere on Linux. Recommended to use `make build` since it creates a static binary without C library issues.
-- **Operational Security:** A dedicated stealth layer with process name masking, adaptive I/O throttling, atime restoration, AES-256-GCM encrypted reports, post-scan self-deletion, and RAM-only execution via `make stealth-bundle`. All features are opt-in and do not affect default scan performance.
+- **Advanced Binary Analysis:** Performs deep analysis of ELF headers (RPATH/RUNPATH) and binary strings to detect SO Hijacking and PATH injection vectors in compiled SUID/SGID files.
+- **Professional Reporting Mode:** Includes a dedicated mode (`--professional`) that suppresses exploit hints and CTF-style tips, providing a clean, action-oriented report suitable for corporate security audits.
+- **Intelligence Engine:** Correlates findings to identify complex attack chains, such as writable scripts executed via privileged CronJobs or system services.
+- **Operational Security (OPSEC):** Features opt-in stealth mechanisms including process name masking, adaptive I/O throttling, atime restoration, and AES-256-GCM encrypted reports.
+- **Static & Portable:** Zero external dependencies. Talaria compiles into a standalone static binary, ensuring compatibility across diverse Linux distributions.
 
 ---
 
-##  Scanner Modules (20+ Total)
+## Scanner Capabilities
 
-Talaria audits a wide range of local privilege escalation (LPE) vectors:
+Talaria covers a wide array of local privilege escalation vectors through more than 20 specialized modules:
 
-###  Core Privilege Escalation
-- **SUID/SGID Binaries:** Curated scanning against GTFOBins and dangerous group ownership (example: `shadow`, `disk`). Now includes **Library Hijacking Detection** for interpreters.
-- **Linux Capabilities:** Deep recursive scan for exploitable capabilities (`cap_setuid`, `cap_sys_admin`, etc.).
-- **Sudo Analysis:** Parses `sudo -l`, `NOPASSWD` entries, and `env_keep` for `LD_PRELOAD` injection paths.
+### Privilege Escalation & Misconfigurations
+- **SUID/SGID Binaries:** Analysis against GTFOBins and dangerous group ownership. Includes library hijacking detection and binary string inspection for relative path calls.
+- **Linux Capabilities:** Recursive scanning for exploitable capabilities such as `cap_setuid` and `cap_sys_admin`.
+- **Sudo Audit:** Detailed parsing of `sudo -l`, `NOPASSWD` entries, and environment variables like `LD_PRELOAD`.
+- **Local Service Auditing:** Identifies local services (MySQL, Redis, MongoDB) accessible with blank passwords or missing authentication.
 
-###  Persistence & Scheduling
-- **Cron Jobs & Systemd Timers:** Detects misconfigured scheduled tasks and **wildcard injection** vulnerabilities (`tar *`, `chown *`).
-- **Deep Service Analysis:** Recursively checks the writability of binaries and scripts executed by root services (`ExecStart`).
+### Persistence & Scheduling
+- **Cron Jobs & Systemd Timers:** Detection of misconfigured scheduled tasks and wildcard injection vulnerabilities (`tar *`, `chown *`).
+- **Service Analysis:** Audits the writability of binaries and scripts invoked by root-level system services (`ExecStart`).
 
-###  Filesystem & Permissions
-- **Writable Sensitive Files:** Finds world-writable system files (`/etc/passwd`, `/etc/sudoers.d/`).
-- **PATH Hijacking:** Scans for writable directories or dot entries in the current environment's `$PATH`.
-- **SSH Key Audit:** Identifies writable `.ssh` directories and readable private keys for lateral movement.
+### Filesystem & Credentials
+- **Sensitive Data Harvesting:** High-speed scanning for credentials in configuration files, cloud provider metadata (.aws, .kube), shell histories, and system logs.
+- **Targeted Root Scan:** Rapid inspection of hidden directories in the system root (/.ssh, /.backup) to find misplaced administrative keys.
+- **SSH Key Audit:** Identification of writable authorized_keys and exposed private keys for lateral movement.
 
-###  Container & Runtime
-- **Container Escape:** Detects Docker/LXC/K8s environments and checks for `--privileged` mode or exposed Docker sockets.
-- **Process Analysis:** Scans for sensitive arguments, debug tools (GDB/Strace), and unrestricted `ptrace_scope`.
+### Container & Runtime Security
+- **Container Escape:** Detection of Docker/LXC/K8s environments with checks for privileged mode or exposed control sockets.
+- **Process Security:** Monitoring for sensitive arguments, unrestricted `ptrace_scope`, and active debugging tools.
 
 ---
 
-##  Getting Started
-
-### Prerequisites
-- [Go](https://golang.org/doc/install) (1.20 or higher) Compiled binary does'not requires anything this is for development of the code 
+## Getting Started
 
 ### Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/cetinkayaismail/talaria-privesc.git
@@ -70,44 +62,42 @@ git clone https://github.com/cetinkayaismail/talaria-privesc.git
 # Enter the directory
 cd talaria
 
-# Build the standalone binary
+# Build the static standalone binary
 make build
 ```
 
 ### Usage
+
 ```bash
-# Run all modules with default settings
-./talaria -scan all
+# Run a full system audit
+./talaria --scan all
 
-# Run specific modules (e.g., suid and secrets)
-./talaria -scan "suid,secrets" -path /home/user
+# Professional mode for clean audit reports
+./talaria --scan all --professional
 
-# Save output to a report file
-./talaria -scan all -o report.txt -format text
+# Target specific modules and directory
+./talaria --scan "suid,secrets" --path /home/user
 ```
-For detailed command descriptions, check out [USAGE.md](USAGE.md).
+
+For comprehensive documentation on flags and stealth features, refer to [USAGE.md](USAGE.md).
 
 ---
 
-##  Contributing
+## Contributing
 
-Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
+Contributions are welcome to expand Talaria's detection capabilities. Please follow these steps:
 1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
+2. Create your Feature Branch (`git checkout -b feature/NewVector`)
+3. Commit your Changes (`git commit -m 'Add detection for X vector'`)
+4. Push to the Branch (`git push origin feature/NewVector`)
 5. Open a Pull Request
 
-
-
-  
 ---
 
-##  Disclaimer
+## Disclaimer
 
-Talaria is intended for educational purposes, authorized security auditing, and penetration testing only. Do not use this tool on systems you do not have explicit permission to test. The author is not responsible for any misuse or damage caused by this tool.
+Talaria is intended for authorized security auditing and penetration testing only. Unauthorized use on systems without explicit permission is illegal. The author assumes no liability for misuse or damage caused by this tool.
 
-##  License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
