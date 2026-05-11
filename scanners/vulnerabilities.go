@@ -20,14 +20,21 @@ type VersionInfo struct {
 	Vulnerabilities []KernelVulnerability
 }
 
+type DistroInfo struct {
+	ID        string // e.g., "ubuntu", "debian", "centos"
+	VersionID string // e.g., "22.04", "11"
+}
+
 type KernelVulnerability struct {
 	CVE         string
 	Name        string
 	Description string
-	MinVersion  [3]int // [major, minor, patch] — inclusive lower bound
-	MaxVersion  [3]int // [major, minor, patch] — inclusive upper bound
+	MinVersion  [3]int            // [major, minor, patch] — inclusive lower bound
+	MaxVersion  [3]int            // [major, minor, patch] — inclusive upper bound
+	FixedIn     map[string]string // distroID -> fixedVersion (e.g., "ubuntu" -> "5.4.0-101")
 	IsCritical  bool
 	ExploitHint string
+	PatchStatus string // "vulnerable", "likely_patched", or ""
 }
 
 // kernelVulnerabilities is the CVE database.
@@ -78,6 +85,9 @@ var kernelVulnerabilities = []KernelVulnerability{
 		CVE: "CVE-2021-3493", Name: "OverlayFS UID Priv Esc (Ubuntu)",
 		Description: "overlayfs incorrectly applies file capabilities → Ubuntu-specific priv esc",
 		MinVersion: [3]int{4, 4, 0}, MaxVersion: [3]int{5, 11, 22},
+		FixedIn: map[string]string{
+			"ubuntu": "5.8.0-44", // Fixed in 20.04.2 HWE
+		},
 		IsCritical:  true,
 		ExploitHint: "Affects Ubuntu kernels. Check /etc/os-release. github.com/briskets/CVE-2021-3493",
 	},
@@ -85,6 +95,9 @@ var kernelVulnerabilities = []KernelVulnerability{
 		CVE: "CVE-2023-0386", Name: "OverlayFS SUID Escalation",
 		Description: "nosuid mounts do not honor SUID bits copied via overlayfs",
 		MinVersion: [3]int{5, 11, 0}, MaxVersion: [3]int{6, 2, 0},
+		FixedIn: map[string]string{
+			"ubuntu": "5.19.0-41",
+		},
 		IsCritical:  true,
 		ExploitHint: "github.com/xkaneiki/CVE-2023-0386",
 	},
@@ -92,6 +105,9 @@ var kernelVulnerabilities = []KernelVulnerability{
 		CVE: "CVE-2023-32629", Name: "GameOver(lay) Ubuntu OverlayFS",
 		Description: "Ubuntu-specific overlayfs priv esc (GameOver(lay) — affects Ubuntu 20.04/22.04)",
 		MinVersion: [3]int{5, 4, 0}, MaxVersion: [3]int{5, 4, 253},
+		FixedIn: map[string]string{
+			"ubuntu": "5.4.0-153",
+		},
 		IsCritical:  true,
 		ExploitHint: "Affects Ubuntu 20.04/22.04. Check /etc/lsb-release",
 	},
@@ -125,17 +141,36 @@ var kernelVulnerabilities = []KernelVulnerability{
 	},
 }
 
+// getDistroInfo parses /etc/os-release to identify the distribution.
+func getDistroInfo() DistroInfo {
+	info := DistroInfo{ID: "unknown", VersionID: "unknown"}
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return info
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "ID=") {
+			info.ID = strings.Trim(strings.TrimPrefix(line, "ID="), "\"")
+		} else if strings.HasPrefix(line, "VERSION_ID=") {
+			info.VersionID = strings.Trim(strings.TrimPrefix(line, "VERSION_ID="), "\"")
+		}
+	}
+	return info
+}
+
 // ScanSystemVersions reads kernel version from /proc (stealthy) and
 // checks against known CVE ranges. Also checks sudo/pkexec versions.
-// ScanSystemVersions accepts an unused timeout for signature compatibility with main.go
 func ScanSystemVersions(_ ...time.Duration) ([]VersionInfo, error) {
 	var results []VersionInfo
 
 	// 1. Kernel Version — read from /proc (no exec, no noise)
 	if data, err := os.ReadFile("/proc/sys/kernel/osrelease"); err == nil {
+		distro := getDistroInfo()
 		kernelVer := strings.TrimSpace(string(data))
 		parsed := parseKernelVersion(kernelVer)
-		vulns := checkKernelRange(parsed, kernelVer)
+		vulns := checkKernelRange(parsed, kernelVer, distro)
 
 		results = append(results, VersionInfo{
 			Software:        "Kernel",
@@ -211,8 +246,8 @@ func parseKernelVersion(ver string) [3]int {
 }
 
 // checkKernelRange returns all CVEs whose range covers the given parsed version.
-// PwnKit (CVE-2021-4034) is excluded here — it's checked via binary version.
-func checkKernelRange(parsed [3]int, rawVer string) []KernelVulnerability {
+// It also performs distro-specific patch checks.
+func checkKernelRange(parsed [3]int, rawVer string, distro DistroInfo) []KernelVulnerability {
 	var found []KernelVulnerability
 	for _, v := range kernelVulnerabilities {
 		// Skip PwnKit — it's not a kernel vulnerability
@@ -220,10 +255,57 @@ func checkKernelRange(parsed [3]int, rawVer string) []KernelVulnerability {
 			continue
 		}
 		if versionInRange(parsed, v.MinVersion, v.MaxVersion) {
+			// Check for patches
+			v.PatchStatus = "vulnerable"
+			if fixed, ok := v.FixedIn[distro.ID]; ok {
+				if compareDistroVersions(rawVer, fixed) >= 0 {
+					v.PatchStatus = "likely_patched"
+				}
+			}
 			found = append(found, v)
 		}
 	}
 	return found
+}
+
+// compareDistroVersions compares two hyphenated version strings like "5.4.0-150" vs "5.4.0-101".
+func compareDistroVersions(current, fixed string) int {
+	cParts := strings.Split(current, "-")
+	fParts := strings.Split(fixed, "-")
+
+	// 1. Compare base version (e.g., 5.4.0)
+	cBase := parseKernelVersion(cParts[0])
+	fBase := parseKernelVersion(fParts[0])
+	res := compareTriple(cBase, fBase)
+	if res != 0 {
+		return res
+	}
+
+	// 2. Base versions match, compare patch suffix if available
+	if len(cParts) > 1 && len(fParts) > 1 {
+		cPatch := extractNumericPart(cParts[1])
+		fPatch := extractNumericPart(fParts[1])
+		if cPatch < fPatch {
+			return -1
+		}
+		if cPatch > fPatch {
+			return 1
+		}
+	}
+	return 0
+}
+
+func extractNumericPart(s string) int {
+	num := ""
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			num += string(c)
+		} else {
+			break
+		}
+	}
+	n, _ := strconv.Atoi(num)
+	return n
 }
 
 // versionInRange returns true if min <= v <= max (semver-style comparison)

@@ -455,12 +455,23 @@ func main() {
 				for _, r := range results {
 					if r.IsDangerous {
 						for _, v := range r.Vulnerabilities {
-							fmt.Printf("\033[1;31m[CRITICAL] %s Vulnerability\033[0m\n"+
+							statusColor := "\033[1;31m" // Red
+							statusText := "CRITICAL"
+							if v.PatchStatus == "likely_patched" {
+								statusColor = "\033[1;33m" // Yellow
+								statusText = "POTENTIAL"
+							}
+
+							fmt.Printf("%s[%s] %s Vulnerability\033[0m\n"+
 								" └─ CVE     : %s\n"+
 								" └─ Name    : %s\n"+
 								" └─ Version : %s\n"+
 								" └─ Exploit : %s\n",
-								r.Software, v.CVE, v.Name, r.Version, v.ExploitHint)
+								statusColor, statusText, r.Software, v.CVE, v.Name, r.Version, v.ExploitHint)
+
+							if v.PatchStatus == "likely_patched" {
+								fmt.Printf(" └─ Status  : Likely patched on this distribution (backport detected)\n")
+							}
 						}
 					} else {
 						fmt.Printf("\033[1;32m[OK] %s %s — No known kernel CVEs matched\033[0m\n", r.Software, r.Version)

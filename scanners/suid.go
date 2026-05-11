@@ -179,6 +179,7 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 			// Safe privileged SGID binaries that are NOT exploitable for privilege escalation
 			safePrivilegedSGID := map[string]bool{
 				"chage": true, "expiry": true, "unix_chkpwd": true, "pam_extrausers_chkpwd": true, "bsd-write": true,
+				"wall": true, "write": true,
 			}
 
 			if isDangerous && safePrivilegedSGID[fileName] {
