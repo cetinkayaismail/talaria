@@ -41,14 +41,25 @@ func TestCheckKernelRange(t *testing.T) {
 
 	// Case 1: Vulnerable (lower patch number)
 	res1 := checkKernelRangeWithVuln([3]int{5, 4, 0}, "5.4.0-120", ubuntu, vuln)
-	if res1[0].PatchStatus != "vulnerable" {
-		t.Errorf("Expected vulnerable, got %s", res1[0].PatchStatus)
+	if len(res1) == 0 || res1[0].PatchStatus != "vulnerable" {
+		t.Errorf("Expected vulnerable, got %+v", res1)
 	}
 
 	// Case 2: Likely patched (higher patch number)
 	res2 := checkKernelRangeWithVuln([3]int{5, 4, 0}, "5.4.0-155", ubuntu, vuln)
-	if res2[0].PatchStatus != "likely_patched" {
-		t.Errorf("Expected likely_patched, got %s", res2[0].PatchStatus)
+	if len(res2) == 0 || res2[0].PatchStatus != "likely_patched" {
+		t.Errorf("Expected likely_patched, got %+v", res2)
+	}
+
+	// Case 3: Copy Fail (CVE-2026-31431) - Vulnerable
+	copyFail := KernelVulnerability{
+		CVE:        "CVE-2026-31431",
+		MinVersion: [3]int{4, 10, 0},
+		MaxVersion: [3]int{6, 19, 11},
+	}
+	res3 := checkKernelRangeWithVuln([3]int{6, 1, 0}, "6.1.0", ubuntu, copyFail)
+	if len(res3) == 0 || res3[0].PatchStatus != "vulnerable" {
+		t.Errorf("Expected vulnerable for Copy Fail, got %+v", res3)
 	}
 }
 

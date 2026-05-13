@@ -41,6 +41,29 @@ type KernelVulnerability struct {
 // Range: MinVersion <= affectedKernel <= MaxVersion
 // Source: kernel.org changelogs + NVD
 var kernelVulnerabilities = []KernelVulnerability{
+	// --- Crypto / Page Cache ---
+	{
+		CVE: "CVE-2026-31431", Name: "Copy Fail",
+		Description: "Logic flaw in algif_aead (AF_ALG) allows controlled page cache corruption → root priv esc",
+		MinVersion: [3]int{4, 10, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Highly reliable LPE. Target setuid binaries (e.g., su, sudo) to escalate. github.com/exploits/copy-fail",
+	},
+	{
+		CVE: "CVE-2026-43284", Name: "Dirty Frag",
+		Description: "Memory corruption in xfrm-ESP/RxRPC allows deterministic page cache manipulation → root",
+		MinVersion: [3]int{5, 10, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Successor to Dirty Pipe. Highly stable and reliable across major distributions.",
+	},
+	{
+		CVE: "CVE-2026-31673", Name: "AF_UNIX Diagnostic Race",
+		Description: "Race condition in socket diagnostics allows memory corruption or info leak → LPE",
+		MinVersion: [3]int{3, 0, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  false,
+		ExploitHint: "Exploit relies on specific timing during socket diagnostic operations.",
+	},
+
 	// --- Race Conditions / Memory Corruption ---
 	{
 		CVE: "CVE-2016-5195", Name: "Dirty COW",

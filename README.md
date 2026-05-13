@@ -83,6 +83,16 @@ For comprehensive documentation on flags and stealth features, refer to [USAGE.m
 
 ---
 
+## Last Changes
+
+### [2026-05-13] - 2026 Kernel Vulnerability Update
+- Added detection for **Dirty Frag (CVE-2026-43284 / CVE-2026-43500)**, the successor to Dirty Pipe, allowing deterministic root escalation.
+- Added detection for **Copy Fail (CVE-2026-31431)** affecting the `algif_aead` crypto subsystem.
+- Added detection for **AF_UNIX Diagnostic Race (CVE-2026-31673)** socket vulnerability.
+- Updated the kernel vulnerability database with precise version ranges and exploit hints.
+
+---
+
 ## Contributing
 
 Contributions are welcome to expand Talaria's detection capabilities. Please follow these steps:
