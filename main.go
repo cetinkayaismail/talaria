@@ -224,7 +224,7 @@ func main() {
 			} else {
 				// CTF-focused paths — targeted to avoid freezing (no /usr, /lib, etc.)
 				ctfPaths := []string{
-					"/home", "/var/www", "/opt", "/srv",
+					"/home", "/var/www", "/opt", "/srv", "/etc",
 					"/etc/openvpn", "/etc/vpn", "/etc/irssi",
 				}
 				// Try /root but with a lightweight stat first to avoid permission hangs
@@ -907,11 +907,18 @@ func main() {
 
 	// ── CHAIN 6: ptrace scope=0 + root process running → process injection ───
 	if report.PtraceScope != nil && report.PtraceScope.IsDangerous {
+		currentUID := os.Getuid()
 		for _, proc := range report.Processes {
 			if proc.UID == 0 {
-				fmt.Printf("\033[1;35m[100%% CONFIRMED] ptrace unrestricted + root process PID %d (%s).\n"+
-					"  Attach with gdb/ptrace, inject shellcode into root process → root shell.\033[0m\n",
-					proc.PID, proc.Command)
+				if currentUID == 0 {
+					fmt.Printf("\033[1;35m[100%% CONFIRMED] ptrace unrestricted + root process PID %d (%s).\n"+
+						"  Attach with gdb/ptrace, inject shellcode into root process → root shell.\033[0m\n",
+						proc.PID, proc.Command)
+				} else {
+					fmt.Printf("\033[1;33m[POTENTIAL] ptrace unrestricted + root process PID %d (%s).\n"+
+						"  Note: Cross-user ptrace requires CAP_SYS_PTRACE or root. If you are root (e.g. in a container), you can inject shellcode.\033[0m\n",
+						proc.PID, proc.Command)
+				}
 				hasCrossReference = true
 				break // Report once — first root process is enough
 			}

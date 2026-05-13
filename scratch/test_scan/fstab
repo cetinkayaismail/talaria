@@ -1,0 +1,1 @@
+//192.168.1.10/backup /mnt/backup cifs username=admin,password=P@ssw0rd123,domain=WORKGROUP 0 0

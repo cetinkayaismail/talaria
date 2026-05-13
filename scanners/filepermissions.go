@@ -36,6 +36,7 @@ var CriticalFiles = []struct {
 	{"/etc/crontab", 0644, "System crontab"},
 	{"/etc/ld.so.conf", 0644, "Shared library config"},
 	{"/etc/logrotate.conf", 0644, "Logrotate config"},
+	{"/etc/fstab", 0644, "Filesystem mount table"},
 }
 
 // ScanFilePermissions checks for misconfigurations in system files and common writable areas 

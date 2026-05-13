@@ -48,15 +48,11 @@ var mediumFilePatterns = []string{
 	"filezilla.xml",                             // FTP credentials
 	"recentservers.xml",                         // FileZilla
 	"Places.sqlite", "History", "Top Sites",    // Browser history
+	"fstab",                                     // Mount table (cifs passwords)
 }
 
 // ignoreDirs: never descend into these — they cause freezes and noise
-var ignoreDirs = []string{
-	"/etc/fonts", "/etc/X11", "/usr/share", "/var/lib/dpkg",
-	"/lib/modules", "/var/cache", "/run", "/sys", "/proc",
-	"/dev", "/snap", "/var/lib/apt", "/usr/lib", "/usr/src",
-	"/var/lib/docker", "/var/lib/systemd",
-}
+// ignoreDirs is now handled by GlobalIgnoreDirs in common.go
 
 // Regexes compiled once at package init
 var (
@@ -96,10 +92,8 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 
 		// Skip noise directories
 		if d.IsDir() {
-			for _, ignore := range ignoreDirs {
-				if strings.HasPrefix(path, ignore) {
-					return filepath.SkipDir
-				}
+			if ShouldIgnore(path) {
+				return filepath.SkipDir
 			}
 			return nil
 		}
@@ -418,11 +412,20 @@ func analyzeGitConfig(f *os.File) string {
 func genericContentScan(f *os.File, path string) string {
 	scanner := bufio.NewScanner(f)
 	lineNum := 0
+	fileName := strings.ToLower(filepath.Base(path))
+	isScript := strings.HasSuffix(fileName, ".sh") || strings.HasSuffix(fileName, ".py") || strings.HasSuffix(fileName, ".pl")
+
 	for scanner.Scan() && lineNum < 300 {
 		lineNum++
 		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
 
-		// 1. High-confidence regex patterns
+		// 1. Skip comments and empty lines
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+
+		// 2. High-confidence regex patterns
 		if awsKeyRegex.MatchString(line) {
 			return "AWS Access Key ID: " + awsKeyRegex.FindString(line)
 		}
@@ -436,20 +439,40 @@ func genericContentScan(f *os.File, path string) string {
 			return "Netrc Password: " + m[1]
 		}
 
-		// 2. Assignment regex — all 3 capture groups (quoted double, quoted single, unquoted)
+		// 3. Assignment regex — all 3 capture groups (quoted double, quoted single, unquoted)
 		if m := assignmentRegex.FindStringSubmatch(line); len(m) > 1 {
 			value := ""
-			for _, candidate := range m[1:] {
+			quoted := false
+			for i, candidate := range m[1:] {
 				if candidate != "" {
 					value = candidate
+					if i < 2 { // Group 1 and 2 are quoted
+						quoted = true
+					}
 					break
 				}
 			}
+
 			if value != "" && !isFalsePositive(value) {
-				entropy := calculateEntropy(value)
-				if entropy > 2.8 {
-					// Extract the key name for context
-					keyName := extractKeyName(line)
+				keyName := extractKeyName(line)
+
+				// Skip if value is just the key name (template)
+				if strings.EqualFold(value, keyName) {
+					continue
+				}
+
+				// Skip if unquoted and contains multiple spaces (likely a description/sentence)
+				if !quoted && strings.Contains(value, "  ") {
+					continue
+				}
+
+				// Stricter entropy for scripts to avoid regex matches
+				entropyThreshold := 2.8
+				if isScript && !quoted {
+					entropyThreshold = 3.5
+				}
+
+				if calculateEntropy(value) > entropyThreshold {
 					return keyName + ": " + value
 				}
 			}
@@ -483,22 +506,38 @@ func previewFirstLine(path string) string {
 	return ""
 }
 
-// isFalsePositive filters out obvious placeholder values
+// isFalsePositive filters out obvious placeholder values and common documentation words
 func isFalsePositive(val string) bool {
 	if len(val) < 4 {
 		return true
 	}
 	valLower := strings.ToLower(val)
-	falsePositives := []string{
-		"example", "password", "passw0rd", "123456", "your_secret", "changeme",
-		"placeholder", "xxxxxxxx", "dummy", "default", "secret", "mypassword",
-		"test", "none", "null", "true", "false", "your", "sample",
+
+	// 1. Exact matches for common noise/placeholder words
+	exactNoise := []string{
+		"password", "passw0rd", "secret", "mypassword", "your_secret",
+		"changeme", "placeholder", "dummy", "default", "test", "none",
+		"null", "true", "false", "your", "sample", "template", "example",
+		"changes", "updating", "without", "expires", "cracker", "authentication",
+		"generic", "nothing", "undefined", "required", "hashes", "binary",
+		"version", "installed", "disabled", "enabled", "checked", "modified",
 	}
-	for _, fp := range falsePositives {
-		if strings.Contains(valLower, fp) {
+	for _, w := range exactNoise {
+		if valLower == w || valLower == w+"." || valLower == w+"," {
 			return true
 		}
 	}
+
+	// 2. "Contains" matches for obvious placeholders
+	placeholderPatterns := []string{
+		"your_secret", "enter_pass", "password_here", "xxxxxx", "yyyyyy",
+	}
+	for _, p := range placeholderPatterns {
+		if strings.Contains(valLower, p) {
+			return true
+		}
+	}
+
 	return false
 }
 

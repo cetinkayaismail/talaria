@@ -17,7 +17,7 @@ type WriteableResult struct {
 	CurrentUserOwns bool
 	IsExecutable    bool
 	IsDangerous     bool
-	Type            string // Writable (Own), Writable (Root), Writable (Other User), SUID Writable to decide are we go lateral or vertical movement
+	Type            string // Writable (Own), Writable (Root), Writable (Other User), SUID Writable
 	RiskLevel       string // CRITICAL, HIGH, MEDIUM, LOW
 	Reason          string
 }
@@ -40,30 +40,21 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 
 	// 2. Define Dangerous Targets
 	dangerousBinaries := []string{"bash", "python", "perl", "vim", "find", "cp", "mv"}
-	skipDirs := []string{
-		"/proc", "/sys", "/dev", "/run", "/var/lib/docker", "/snap",
-		"/usr/lib/python", "/usr/share", "/var/lib/apt", "/usr/src", "/lib/modules",
-		"/var/log", "/var/cache", "/var/lib/systemd", "/usr/lib/locale",
-		"/home/web/.nvm",
-	}
 
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 
-		// Noise Reduction
+		// Noise Reduction using global exclusion list
 		if d.IsDir() {
-			for _, skip := range skipDirs {
-				if path == skip {
-					return filepath.SkipDir
-				}
+			if ShouldIgnore(path) {
+				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		// Skip Symlinks: Symlinks often show 777 permissions but are not directly writable for exploitation.
-		// Writing to a symlink typically replaces the link rather than the target content.
+		// Skip Symlinks
 		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
@@ -77,7 +68,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 			return nil
 		}
 
-		// 3. Check Write Permission (Native syscall constants)
+		// 3. Check Write Permission
 		mode := stat.Mode
 		canWrite := false
 
@@ -97,7 +88,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 			currentUserOwns := (uid == int(stat.Uid))
 			isOtherUserOwned := !currentUserOwns && !isRootOwned && stat.Uid != 0
 
-			// --- Case 1: Writable SUID (Always dangerous) ---
+			// --- Case 1: Writable SUID ---
 			if isSUID {
 				results = append(results, WriteableResult{
 					Path:            path,
@@ -111,18 +102,16 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 				})
 			}
 
-			// --- Case 2: Writable file owned by OTHER USER (high risk!) !!! LATERAL MOVEMENT
+			// --- Case 2: Writable file owned by OTHER USER ---
 			if isOtherUserOwned {
 				isDangerous := false
 				riskLevel := "MEDIUM"
 
-				// Executable writable by non-owner = HIGH RISK
 				if isExecutable {
 					isDangerous = true
 					riskLevel = "HIGH"
 				}
 
-				// Check if it's a known dangerous binary
 				lowerFileName := strings.ToLower(fileName)
 				for _, bin := range dangerousBinaries {
 					if strings.Contains(lowerFileName, bin) {
@@ -134,7 +123,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 
 				reason := "Writable file owned by another user. Can be modified for lateral movement."
 				if isExecutable {
-					reason = "Writable executable owned by another user. High risk of lateral movement via malicious modification."
+					reason = "Writable executable owned by another user. High risk of lateral movement."
 				}
 
 				results = append(results, WriteableResult{
@@ -149,18 +138,16 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 				})
 			}
 
-			// --- Case 3: Writable file owned by ROOT (privilege escalation vector) ---
+			// --- Case 3: Writable file owned by ROOT ---
 			if isRootOwned && !isSUID && !currentUserOwns {
 				isDangerous := false
 				riskLevel := "MEDIUM"
 
-				// Root-owned executable writable by user = CRITICAL
 				if isExecutable {
 					isDangerous = true
 					riskLevel = "CRITICAL"
 				}
 
-				// Check for sensitive root files — world-writable is ALWAYS critical regardless of exec bit
 				sensitiveFiles := []string{"/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/crontab", "/etc/hosts"}
 				for _, sf := range sensitiveFiles {
 					if path == sf {
@@ -168,13 +155,11 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 						riskLevel = "CRITICAL"
 					}
 				}
-				// Also flag any file under /etc/sudoers.d/ as critical
 				if strings.HasPrefix(path, "/etc/sudoers.d/") {
 					isDangerous = true
 					riskLevel = "CRITICAL"
 				}
 
-				// Check for dangerous binaries owned by root directly writeable for privilege escalation
 				lowerFileName := strings.ToLower(fileName)
 				for _, bin := range dangerousBinaries {
 					if strings.Contains(lowerFileName, bin) && isExecutable {

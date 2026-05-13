@@ -38,8 +38,6 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 	var results []SUIDResult
 
 	// Only binaries that can be DIRECTLY used for PrivEsc or File Read
-	// This list reduces the noise from standard binaries like ping or mount. but i want to add more binaries
-	// to this list to make it more effective for ctf engagements as well as red team exercises.
 	trueDangerousBinaries := map[string]bool{
 		"find": true, "nmap": true, "vim": true, "vi": true, "bash": true, "sh": true, "dash": true,
 		"python": true, "python3": true, "perl": true, "ruby": true,
@@ -50,7 +48,7 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 		"strace": true, "man": true, "time": true, "watch": true, "expect": true,
 	}
 
-	// Standard system SUID binaries that are safe/necessary to prevent noice in reports but we can add more if needed
+	// Standard system SUID binaries that are safe/necessary
 	systemSUIDBinaries := map[string]bool{
 		"chfn": true, "chsh": true, "gpasswd": true, "newgidmap": true,
 		"newuidmap": true, "passwd": true, "su": true, "sudo": true,
@@ -59,18 +57,14 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 		"doas": true, "ssh-keysign": true, "fusermount": true,
 	}
 
-	skipDirs := []string{"/proc", "/sys", "/dev", "/run", "/var/lib/docker", "/snap", "/usr/share", "/usr/lib"}
-
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 
 		if d.IsDir() {
-			for _, skip := range skipDirs {
-				if path == skip {
-					return filepath.SkipDir
-				}
+			if ShouldIgnore(path) {
+				return filepath.SkipDir
 			}
 			return nil
 		}
@@ -98,8 +92,6 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 				isDangerous = true
 				reason = "Matches known GTFOBins executable. Can be abused for privilege escalation."
 				
-				// SUID Library Path Tracking (Potential Library Hijacking)
-				// We check common paths. Safest approach to avoid false positives is only checking common ones.
 				switch strings.ToLower(fileName) {
 				case "python", "python2", "python3":
 					writableLibs = checkWritableDirs([]string{
@@ -174,22 +166,17 @@ func checkRPATH(path string) []string {
 	return checkWritableDirs(paths)
 }
 
-// ScanSGID finds binaries with the SGID bit set. If owned by a privileged group,
-// it can be abused to gain group-level access (e.g., shadow group -> /etc/shadow read).
+// ScanSGID finds binaries with the SGID bit set.
 func ScanSGID(root string) ([]SGIDResult, error) {
 	var results []SGIDResult
-
-	skipDirs := []string{"/proc", "/sys", "/dev", "/run", "/var/lib/docker", "/snap", "/usr/share", "/usr/lib"}
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			for _, skip := range skipDirs {
-				if path == skip {
-					return filepath.SkipDir
-				}
+			if ShouldIgnore(path) {
+				return filepath.SkipDir
 			}
 			return nil
 		}
@@ -215,7 +202,7 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 
 			fileName := strings.ToLower(filepath.Base(path))
 
-			// Safe privileged SGID binaries that are NOT exploitable for privilege escalation
+			// Safe privileged SGID binaries
 			safePrivilegedSGID := map[string]bool{
 				"chage": true, "expiry": true, "unix_chkpwd": true, "pam_extrausers_chkpwd": true, "bsd-write": true,
 				"wall": true, "write": true,
@@ -230,7 +217,7 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				reason = "SGID binary owned by privileged group '" + ownerGroup + "'. Can be abused to gain group privileges."
 			}
 
-			// Standard system SGID binaries (skip to reduce noise)
+			// Standard system SGID binaries
 			skipSystemSGID := map[string]bool{
 				"write": true, "wall": true, "crontab": true, "ssh-agent": true,
 				"dotlock.mailutils": true, "mail": true, "mailx": true,
@@ -241,7 +228,7 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 
 			exploitHint := ""
 			if isDangerous {
-				exploitHint = "Binary is owned by privileged group '" + ownerGroup + "'. Exploit to gain group access (e.g., read files owned by this group)."
+				exploitHint = "Binary is owned by privileged group '" + ownerGroup + "'. Exploit to gain group access."
 			}
 
 			results = append(results, SGIDResult{
@@ -258,7 +245,7 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 	return results, err
 }
 
-// checkWritableDirs checks if any of the provided directories exist and are writable by the current user
+// checkWritableDirs checks if any of the provided directories exist and are writable
 func checkWritableDirs(dirs []string) []string {
 	var writable []string
 	currUser, err := user.Current()
