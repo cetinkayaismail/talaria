@@ -85,6 +85,11 @@ For comprehensive documentation on flags and stealth features, refer to [USAGE.m
 
 ## Last Changes
 
+### [2026-05-13] - Size & Stealth Optimization
+- **Payload Compression:** Implemented `gzip` compression for the stealth bundle, reducing `talaria.sh` size from **3.9 MB** to **1.8 MB** (>50% reduction).
+- **Binary Hygiene:** Added `-trimpath` and `-buildid=` flags to the Go compiler to strip local paths and build metadata, improving forensic stealth.
+- **Improved Extraction:** Optimized the self-extracting shell script extraction logic using grouped pipes for better reliability and performance.
+
 ### [2026-05-13] - 2026 Kernel Vulnerability Update
 - Added detection for **Dirty Frag (CVE-2026-43284 / CVE-2026-43500)**, the successor to Dirty Pipe, allowing deterministic root escalation.
 - Added detection for **Copy Fail (CVE-2026-31431)** affecting the `algif_aead` crypto subsystem.
