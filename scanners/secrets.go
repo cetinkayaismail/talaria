@@ -456,19 +456,25 @@ func genericContentScan(f *os.File, path string) string {
 			if value != "" && !isFalsePositive(value) {
 				keyName := extractKeyName(line)
 
-				// Skip if value is just the key name (template)
+				// 1. Skip if value is just the key name (template)
 				if strings.EqualFold(value, keyName) {
 					continue
 				}
 
-				// Skip if unquoted and contains multiple spaces (likely a description/sentence)
+				// 2. Skip template variables like ${VARIABLE} or {{SECRET}}
+				if strings.HasPrefix(value, "${") || strings.HasPrefix(value, "{{") || strings.Contains(value, "$(") {
+					continue
+				}
+
+				// 3. Skip if unquoted and contains multiple spaces (likely a description/sentence)
 				if !quoted && strings.Contains(value, "  ") {
 					continue
 				}
 
-				// Stricter entropy for scripts to avoid regex matches
+				// Stricter logic for example files or scripts
+				isExample := strings.Contains(path, "example") || strings.Contains(path, "sample")
 				entropyThreshold := 2.8
-				if isScript && !quoted {
+				if (isScript || isExample) && !quoted {
 					entropyThreshold = 3.5
 				}
 
