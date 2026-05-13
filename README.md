@@ -90,6 +90,12 @@ For comprehensive documentation on flags and stealth features, refer to [USAGE.m
 - **Binary Hygiene:** Added `-trimpath` and `-buildid=` flags to the Go compiler to strip local paths and build metadata, improving forensic stealth.
 - **Improved Extraction:** Optimized the self-extracting shell script extraction logic using grouped pipes for better reliability and performance.
 
+### [2026-05-13] - Intelligence & Accuracy Improvements
+- **Secrets Scanner FP Reduction:** Implemented advanced filtering to ignore comments, template variables (`${VAR}`, `{{KEY}}`), and common noise words, significantly reducing false positives in config files.
+- **GTFOBins Integration:** Added automated exploit hints for over 20+ common SUID and Capability-enabled binaries, providing direct "next-step" commands.
+- **SSH Agent Hijacking:** Added a new scanner module to detect accessible `SSH_AUTH_SOCK` sockets for active session hijacking.
+
+
 ### [2026-05-13] - 2026 Kernel Vulnerability Update
 - Added detection for **Dirty Frag (CVE-2026-43284 / CVE-2026-43500)**, the successor to Dirty Pipe, allowing deterministic root escalation.
 - Added detection for **Copy Fail (CVE-2026-31431)** affecting the `algif_aead` crypto subsystem.

@@ -127,7 +127,10 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 
 			exploitHint := ""
 			if isDangerous {
-				exploitHint = "Create a malicious .so in one of the writable paths and run the binary."
+				exploitHint = GetExploitHint(path, "suid")
+				if exploitHint == "" {
+					exploitHint = "Create a malicious .so in one of the writable paths and run the binary."
+				}
 			}
 
 			results = append(results, SUIDResult{

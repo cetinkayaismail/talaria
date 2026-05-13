@@ -33,13 +33,14 @@ var criticalFilePatterns = []string{
 	".bash_history", ".zsh_history", ".sh_history", ".history",
 	".netrc", ".aws/credentials", ".kube/config",
 	"logins.json", "Cookies", "Login Data", "Web Data", // Browser secrets
+	"shadow", "gshadow", "sudoers", // Critical system files
 }
 
 // mediumFilePatterns: filenames that warrant content inspection
 var mediumFilePatterns = []string{
 	".env", "config.php", "settings.py", "database.yml", "database.yaml",
 	".tfvars", "terraform.tfvars", "docker-compose.yml", "docker-compose.yaml",
-	"shadow", "sudoers", "auth.log", "syslog",
+	"auth.log", "syslog",
 	".ovpn",                                    // OpenVPN config
 	"auth.txt", "credentials.txt", "creds.txt", // Plaintext cred files
 	"my.cnf", ".my.cnf",                        // MySQL credentials

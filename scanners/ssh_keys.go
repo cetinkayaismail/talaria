@@ -202,6 +202,23 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 		}
 	}
 
+	// --- VECTOR 5: SSH Agent Hijacking ---
+	// If SSH_AUTH_SOCK is set and readable by us, we can hijack it.
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		if info, err := os.Stat(sock); err == nil {
+			// Check if we can write to the socket (needed for hijacking)
+			if isWritableBy(info, currentUID, userGids) {
+				results = append(results, SSHKeyResult{
+					Path:        sock,
+					Type:        "ssh_agent_socket",
+					TargetUser:  "active_session",
+					IsDangerous: true,
+					Reason:      "Active SSH Agent socket found and writable → hijack via: ssh-add -l",
+				})
+			}
+		}
+	}
+
 	return results, nil
 }
 

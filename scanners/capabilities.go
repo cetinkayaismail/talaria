@@ -10,6 +10,7 @@ type CapabilityResult struct {
 	Path         string
 	Capabilities string
 	IsDangerous  bool
+	ExploitHint  string
 }
 
 // Critical capabilities that often lead to instant privilege escalation
@@ -24,12 +25,8 @@ var DangerousCapabilities = []string{
 func ScanCapabilities(root string) ([]CapabilityResult, error) {
 	var results []CapabilityResult
 
-	// Run getcap recursively. This is 1000x faster than walking the FS in Go at this point ı think ı can use this command
-	// and spawning a child process for every single file.
+	// Run getcap recursively.
 	cmd := exec.Command("getcap", "-r", root)
-	
-	// We ignore the error because getcap always will return an error (exit status 1)
-	// if it encounters 'Permission denied' on certain directories, hich is expected.
 	output, _ := cmd.Output()
 
 	lines := strings.Split(string(output), "\n")
@@ -39,8 +36,6 @@ func ScanCapabilities(root string) ([]CapabilityResult, error) {
 			continue
 		}
 
-		// Expected format: "/usr/bin/ping cap_net_raw=ep"
-		// or "/usr/bin/ping = cap_net_raw+ep"
 		parts := strings.SplitN(line, " ", 2)
 		if len(parts) < 2 {
 			continue
@@ -48,8 +43,6 @@ func ScanCapabilities(root string) ([]CapabilityResult, error) {
 
 		path := strings.TrimSpace(parts[0])
 		caps := strings.TrimSpace(parts[1])
-		
-		// Clean up the formatting if it has the " = " syntax
 		caps = strings.TrimPrefix(caps, "=")
 		caps = strings.TrimSpace(caps)
 
@@ -62,10 +55,16 @@ func ScanCapabilities(root string) ([]CapabilityResult, error) {
 			}
 		}
 
+		hint := ""
+		if isDangerous {
+			hint = GetExploitHint(path, "capability")
+		}
+
 		results = append(results, CapabilityResult{
 			Path:         path,
 			Capabilities: caps,
 			IsDangerous:  isDangerous,
+			ExploitHint:  hint,
 		})
 	}
 
