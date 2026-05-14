@@ -238,14 +238,13 @@ func main() {
 					continue
 				}
 				applyEvasion()
-				fmt.Printf("\033[1;32m[+] Scanning Secrets in: %s\033[0m\n", target)
 				ioSemaphore <- struct{}{}
 				files, content := scanners.ScanSecrets(target)
 				<-ioSemaphore
 				mu.Lock()
 				report.Secrets = append(report.Secrets, files...)
 				report.SecretContent = append(report.SecretContent, content...)
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Secrets in: %s\033[0m\n", target)
 				for _, f := range files {
 					color := "\033[1;33m" // MEDIUM = Yellow
 					if f.RiskLevel == "CRITICAL" {
@@ -262,6 +261,7 @@ func main() {
 					}
 					fmt.Printf("%s[%s] Secret Found\033[0m\n └─ Path   : %s\n └─ Detail : %s\n", color, f.RiskLevel, f.Path, reason)
 				}
+				mu.Unlock()
 			}
 
 			// Add Targeted Root Secret Scan (/.ssh, /.aws, etc.)
@@ -270,8 +270,7 @@ func main() {
 				mu.Lock()
 				report.Secrets = append(report.Secrets, rootFiles...)
 				report.SecretContent = append(report.SecretContent, rootContent...)
-				mu.Unlock()
-
+				fmt.Printf("\033[1;32m[+] Scanning Root Secrets...\033[0m\n")
 				for _, f := range rootFiles {
 					color := "\033[1;31m" // CRITICAL
 					reason := f.Type
@@ -283,6 +282,7 @@ func main() {
 					}
 					fmt.Printf("%s[%s] Root Secret Found\033[0m\n └─ Path   : %s\n └─ Detail : %s\n", color, f.RiskLevel, f.Path, reason)
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -293,14 +293,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning SUID Binaries...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanSUID(*searchPath)
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.SUID = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning SUID Binaries...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] SUID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
@@ -311,6 +310,7 @@ func main() {
 						fmt.Printf("\033[1;33m[INFO] SUID Binary\033[0m\n └─ Path   : %s\n", r.Path)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -321,14 +321,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning SGID Binaries...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanSGID(*searchPath)
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.SGID = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning SGID Binaries...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] SGID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
@@ -337,6 +336,7 @@ func main() {
 						}
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -347,11 +347,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Processes...\033[0m\n")
 			results, err := scanners.ScanProcesses()
 			if err == nil {
 				mu.Lock()
 				report.Processes = results
+				fmt.Printf("\033[1;32m[+] Scanning Processes...\033[0m\n")
 				mu.Unlock()
 			}
 		}()
@@ -363,14 +363,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Cron Jobs & Systemd Timers...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanCronJobs()
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.CronJobs = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Cron Jobs & Systemd Timers...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] CronJob Found\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
@@ -378,21 +377,22 @@ func main() {
 						fmt.Printf("\033[1;33m[INFO] Root CronJob\033[0m\n └─ Command: %s\n", r.Command)
 					}
 				}
+				mu.Unlock()
 			}
 
-			// Also scan Systemd Timers here since they are related to scheduling see whether we trigger our exploits 
+			// Also scan Systemd Timers here since they are related to scheduling
 			ioSemaphore <- struct{}{}
 			systemdResults, err := scanners.ScanSystemdTimers()
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.SystemdTimers = systemdResults
-				mu.Unlock()
 				for _, r := range systemdResults {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] Systemd Timer Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -403,12 +403,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Sudo Privileges...\033[0m\n")
 			results, err := scanners.ScanSudoPrivileges(timeout, *sudoPassword)
 			if err == nil {
 				mu.Lock()
 				report.SudoPrivileges = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Sudo Privileges...\033[0m\n")
 				for _, r := range results {
 					if r.HasLDPreload {
 						fmt.Printf("\033[1;35m[CRITICAL] Sudo Privilege (LD_PRELOAD)\033[0m\n └─ Reason : %s\n", r.Reason)
@@ -418,6 +417,7 @@ func main() {
 						fmt.Printf("\033[1;33m[HIGH] Sudo NOPASSWD\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -428,19 +428,19 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Capabilities...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanCapabilities(*searchPath)
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.Capabilities = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Capabilities...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] Capability Found\033[0m\n └─ Path   : %s\n └─ Capabs : %s\n", r.Path, r.Capabilities)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -451,17 +451,17 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning NFS Exports...\033[0m\n")
 			results, err := scanners.ScanNFSExports(timeout)
 			if err == nil {
 				mu.Lock()
 				report.NFSExports = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning NFS Exports...\033[0m\n")
 				for _, r := range results {
 					if r.HasNoRootSquash {
 						fmt.Printf("\033[1;31m[CRITICAL] NFS no_root_squash on %s\033[0m\n", r.Path)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -472,11 +472,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Network Connections...\033[0m\n")
 			results, err := scanners.ScanNetworkConnections()
 			if err == nil {
 				mu.Lock()
 				report.NetworkConnections = results
+				fmt.Printf("\033[1;32m[+] Scanning Network Connections...\033[0m\n")
 				mu.Unlock()
 			}
 		}()
@@ -488,12 +488,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning System Vulnerabilities...\033[0m\n")
 			results, err := scanners.ScanSystemVersions()
 			if err == nil {
 				mu.Lock()
 				report.Vulnerabilities = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning System Vulnerabilities...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						for _, v := range r.Vulnerabilities {
@@ -519,6 +518,7 @@ func main() {
 						fmt.Printf("\033[1;32m[OK] %s %s — No known kernel CVEs matched\033[0m\n", r.Software, r.Version)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -529,14 +529,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Writeable Files...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanWriteable(*searchPath)
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.Writeable = append(report.Writeable, results...)
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Writeable Files...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						color := "\033[1;33m" // HIGH
@@ -548,6 +547,7 @@ func main() {
 						fmt.Printf("%s[%s] Writable File Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", color, r.RiskLevel, r.Path, r.Reason)
 					}
 				}
+				mu.Unlock()
 			}
 
 			// Add Systemd Generator scan
@@ -555,10 +555,10 @@ func main() {
 			if err == nil && len(genResults) > 0 {
 				mu.Lock()
 				report.Writeable = append(report.Writeable, genResults...)
-				mu.Unlock()
 				for _, r := range genResults {
 					fmt.Printf("\033[1;31m[CRITICAL] Systemd Generator Writable\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -569,13 +569,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Sockets...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanUnixDomainSockets()
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.Sockets = results
+				fmt.Printf("\033[1;32m[+] Scanning Sockets...\033[0m\n")
 				mu.Unlock()
 			}
 		}()
@@ -587,13 +587,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning File Permissions...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanFilePermissions()
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.FilePermissions = results
+				fmt.Printf("\033[1;32m[+] Scanning File Permissions...\033[0m\n")
 				mu.Unlock()
 			}
 		}()
@@ -605,14 +605,13 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning File Permissions Exploit...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanFilePermissionsExploit(timeout)
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.FilePermsExploit = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning File Permissions Exploit...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] File Permissions Exploit\033[0m\n └─ Path   : %s\n └─ Method : %s\n └─ Vector : %s\n", r.Path, r.ExploitMethod, r.PotentialAttackVector)
@@ -621,6 +620,7 @@ func main() {
 						}
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -631,12 +631,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Group Memberships...\033[0m\n")
 			results, err := scanners.ScanGroups()
 			if err == nil {
 				mu.Lock()
 				report.Groups = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Group Memberships...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] Privileged Group Membership\033[0m\n └─ Group  : %s\n └─ Reason : %s\n", r.GroupName, r.Reason)
@@ -645,6 +644,7 @@ func main() {
 						}
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -655,12 +655,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Local Services (MySQL/Redis)...\033[0m\n")
 			results, err := scanners.ScanLocalServices()
 			if err == nil {
 				mu.Lock()
 				report.Services = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Local Services (MySQL/Redis)...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] %s Vulnerability Found\033[0m\n └─ Service : %s\n └─ Reason  : %s\n", r.ServiceName, r.ServiceName, r.Reason)
@@ -669,6 +668,7 @@ func main() {
 						}
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -679,12 +679,11 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Package Managers (doas, snap, flatpak)...\033[0m\n")
 			results, err := scanners.ScanPackages()
 			if err == nil {
 				mu.Lock()
 				report.Packages = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Package Managers (doas, snap, flatpak)...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] %s Misconfiguration Found\033[0m\n └─ Tool   : %s\n └─ Reason : %s\n", r.Name, r.Name, r.Reason)
@@ -693,6 +692,7 @@ func main() {
 						}
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -703,17 +703,17 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning $PATH for Hijacking Vectors...\033[0m\n")
 			results, err := scanners.ScanPATH()
 			if err == nil {
 				mu.Lock()
 				report.PATHHijack = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning $PATH for Hijacking Vectors...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] PATH Hijacking Vector\033[0m\n └─ Dir    : %s\n └─ Reason : %s\n", r.Directory, r.Reason)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -724,13 +724,12 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning SSH Keys...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, _ := scanners.ScanSSHKeys()
 			<-ioSemaphore
 			mu.Lock()
 			report.SSHKeys = results
-			mu.Unlock()
+			fmt.Printf("\033[1;32m[+] Scanning SSH Keys...\033[0m\n")
 			for _, r := range results {
 				if r.IsDangerous {
 					if r.Type == "private_key" {
@@ -752,6 +751,7 @@ func main() {
 					fmt.Printf("\033[1;33m[INFO] SSH Private Key Exists (not readable)\033[0m\n └─ Path : %s | Owner: %s\n", r.Path, r.TargetUser)
 				}
 			}
+			mu.Unlock()
 		}()
 	}
 
@@ -761,14 +761,14 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning ptrace Scope...\033[0m\n")
 			if result, err := scanners.ScanPtraceScope(); err == nil {
 				mu.Lock()
 				report.PtraceScope = result
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning ptrace Scope...\033[0m\n")
 				if result.IsDangerous {
 					fmt.Printf("\033[1;31m[CRITICAL] Ptrace Scope Vulnerability\033[0m\n └─ Scope  : %d\n └─ Reason : %s\n", result.Scope, result.Reason)
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -779,7 +779,6 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning Container Escape Vectors...\033[0m\n")
 			// Container scan reads /proc and /etc — lightweight but still I/O
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanContainer()
@@ -787,7 +786,7 @@ func main() {
 			if err == nil {
 				mu.Lock()
 				report.ContainerEscape = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning Container Escape Vectors...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] Container Escape Vector\033[0m\n └─ Vector : %s\n └─ Reason : %s\n", r.Vector, r.Reason)
@@ -795,6 +794,7 @@ func main() {
 						fmt.Printf("\033[1;33m[INFO] %s\033[0m\n", r.Vector)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -805,19 +805,19 @@ func main() {
 		go func() {
 			defer wg.Done()
 			applyEvasion()
-			fmt.Printf("\033[1;32m[+] Scanning D-Bus Policies...\033[0m\n")
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanDBusPolicy()
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
 				report.DBusPolicy = results
-				mu.Unlock()
+				fmt.Printf("\033[1;32m[+] Scanning D-Bus Policies...\033[0m\n")
 				for _, r := range results {
 					if r.IsDangerous {
 						fmt.Printf("\033[1;31m[CRITICAL] D-Bus Policy Flaw\033[0m\n └─ Service: %s\n └─ Reason : %s\n", r.ServiceName, r.Reason)
 					}
 				}
+				mu.Unlock()
 			}
 		}()
 	}
