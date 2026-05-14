@@ -1,5 +1,7 @@
 # Last Changes
 
+- **Terminal Output Synchronization:** Improved the terminal reporting experience by synchronizing the output of concurrent scanning modules. Each module's "Scanning..." header and its results are now grouped together using a mutex lock, preventing interleaved lines and making the live report much easier to read without impacting scan speed.
+
 - **Systemd Generators Scan:** Added a new critical security check for writable systemd generator directories. These directories are executed as root during system boot or when `systemctl daemon-reload` is called, making any writability a critical privilege escalation vector.
 
 This update deepens Talaria's analysis capabilities, reduces false positives, and adds new automations for the post-exploitation phase.
