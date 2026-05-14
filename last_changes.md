@@ -1,5 +1,7 @@
 # Last Changes
 
+- **Systemd Generators Scan:** Added a new critical security check for writable systemd generator directories. These directories are executed as root during system boot or when `systemctl daemon-reload` is called, making any writability a critical privilege escalation vector.
+
 This update deepens Talaria's analysis capabilities, reduces false positives, and adds new automations for the post-exploitation phase.
 
 ## Secret Scanner Intelligence & FP Reduction

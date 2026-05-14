@@ -535,7 +535,7 @@ func main() {
 			<-ioSemaphore
 			if err == nil {
 				mu.Lock()
-				report.Writeable = results
+				report.Writeable = append(report.Writeable, results...)
 				mu.Unlock()
 				for _, r := range results {
 					if r.IsDangerous {
@@ -547,6 +547,17 @@ func main() {
 						}
 						fmt.Printf("%s[%s] Writable File Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", color, r.RiskLevel, r.Path, r.Reason)
 					}
+				}
+			}
+
+			// Add Systemd Generator scan
+			genResults, err := scanners.ScanSystemdGenerators()
+			if err == nil && len(genResults) > 0 {
+				mu.Lock()
+				report.Writeable = append(report.Writeable, genResults...)
+				mu.Unlock()
+				for _, r := range genResults {
+					fmt.Printf("\033[1;31m[CRITICAL] Systemd Generator Writable\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
 				}
 			}
 		}()

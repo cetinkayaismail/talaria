@@ -194,3 +194,73 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 	})
 	return results, err
 }
+
+// ScanSystemdGenerators checks for writeable directories in systemd generator paths.
+func ScanSystemdGenerators() ([]WriteableResult, error) {
+	var results []WriteableResult
+	generatorPaths := []string{
+		"/lib/systemd/system-generators",
+		"/usr/lib/systemd/system-generators",
+		"/etc/systemd/system-generators",
+		"/run/systemd/system-generators",
+		"/lib/systemd/user-generators",
+		"/usr/lib/systemd/user-generators",
+		"/etc/systemd/user-generators",
+		"/run/systemd/user-generators",
+	}
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+	uid, _ := strconv.Atoi(currentUser.Uid)
+	gidStrings, _ := currentUser.GroupIds()
+	userGids := make(map[int]bool)
+	for _, g := range gidStrings {
+		id, _ := strconv.Atoi(g)
+		userGids[id] = true
+	}
+
+	for _, path := range generatorPaths {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue // Path doesn't exist or not accessible
+		}
+
+		if !info.IsDir() {
+			continue
+		}
+
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			continue
+		}
+
+		// Check Write Permission
+		mode := stat.Mode
+		canWrite := false
+
+		if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
+			canWrite = true
+		} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
+			canWrite = true
+		} else if mode&syscall.S_IWOTH != 0 {
+			canWrite = true
+		}
+
+		if canWrite {
+			results = append(results, WriteableResult{
+				Path:            path,
+				OwnerUID:        int(stat.Uid),
+				CurrentUserOwns: (uid == int(stat.Uid)),
+				IsExecutable:    true,
+				IsDangerous:     true,
+				Type:            "Systemd Generator Writable",
+				RiskLevel:       "CRITICAL",
+				Reason:          "Systemd generator directory is writable. Attackers can plant a script to be executed as root.",
+			})
+		}
+	}
+
+	return results, nil
+}
