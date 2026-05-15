@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -21,24 +22,28 @@ type NetworkConnectionResult struct {
 	PID         int
 	ProcessName string
 	IsDangerous bool
+	Reason      string
 }
 
 // ScanNetworkConnections reads /proc/net to find internal services
 func ScanNetworkConnections() ([]NetworkConnectionResult, error) {
 	var results []NetworkConnectionResult
 
-	// Scan TCP IPv4 and IPv6
-	results = append(results, scanNetFile("/proc/net/tcp", "tcp")...)
-	results = append(results, scanNetFile("/proc/net/tcp6", "tcp6")...)
+	// Build inode -> process name map once per scan for efficiency
+	inodeMap := buildInodeMap()
 
-	// Adding UDP might be useful for some services (e.g., DNS, SNMP)
-	results = append(results, scanNetFile("/proc/net/udp", "udp")...)
-	results = append(results, scanNetFile("/proc/net/udp6", "udp6")...)
+	// Scan TCP IPv4 and IPv6
+	results = append(results, scanNetFile("/proc/net/tcp", "tcp", inodeMap)...)
+	results = append(results, scanNetFile("/proc/net/tcp6", "tcp6", inodeMap)...)
+
+	// Adding UDP might be useful for some services
+	results = append(results, scanNetFile("/proc/net/udp", "udp", inodeMap)...)
+	results = append(results, scanNetFile("/proc/net/udp6", "udp6", inodeMap)...)
 
 	return results, nil
 }
 
-func scanNetFile(filePath string, protocol string) []NetworkConnectionResult {
+func scanNetFile(filePath string, protocol string, inodeMap map[string]string) []NetworkConnectionResult {
 	var results []NetworkConnectionResult
 
 	file, err := os.Open(filePath)
@@ -73,22 +78,71 @@ func scanNetFile(filePath string, protocol string) []NetworkConnectionResult {
 			continue
 		}
 
-		// DANGEROUS FILTERS:
-		// - Root listening on non-standard ports on ANY interface (possible backdoor)
-		// - Services on 0.0.0.0 that shouldn't be exposed this can lead to lateral movement
-		isDangerous := false
+		// 0. EXCLUSION FILTER: Skip common noisy ports that provide little value for privesc
+		if localPort == 22 || localPort == 80 || localPort == 443 {
+			continue
+		}
 
-		// Only care about root services or exposed services
-		if state == "LISTEN" && uid == 0 && localPort > 1024 {
-			// Root listening on high port = suspicious (could be backdoor)
-			isDangerous = true
-		} else if state == "LISTEN" && (isLocal(localIP) == false) {
-			// Non-localhost listener (exposed to network)
-			if localPort < 1024 && localPort != 80 && localPort != 443 {
-				// Unusual exposed service
-				isDangerous = true
+		// 1. Resolve Process Name via Inode
+		procName := "unknown"
+		if len(fields) >= 10 {
+			inode := fields[9]
+			if name, ok := inodeMap[inode]; ok {
+				procName = name
 			}
 		}
+
+		// 2. LPE Gold Mine Ports (MySQL, Redis, Docker, etc.)
+		isLPEVector := false
+		lpePorts := map[int]string{
+			3306:  "MySQL",
+			6379:  "Redis",
+			27017: "MongoDB",
+			2375:  "Docker API",
+			2376:  "Docker API (TLS)",
+			5432:  "PostgreSQL",
+			11211: "Memcached",
+			9000:  "PHP-FPM",
+		}
+
+		if name, ok := lpePorts[localPort]; ok && (isLocal(localIP) || localIP == "0.0.0.0" || localIP == "::") {
+			isLPEVector = true
+			if procName == "unknown" {
+				procName = name
+			}
+		}
+
+		// 3. DANGEROUS FILTERS:
+		isDangerous := false
+		reason := ""
+
+		if state == "LISTEN" {
+			if isLPEVector {
+				isDangerous = true
+				reason = "LPE Gold Mine: Local service often contains credentials or exploitable logic."
+			} else if (localIP == "0.0.0.0" || localIP == "::") {
+				// Exposed on ALL interfaces: only report if ROOT (per user request to reduce noise)
+				if uid == 0 {
+					isDangerous = true
+					reason = "Exposed Root Service: Privileged service exposed to network is a high-risk target."
+				} else {
+					// Skip non-root exposed services to keep report clean
+					continue 
+				}
+			} else if uid == 0 && localPort > 1024 && !isLocal(localIP) {
+				// Exposed on a specific IP (not localhost) and root
+				isDangerous = true
+				reason = "Suspicious Root Listener: High port root process on network interface."
+			} else if isLocal(localIP) && uid == 0 && localPort > 32768 {
+				// Localhost very high port root
+				isDangerous = true
+				reason = "Suspicious Local Root: Unusual high port listener on localhost."
+			}
+		}
+
+		// If it's not dangerous and not an LPE vector, we only show it if it's not a common system port
+		// However, per user request, we've already skipped 22, 80, 443. 
+		// For established connections or other listeners, we keep them as INFO.
 
 		results = append(results, NetworkConnectionResult{
 			Protocol:    protocol,
@@ -97,11 +151,49 @@ func scanNetFile(filePath string, protocol string) []NetworkConnectionResult {
 			RemoteAddr:  remoteIP,
 			RemotePort:  remotePort,
 			State:       state,
-			PID:         0, // Getting PID requires scanning /proc/[pid]/fd (omitted for speed)
+			PID:         0,
+			ProcessName: procName,
 			IsDangerous: isDangerous,
+			Reason:      reason,
 		})
 	}
 	return results
+}
+
+// buildInodeMap scans /proc to map socket inodes to process names
+func buildInodeMap() map[string]string {
+	m := make(map[string]string)
+	pDir, err := os.Open("/proc")
+	if err != nil {
+		return m
+	}
+	defer pDir.Close()
+
+	entries, _ := pDir.Readdirnames(-1)
+	for _, entry := range entries {
+		if _, err := strconv.Atoi(entry); err != nil {
+			continue
+		}
+
+		fdPath := filepath.Join("/proc", entry, "fd")
+		fds, err := os.ReadDir(fdPath)
+		if err != nil {
+			continue
+		}
+
+		// Get process name (comm is enough for short names)
+		comm, _ := os.ReadFile(filepath.Join("/proc", entry, "comm"))
+		procName := strings.TrimSpace(string(comm))
+
+		for _, fd := range fds {
+			link, err := os.Readlink(filepath.Join(fdPath, fd.Name()))
+			if err == nil && strings.HasPrefix(link, "socket:[") {
+				inode := strings.TrimPrefix(strings.TrimSuffix(link, "]"), "socket:[")
+				m[inode] = procName
+			}
+		}
+	}
+	return m
 }
 
 // parseAddr converts the hex strings in /proc/net/tcp to readable IP:Port

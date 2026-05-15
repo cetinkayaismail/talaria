@@ -40,7 +40,6 @@ var criticalFilePatterns = []string{
 var mediumFilePatterns = []string{
 	".env", "config.php", "settings.py", "database.yml", "database.yaml",
 	".tfvars", "terraform.tfvars", "docker-compose.yml", "docker-compose.yaml",
-	"auth.log", "syslog",
 	".ovpn",                                    // OpenVPN config
 	"auth.txt", "credentials.txt", "creds.txt", // Plaintext cred files
 	"my.cnf", ".my.cnf",                        // MySQL credentials

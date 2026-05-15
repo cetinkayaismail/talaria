@@ -325,6 +325,11 @@ func main() {
 				mu.Lock()
 				report.Processes = results
 				fmt.Printf("\033[1;32m[+] Scanning Processes...\033[0m\n")
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] Dangerous Process\033[0m\n └─ PID    : %d\n └─ User   : %s\n └─ Command: %s\n", r.PID, r.User, r.Command)
+					}
+				}
 				mu.Unlock()
 			}
 		}()
@@ -450,6 +455,15 @@ func main() {
 				mu.Lock()
 				report.NetworkConnections = results
 				fmt.Printf("\033[1;32m[+] Scanning Network Connections...\033[0m\n")
+				for _, r := range results {
+					if r.State == "LISTEN" {
+						if r.IsDangerous {
+							fmt.Printf("\033[1;31m[CRITICAL] Suspicious Network Listener\033[0m\n └─ Addr   : %s:%d (%s)\n └─ Process: %s\n └─ Reason : %s\n", r.LocalAddr, r.LocalPort, r.Protocol, r.ProcessName, r.Reason)
+						} else {
+							fmt.Printf("\033[1;33m[INFO] Active Listener\033[0m\n └─ Addr   : %s:%d (%s)\n └─ Process: %s\n", r.LocalAddr, r.LocalPort, r.Protocol, r.ProcessName)
+						}
+					}
+				}
 				mu.Unlock()
 			}
 		}()
@@ -549,6 +563,13 @@ func main() {
 				mu.Lock()
 				report.Sockets = results
 				fmt.Printf("\033[1;32m[+] Scanning Sockets...\033[0m\n")
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] Dangerous Socket\033[0m\n └─ Path   : %s\n └─ Service: %s\n", r.Path, r.Service)
+					} else if r.IsWritable {
+						fmt.Printf("\033[1;33m[INFO] Writable Socket\033[0m\n └─ Path   : %s\n", r.Path)
+					}
+				}
 				mu.Unlock()
 			}
 		}()
@@ -567,6 +588,13 @@ func main() {
 				mu.Lock()
 				report.FilePermissions = results
 				fmt.Printf("\033[1;32m[+] Scanning File Permissions...\033[0m\n")
+				for _, r := range results {
+					if r.IsDangerous {
+						fmt.Printf("\033[1;31m[CRITICAL] File Permission Issue\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Issue)
+					} else if r.IsWorldWritable {
+						fmt.Printf("\033[1;33m[HIGH] World Writable\033[0m\n └─ Path   : %s\n", r.Path)
+					}
+				}
 				mu.Unlock()
 			}
 		}()
