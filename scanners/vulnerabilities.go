@@ -71,6 +71,22 @@ var kernelVulnerabilities = []KernelVulnerability{
 		ExploitHint: "Exploit relies on specific timing during socket diagnostic operations.",
 	},
 
+	// --- Antique / 2.6.x Kernel Exploits ---
+	{
+		CVE: "CVE-2010-3904", Name: "RDS Protocol Privesc",
+		Description: "Reliable Datagram Sockets (RDS) protocol allows unprivileged users to escalate to root",
+		MinVersion: [3]int{2, 6, 30}, MaxVersion: [3]int{2, 6, 36},
+		IsCritical:  true,
+		ExploitHint: "Classic rds.c exploit. Compile and run for instant root. Highly reliable on 2.6.30-2.6.36.",
+	},
+	{
+		CVE: "CVE-2010-4347", Name: "Half-Nelson",
+		Description: "Local privilege escalation via glibc/kernel memory management logic",
+		MinVersion: [3]int{2, 6, 0}, MaxVersion: [3]int{2, 6, 37},
+		IsCritical:  true,
+		ExploitHint: "Half-Nelson/Full-Nelson exploit works universally on unpatched 2.6.x systems.",
+	},
+
 	// --- Race Conditions / Memory Corruption ---
 	{
 		CVE: "CVE-2016-5195", Name: "Dirty COW",

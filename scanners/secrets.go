@@ -436,8 +436,12 @@ func genericContentScan(f *os.File, path string) string {
 		if privateKeyRegex.MatchString(line) {
 			return "Private Key Header detected"
 		}
-		if m := netrcPassRegex.FindStringSubmatch(line); len(m) > 1 && !isFalsePositive(m[1]) {
-			return "Netrc Password: " + m[1]
+		
+		// Netrc check: ONLY apply if the filename actually is a netrc file.
+		if (fileName == ".netrc" || fileName == "_netrc" || fileName == "netrc") {
+			if m := netrcPassRegex.FindStringSubmatch(line); len(m) > 1 && !isFalsePositive(m[1]) {
+				return "Netrc Password: " + m[1]
+			}
 		}
 
 		// 3. Assignment regex — all 3 capture groups (quoted double, quoted single, unquoted)
@@ -535,14 +539,24 @@ func isFalsePositive(val string) bool {
 		}
 	}
 
-	// 2. "Contains" matches for obvious placeholders
+	// 2. "Contains" matches for obvious placeholders and script variables/colors
 	placeholderPatterns := []string{
 		"your_secret", "enter_pass", "password_here", "xxxxxx", "yyyyyy",
+		"[success=", "[default=", "requisite", "sufficient", "required", "pam_", // PAM module noise
 	}
 	for _, p := range placeholderPatterns {
 		if strings.Contains(valLower, p) {
 			return true
 		}
+	}
+
+	// 3. Bash/Shell specific noise (variables, color codes)
+	// No human password will start with a bash variable indicator or color escape
+	if strings.Contains(val, "$") && (strings.HasPrefix(val, "$") || strings.Contains(val, "${")) {
+		return true // It's a bash variable, e.g. $readpasswd
+	}
+	if strings.Contains(val, `\e[`) || strings.Contains(val, `\033[`) {
+		return true // It's a terminal color code
 	}
 
 	return false

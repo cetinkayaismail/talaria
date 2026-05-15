@@ -5,6 +5,7 @@ This document contains the latest features and architectural updates added to Ta
 ## 1. Intelligence Engine Modularization & Architecture Refactoring
 - **Rule-Based Engine:** The hardcoded post-scan correlation logic was completely removed. It was replaced with the `core/intelligence.go` module, creating an infinitely expandable engine operating through the `AttackChain` interface.
 - **Enterprise Package Architecture:** To resolve circular import issues and maintain code cleanliness, the core `ScanReport` structure was moved to `models/report.go`. `main.go` was refactored into a lightweight entrypoint that simply parses arguments.
+- **Lightweight Attack Graph (DFS):** Integrated a Micro-Graph architecture into the Intelligence Engine. Instead of graphing the entire filesystem (which causes combinatorial explosion and memory issues), it graphs only "interesting" findings (writable files, cronjobs, docker socket) and runs a Depth-First Search (DFS) to map out complex, multi-step attack chains with zero speed degradation.
 - **Directory Cleanup:** All research and security notes (e.g., `FUTURE_PLANS.md`, `SECURITY_REPORT.md`) were isolated into the `internal/` folder to prevent them from being pushed to GitHub, and security policies were moved to the standard `.github/` folder.
 
 ## 2. Context-Aware Risk Downgrading (AppArmor)

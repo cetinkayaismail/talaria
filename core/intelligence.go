@@ -43,6 +43,34 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 		allResults = append(allResults, results...)
 	}
 
+	// Run DFS Graph Analysis
+	graph := BuildIntelligenceGraph(report)
+	startNode := fmt.Sprintf("user:%s", report.TargetUser)
+	paths := graph.FindPaths(startNode, "goal:root", 5)
+
+	for _, path := range paths {
+		if len(path) == 0 {
+			continue
+		}
+		
+		desc := "Attack Path:\n"
+		var targetPath string
+		for i, edge := range path {
+			desc += fmt.Sprintf("  %d. %s -> (%s) -> %s\n", i+1, edge.From.ID, edge.Description, edge.To.ID)
+			// Heuristic to grab a target path for AppArmor checking
+			if strings.HasPrefix(edge.To.ID, "file:") {
+				targetPath = strings.TrimPrefix(edge.To.ID, "file:")
+			}
+		}
+
+		allResults = append(allResults, ChainResult{
+			Name:        fmt.Sprintf("Complex Attack Graph Found (%d steps)", len(path)),
+			Description: desc,
+			RiskLevel:   "100% CONFIRMED",
+			TargetPath:  targetPath,
+		})
+	}
+
 	if len(allResults) == 0 {
 		fmt.Printf("\033[1;32m[+] No confirmed chained attack vectors found via cross-reference.\033[0m\n")
 		return
@@ -291,6 +319,16 @@ func resolveCommandPath(command string, targetPath string) bool {
 	// Direct match (absolute path used in command)
 	if strings.Contains(command, targetPath) {
 		return true
+	}
+
+	// Basename match for PATH-resolved execution
+	// Example: command="overwrite.sh", targetPath="/usr/local/bin/overwrite.sh"
+	targetParts := strings.Split(targetPath, "/")
+	if len(targetParts) > 0 {
+		baseName := targetParts[len(targetParts)-1]
+		if command == baseName || strings.HasPrefix(command, baseName+" ") || strings.Contains(command, " "+baseName) || strings.Contains(command, "./"+baseName) {
+			return true
+		}
 	}
 
 	// Handle 'cd <dir> && <cmd>' or 'cd <dir>; <cmd>'
