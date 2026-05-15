@@ -10,38 +10,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"Talaria/models"
+	"Talaria/core"
 )
 
-type ScanReport struct {
-	ScanTime           string                             `json:"scan_time"`
-	TargetUser         string                             `json:"target_user"`
-	TargetScanPath     string                             `json:"target_scan_path"`
-	StealthMode        bool                               `json:"stealth_mode"`
-	Secrets            []scanners.SensitiveFileResult     `json:"secrets,omitempty"`
-	SecretContent      []scanners.SensitiveContentResult  `json:"secret_content,omitempty"`
-	Capabilities       []scanners.CapabilityResult        `json:"capabilities,omitempty"`
-	CronJobs           []scanners.CronJobResult           `json:"cron_jobs,omitempty"`
-	FilePermissions    []scanners.FilePermissionResult    `json:"file_permissions,omitempty"`
-	FilePermsExploit   []scanners.FilePermExploitResult   `json:"file_perms_exploit,omitempty"`
-	NetworkConnections []scanners.NetworkConnectionResult `json:"network_connections,omitempty"`
-	NFSExports         []scanners.NFSExportResult         `json:"nfs_exports,omitempty"`
-	Processes          []scanners.ProcessResult           `json:"processes,omitempty"`
-	Sockets            []scanners.SocketResult            `json:"sockets,omitempty"`
-	SudoPrivileges     []scanners.SudoPrivilegeResult     `json:"sudo_privileges,omitempty"`
-	SUID               []scanners.SUIDResult              `json:"suid,omitempty"`
-	SGID               []scanners.SGIDResult              `json:"sgid,omitempty"`
-	Vulnerabilities    []scanners.VersionInfo             `json:"vulnerabilities,omitempty"`
-	Writeable          []scanners.WriteableResult         `json:"writeable,omitempty"`
-	SystemdTimers      []scanners.SystemdTimerResult      `json:"systemd_timers,omitempty"`
-	Groups             []scanners.GroupResult             `json:"groups,omitempty"`
-	PATHHijack         []scanners.PATHHijackResult        `json:"path_hijack,omitempty"`
-	SSHKeys            []scanners.SSHKeyResult            `json:"ssh_keys,omitempty"`
-	PtraceScope        *scanners.PtraceScopeResult        `json:"ptrace_scope,omitempty"`
-	ContainerEscape    []scanners.ContainerEscapeResult   `json:"container_escape,omitempty"`
-	DBusPolicy         []scanners.DBusPolicyResult        `json:"dbus_policy,omitempty"`
-	Services           []scanners.ServiceAuditResult      `json:"services,omitempty"`
-	Packages           []scanners.PackageAuditResult      `json:"packages,omitempty"`
-}
+
 
 func main() {
 	scanInput := flag.String("scan", "all",
@@ -198,7 +171,7 @@ func main() {
 		}
 	}
 
-	report := &ScanReport{
+	report := &models.ScanReport{
 		ScanTime:       time.Now().Format(time.RFC1123),
 		TargetUser:     os.Getenv("USER"),
 		TargetScanPath: *searchPath,
@@ -827,151 +800,7 @@ func main() {
 	// --- CROSS-REFERENCING (Analysis Phase) ---
 	// Post-scan correlation engine: matches findings across modules to surface
 	// confirmed, chained attack vectors that individual scanners cannot see alone.
-	fmt.Printf("\n\033[1;34m[!] Performing Cross-Reference Analysis...\033[0m\n")
-	hasCrossReference := false
-
-	// ── CHAIN 1: Writable script/binary vs. scheduled execution ──────────────
-	for _, w := range report.Writeable {
-		if w.IsExecutable || strings.HasSuffix(w.Path, ".sh") || strings.HasSuffix(w.Path, ".py") ||
-			strings.HasSuffix(w.Path, ".pl") || strings.HasSuffix(w.Path, ".rb") {
-
-			// 1a. Writable file executed by a root CronJob → instant root
-			for _, cron := range report.CronJobs {
-				if cron.IsRootJob && resolveCommandPath(cron.Command, w.Path) {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable '%s' is executed by root CronJob: %s\033[0m\n", w.Path, cron.Command)
-					hasCrossReference = true
-				}
-			}
-
-			// 1b. Writable file runnable via Sudo → instant root
-			for _, sudo := range report.SudoPrivileges {
-				if resolveCommandPath(sudo.Command, w.Path) {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable '%s' can be run via Sudo: %s\033[0m\n", w.Path, sudo.Command)
-					hasCrossReference = true
-				}
-			}
-
-			// 1c. Writable Systemd unit file → root on next timer trigger
-			for _, sysd := range report.SystemdTimers {
-				if sysd.Path == w.Path {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable systemd unit: %s\033[0m\n", w.Path)
-					hasCrossReference = true
-				}
-			}
-		}
-	}
-
-	// ── CHAIN 2: LD_PRELOAD env_keep + any NOPASSWD entry → instant root ─────
-	hasLDPreload := false
-	hasNoPassword := false
-	for _, s := range report.SudoPrivileges {
-		if s.HasLDPreload {
-			hasLDPreload = true
-		}
-		if s.NoPassword {
-			hasNoPassword = true
-		}
-	}
-	if hasLDPreload && hasNoPassword {
-		fmt.Printf("\033[1;35m[100%% CONFIRMED] LD_PRELOAD in env_keep + NOPASSWD entry detected:\n"+
-			"  Compile a .so with __attribute__((constructor)) { setuid(0); system('/bin/bash'); }\n"+
-			"  Set LD_PRELOAD=<your.so>, run any NOPASSWD sudo command → root shell.\033[0m\n")
-		hasCrossReference = true
-	}
-
-	// ── CHAIN 3: SGID binary owned by 'shadow' group → /etc/shadow readable ─
-	for _, sgid := range report.SGID {
-		if sgid.IsDangerous && strings.EqualFold(sgid.OwnerGroup, "shadow") {
-			fmt.Printf("\033[1;35m[100%% CONFIRMED] SGID binary '%s' owned by shadow group.\n"+
-				"  Execute it to gain shadow group privileges → read /etc/shadow → crack hashes.\033[0m\n", sgid.Path)
-			hasCrossReference = true
-		}
-	}
-
-	// ── CHAIN 4: Writable authorized_keys + active SSH service ───────────────
-	for _, sshKey := range report.SSHKeys {
-		if sshKey.IsDangerous && sshKey.Type == "authorized_keys" {
-			for _, netConn := range report.NetworkConnections {
-				if netConn.LocalPort == 22 && netConn.State == "LISTEN" {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable authorized_keys for '%s' + SSH listening on :22.\n"+
-						"  Append your public key to '%s' -> ssh %s@localhost\033[0m\n",
-						sshKey.TargetUser, sshKey.Path, sshKey.TargetUser)
-					hasCrossReference = true
-				}
-			}
-		}
-	}
-
-	// ── CHAIN 5: Writable .ssh directory + SSH service ───────────────────────
-	for _, sshKey := range report.SSHKeys {
-		if sshKey.IsDangerous && sshKey.Type == ".ssh directory" {
-			for _, netConn := range report.NetworkConnections {
-				if netConn.LocalPort == 22 && netConn.State == "LISTEN" {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED] Writable .ssh/ dir for '%s' + SSH on :22.\n"+
-						"  Create '%s/authorized_keys' with your pubkey -> ssh %s@localhost\033[0m\n",
-						sshKey.TargetUser, sshKey.Path, sshKey.TargetUser)
-					hasCrossReference = true
-				}
-			}
-		}
-	}
-
-	// ── CHAIN 6: ptrace scope=0 + root process running → process injection ───
-	if report.PtraceScope != nil && report.PtraceScope.IsDangerous {
-		currentUID := os.Getuid()
-		for _, proc := range report.Processes {
-			if proc.UID == 0 {
-				if currentUID == 0 {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED] ptrace unrestricted + root process PID %d (%s).\n"+
-						"  As root, you can inject shellcode into other processes for hijacking, stealth, or lateral movement.\033[0m\n",
-						proc.PID, proc.Command)
-				} else {
-					fmt.Printf("\033[1;33m[POTENTIAL] ptrace unrestricted + root process PID %d (%s).\n"+
-						"  Exploitation requires CAP_SYS_PTRACE. If possessed, you can inject shellcode to escalate privileges.\033[0m\n",
-						proc.PID, proc.Command)
-				}
-				hasCrossReference = true
-				break // Report once — first root process is enough
-			}
-		}
-	}
-
-	// ── CHAIN 7: Docker socket accessible + docker group membership ──────────
-	hasDockerSocket := false
-	for _, sock := range report.Sockets {
-		if strings.Contains(sock.Service, "docker") && sock.IsDangerous {
-			hasDockerSocket = true
-		}
-	}
-	hasDockerGroup := false
-	for _, grp := range report.Groups {
-		if strings.EqualFold(grp.GroupName, "docker") {
-			hasDockerGroup = true
-		}
-	}
-	if hasDockerSocket || hasDockerGroup {
-		fmt.Printf("\033[1;35m[100%% CONFIRMED] Docker socket accessible (group=%v, socket=%v).\n"+
-			"  Run: docker run -v /:/mnt --rm -it alpine chroot /mnt sh\033[0m\n",
-			hasDockerGroup, hasDockerSocket)
-		hasCrossReference = true
-	}
-
-	// ── CHAIN 8: Container with docker.sock mount → host escape ──────────────
-	for _, ce := range report.ContainerEscape {
-		if ce.IsDangerous && strings.Contains(ce.Vector, "Docker Socket") {
-			for _, sock := range report.Sockets {
-				if strings.Contains(sock.Service, "docker") {
-					fmt.Printf("\033[1;35m[100%% CONFIRMED] Docker socket mounted INSIDE container.\n"+
-						"  Run: docker run -v /:/host --rm -it alpine chroot /host sh → full host root.\033[0m\n")
-					hasCrossReference = true
-				}
-			}
-		}
-	}
-
-	if !hasCrossReference {
-		fmt.Printf("\033[1;32m[+] No confirmed chained attack vectors found via cross-reference.\033[0m\n")
-	}
+	core.RunIntelligenceEngine(report)
 
 	if *outputFile != "" {
 		saveReport(report, *outputFile, *outputFormat, *encryptKey)
@@ -991,7 +820,7 @@ func main() {
 	}
 }
 
-func saveReport(report *ScanReport, path string, format string, encryptKey string) {
+func saveReport(report *models.ScanReport, path string, format string, encryptKey string) {
 	var data []byte
 	if strings.ToLower(format) == "json" {
 		data, _ = json.MarshalIndent(report, "", "  ")
@@ -1050,64 +879,3 @@ func saveReport(report *ScanReport, path string, format string, encryptKey strin
 }
 
 // resolveCommandPath intelligently checks if a command string eventually targets a specific file path
-func resolveCommandPath(command string, targetPath string) bool {
-	// Direct match (absolute path used in command)
-	if strings.Contains(command, targetPath) {
-		return true
-	}
-
-	// Handle 'cd <dir> && <cmd>' or 'cd <dir>; <cmd>'
-	parts := strings.Split(command, "&&")
-	if len(parts) == 1 {
-		parts = strings.Split(command, ";")
-	}
-
-	var currentDir string
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "cd ") {
-			currentDir = strings.TrimSpace(strings.TrimPrefix(part, "cd "))
-		} else if currentDir != "" {
-			// Extract binary name being executed
-			cmdFields := strings.Fields(part)
-			if len(cmdFields) > 0 {
-				var execName string
-				// If command is an interpreter (bash script.sh), script is usually the 2nd arg
-				interpreters := map[string]bool{"bash": true, "sh": true, "python": true, "python3": true, "perl": true, "ruby": true}
-				if interpreters[cmdFields[0]] && len(cmdFields) > 1 {
-					execName = cmdFields[1]
-				} else {
-					execName = cmdFields[0]
-				}
-
-				if execName != "" {
-					// Clean up potential ./ prefix
-					execName = strings.TrimPrefix(execName, "./")
-					
-					// Resolve assuming currentDir from previous cd command
-					// filepath.Join will handle trailing slashes correctly
-					// Since targetPath is absolute (from WalkDir), we construct the absolute path here
-					// Note: If currentDir is relative, this won't work perfectly without resolving against home, 
-					// but cron/sudo usually use absolute paths for cd.
-					
-					// Only proceed if currentDir is absolute to avoid false positives
-					// We'll just construct it.
-					// We can't easily use filepath here without importing, but main.go already imports path/filepath? 
-					// Let's check imports. Main.go doesn't import path/filepath currently. We should avoid adding imports if possible, or just use string concat safely.
-					
-					var resolvedPath string
-					if strings.HasSuffix(currentDir, "/") {
-						resolvedPath = currentDir + execName
-					} else {
-						resolvedPath = currentDir + "/" + execName
-					}
-					
-					if resolvedPath == targetPath {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
-}

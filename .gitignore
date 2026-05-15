@@ -44,5 +44,5 @@ talaria.sh
 *.sh
 
 # Internal research notes — not for public repo
-STEALTH_ADVANCED.md
+internal/
 

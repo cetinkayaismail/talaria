@@ -48,7 +48,7 @@ Talaria covers a wide array of local privilege escalation vectors through more t
 ### Container & Runtime Security
 - **Container Escape:** Detection of Docker/LXC/K8s environments with checks for privileged mode or exposed control sockets.
 ### Kernel & System Vulnerabilities (2026 Update)
-- **High-Severity CVEs:** Automated detection for recent privilege escalation vulnerabilities including **Dirty Frag** (CVE-2026-43284), **Fragnesia** (CVE-2026-46300), **Copy Fail** (CVE-2026-31431), and **AF_UNIX Diagnostic Race** (CVE-2026-31673).
+- **High-Severity CVEs:** Automated detection for recent privilege escalation vulnerabilities including **Dirty Frag** (CVE-2026-43284), **Fragnesia** (CVE-2026-46300), **Copy Fail** (CVE-2026-31431), **AF_UNIX Diagnostic Race** (CVE-2026-31673), and **systemd-machined LPE** (CVE-2026-4105).
 - **Process Security:** Monitoring for sensitive arguments, unrestricted `ptrace_scope`, and active debugging tools.
 
 ---

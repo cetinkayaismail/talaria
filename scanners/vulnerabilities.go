@@ -247,6 +247,35 @@ func ScanSystemVersions(_ ...time.Duration) ([]VersionInfo, error) {
 		results = append(results, result)
 	}
 
+	// 4. Systemd version — CVE-2026-4105 / CVE-2026-40224
+	// systemctl --version typically outputs "systemd 255 (255.4-1ubuntu3)"
+	systemdVer := readBinaryVersion("systemctl", "--version", `systemd (\d+)`)
+	if systemdVer != "" {
+		verNum, _ := strconv.Atoi(systemdVer)
+		// Both CVEs primarily affect version 259
+		if verNum == 259 {
+			results = append(results, VersionInfo{
+				Software:    "Systemd",
+				Version:     systemdVer,
+				IsDangerous: true,
+				Vulnerabilities: []KernelVulnerability{
+					{
+						CVE: "CVE-2026-4105", Name: "systemd-machined LPE (RegisterMachine)",
+						Description: "Logic bug in RegisterMachine D-Bus method allows local root via persistent machine object.",
+						IsCritical:  true,
+						ExploitHint: "Exploit requires unprivileged access to register-machine polkit action. Update to v260 or v259.4.",
+					},
+					{
+						CVE: "CVE-2026-40224", Name: "systemd-machined Varlink LPE",
+						Description: "Varlink interface exploit allows bypassing namespace isolation to reach root namespace.",
+						IsCritical:  true,
+						ExploitHint: "Targets systemd-machined varlink interface. Upgrade to version 260.",
+					},
+				},
+			})
+		}
+	}
+
 	return results, nil
 }
 
