@@ -57,6 +57,13 @@ var kernelVulnerabilities = []KernelVulnerability{
 		ExploitHint: "Successor to Dirty Pipe. Highly stable and reliable across major distributions.",
 	},
 	{
+		CVE: "CVE-2026-46300", Name: "Fragnesia",
+		Description: "Logic bug in skb_try_coalesce (XFRM ESP-in-TCP) allows deterministic page-cache corruption via fragment reassembly → root",
+		MinVersion: [3]int{5, 6, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Highly reliable LPE (May 2026). Successor to Dirty Frag. Targets RFC 8229 (ESP-over-TCP) logic. github.com/exploits/fragnesia",
+	},
+	{
 		CVE: "CVE-2026-31673", Name: "AF_UNIX Diagnostic Race",
 		Description: "Race condition in socket diagnostics allows memory corruption or info leak → LPE",
 		MinVersion: [3]int{3, 0, 0}, MaxVersion: [3]int{6, 19, 11},

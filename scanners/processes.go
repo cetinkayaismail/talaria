@@ -199,7 +199,7 @@ func ScanPtraceScope() (*PtraceScopeResult, error) {
 	reason := ""
 	switch val {
 	case 0:
-		reason = "ptrace_scope=0: unrestricted — any process can ptrace any other process. Inject shellcode into a root process."
+		reason = "ptrace_scope=0: unrestricted — any process can ptrace any other process. Allows for cross-process memory injection."
 	case 1:
 		reason = "ptrace_scope=1: restricted to parent/child (default on most distros)"
 	case 2:

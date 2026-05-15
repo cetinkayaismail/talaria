@@ -19,12 +19,14 @@ This update deepens Talaria's analysis capabilities, reduces false positives, an
 - **Agent Socket Scanning:** The `SSH_AUTH_SOCK` environment variable and related socket permissions in the current session are now scanned. If an accessible SSH agent socket is found, how it can be used to hijack an active SSH session is reported.
 
 ## New Kernel Vulnerabilities (2026 Update)
-- **Dirty Frag (CVE-2026-43284 / CVE-2026-43500)**: Added a deterministic LPE vulnerability that provides root privileges via page cache manipulation, considered the successor to the "Dirty Pipe" vulnerability.
+- **Dirty Frag (CVE-2026-43284 / CVE-2026-43500)**: Added a deterministic LPE vulnerability that provides root privileges via page cache manipulation.
+- **Fragnesia (CVE-2026-46300)**: Added the high-severity deterministic page-cache corruption vulnerability disclosed in May 2026, targeting the XFRM ESP-in-TCP subsystem (RFC 8229).
 - **Copy Fail (CVE-2026-31431)**: Added a vulnerability providing root access via a logic error in the kernel crypto subsystem (`algif_aead`).
 - **AF_UNIX Diagnostic Race (CVE-2026-31673)**: Added a vulnerability allowing privilege escalation via a synchronization error in socket diagnostics.
 
-## Professional Reporting Mode (--professional / -p)
-A professional mode has been added for users to get cleaner outputs while preparing penetration testing or audit reports. When this mode is activated, CTF-oriented "step-by-step exploit" hints are removed from the report, presenting only technical findings and risk analysis. The help menu and usage documents have been updated to include this new flag.
+## Professional Reporting & Exploit Logic
+- **Professional Reporting Mode (--professional / -p):** A professional mode has been added for users to get cleaner outputs while preparing penetration testing or audit reports. When this mode is activated, CTF-oriented "step-by-step exploit" hints are removed from the report, presenting only technical findings and risk analysis.
+- **Improved Exploit Logic (ptrace):** Refined the exploit advice for unrestricted ptrace (scope=0). The tool now provides professional, context-aware advice: root users are advised on hijacking/stealth capabilities, while non-root users are informed of the technical `CAP_SYS_PTRACE` requirement, removing previous redundant and "nonsensical" messages.
 
 ## SUID/SGID Analysis Enhancements (SO Hijacking)
 The SUID module now not only looks at file names but also examines the ELF headers of binary files to analyze RPATH and RUNPATH values. If a binary has write permission on the directories from which it calls external libraries, this is reported as a potential "Shared Object Hijacking" vector.

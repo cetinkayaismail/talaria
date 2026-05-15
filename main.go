@@ -923,11 +923,11 @@ func main() {
 			if proc.UID == 0 {
 				if currentUID == 0 {
 					fmt.Printf("\033[1;35m[100%% CONFIRMED] ptrace unrestricted + root process PID %d (%s).\n"+
-						"  Attach with gdb/ptrace, inject shellcode into root process → root shell.\033[0m\n",
+						"  As root, you can inject shellcode into other processes for hijacking, stealth, or lateral movement.\033[0m\n",
 						proc.PID, proc.Command)
 				} else {
 					fmt.Printf("\033[1;33m[POTENTIAL] ptrace unrestricted + root process PID %d (%s).\n"+
-						"  Note: Cross-user ptrace requires CAP_SYS_PTRACE or root. If you are root (e.g. in a container), you can inject shellcode.\033[0m\n",
+						"  Exploitation requires CAP_SYS_PTRACE. If possessed, you can inject shellcode to escalate privileges.\033[0m\n",
 						proc.PID, proc.Command)
 				}
 				hasCrossReference = true
