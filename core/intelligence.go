@@ -40,7 +40,7 @@ func init() {
 }
 
 func RunIntelligenceEngine(report *models.ScanReport) {
-	fmt.Printf("\n\033[1;34m[!] Performing Cross-Reference Analysis (Intelligence Engine)...\033[0m\n")
+	PrintSectionHeader("Intelligence Engine: Cross-Reference Analysis")
 
 	var allResults []ChainResult
 	for _, chain := range registeredChains {
@@ -51,7 +51,14 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 	// Run DFS Graph Analysis — search for ALL goal types
 	graph := BuildIntelligenceGraph(report)
 	startNode := fmt.Sprintf("user:%s", report.TargetUser)
+	
+	// Dynamically build goals list from discovered graph nodes
 	goals := []string{"goal:root", "goal:sudo", "goal:shadow", "goal:docker_group"}
+	for id := range graph.Nodes {
+		if strings.HasPrefix(id, "goal:user:") {
+			goals = append(goals, id)
+		}
+	}
 
 	// Helper to collect all file paths from an edge path for defense checking
 	collectTargetPaths := func(path []Edge) []string {
@@ -108,6 +115,10 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 
 			goalName := strings.TrimPrefix(goal, "goal:")
 			riskLevel := "100% CONFIRMED"
+			if strings.HasPrefix(goal, "goal:user:") {
+				riskLevel = "LATERAL MOVEMENT CONFIRMED"
+				desc += "\n  [!] Tactical Advice: Once you have gained access as this user, run Talaria again to explore further paths."
+			}
 
 			// Check ALL files in the path for defenses
 			blocked, blockMsg := isAnyPathBlocked(targetPaths)
@@ -138,6 +149,10 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 
 			goalName := strings.TrimPrefix(goal, "goal:")
 			riskLevel := "100% CONFIRMED"
+			if strings.HasPrefix(goal, "goal:user:") {
+				riskLevel = "LATERAL MOVEMENT CONFIRMED"
+				desc += "\n  [!] Tactical Advice: Once you have gained access as this user, run Talaria again to explore further paths."
+			}
 
 			blocked, blockMsg := isAnyPathBlocked(targetPaths)
 			if blocked {
@@ -155,7 +170,7 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 	}
 
 	if len(allResults) == 0 {
-		fmt.Printf("\033[1;32m[+] No confirmed chained attack vectors found via cross-reference.\033[0m\n")
+		fmt.Printf("%s[+] No confirmed chained attack vectors found via cross-reference.%s\n", ColorGreen, ColorReset)
 		return
 	}
 
@@ -186,17 +201,37 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 	}
 
 	for _, res := range allResults {
-		color := "\033[1;33m" // Yellow for potential
+		severity := "HIGH"
 		if res.RiskLevel == "100% CONFIRMED" {
-			color = "\033[1;35m" // Magenta/Purple for confirmed
+			severity = "CRITICAL"
+		} else if res.RiskLevel == "LATERAL MOVEMENT CONFIRMED" {
+			severity = "LATERAL MOVEMENT CONFIRMED"
+		} else if strings.Contains(res.RiskLevel, "POTENTIAL") {
+			severity = "MEDIUM"
 		}
-		fmt.Printf("%s[%s] %s\033[0m\n", color, res.RiskLevel, res.Name)
+
+		details := map[string]string{}
 		if res.Description != "" {
-			fmt.Printf("  %s\n", res.Description)
+			// Format attack path with tree characters if it looks like one
+			lines := strings.Split(res.Description, "\n")
+			formattedDesc := ""
+			for i, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" { continue }
+				
+				if strings.Contains(line, "->") {
+					formattedDesc += "\n       " + ColorCyan + "→ " + ColorReset + line
+				} else {
+					formattedDesc += line
+				}
+				if i < len(lines)-1 {
+					formattedDesc += " "
+				}
+			}
+			details["Path"] = formattedDesc
 		}
-		if res.Exploit != "" {
-			fmt.Printf("  Exploit: %s\n", res.Exploit)
-		}
+		
+		PrintFinding(severity, res.Name, details, res.Exploit)
 	}
 }
 

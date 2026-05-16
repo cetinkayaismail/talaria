@@ -335,3 +335,83 @@ func ScanWritableServices() ([]WriteableResult, error) {
 
 	return results, nil
 }
+
+// ScanUdevRules checks for writable files/directories in udev rules paths.
+func ScanUdevRules() ([]WriteableResult, error) {
+	var results []WriteableResult
+	udevPaths := []string{
+		"/etc/udev/rules.d",
+		"/lib/udev/rules.d",
+		"/usr/lib/udev/rules.d",
+		"/run/udev/rules.d",
+	}
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+	uid, _ := strconv.Atoi(currentUser.Uid)
+	gidStrings, _ := currentUser.GroupIds()
+	userGids := make(map[int]bool)
+	for _, g := range gidStrings {
+		id, _ := strconv.Atoi(g)
+		userGids[id] = true
+	}
+
+	for _, rootPath := range udevPaths {
+		if _, err := os.Stat(rootPath); err != nil {
+			continue
+		}
+
+		filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				return nil
+			}
+
+			// Check Write Permission
+			mode := stat.Mode
+			canWrite := false
+
+			if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
+				canWrite = true
+			} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
+				canWrite = true
+			} else if mode&syscall.S_IWOTH != 0 {
+				canWrite = true
+			}
+
+			if canWrite {
+				typeName := "Udev Rule Writable"
+				reason := "Udev rule file is writable. Attackers can inject a RUN command to execute code as root when a device is plugged in."
+				if d.IsDir() {
+					typeName = "Udev Rules Directory Writable"
+					reason = "Udev rules directory is writable. Attackers can create a new rule file to execute code as root."
+				}
+
+				results = append(results, WriteableResult{
+					Path:            path,
+					OwnerUID:        int(stat.Uid),
+					CurrentUserOwns: (uid == int(stat.Uid)),
+					IsExecutable:    false,
+					IsDangerous:     true,
+					Type:            typeName,
+					RiskLevel:       "CRITICAL",
+					Reason:          reason,
+				})
+			}
+			return nil
+		})
+	}
+
+	return results, nil
+}

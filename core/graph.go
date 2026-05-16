@@ -75,13 +75,22 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 
 	// 2. Map CronJobs
 	for _, cron := range report.CronJobs {
-		if cron.IsRootJob {
-			for _, w := range report.Writeable {
-				if resolveCommandPath(cron.Command, w.Path) {
-					fileID := fmt.Sprintf("file:%s", w.Path)
-					g.AddNode(fileID, "File")
-					g.AddEdgeWeight(fileID, "goal:root", fmt.Sprintf("Executed by root CronJob: %s", cron.Command), 10)
-				}
+		// Identify user goals from cronjob owners
+		targetUser := cron.Owner
+		if targetUser == "" || targetUser == report.TargetUser {
+			continue
+		}
+		
+		userGoal := fmt.Sprintf("goal:user:%s", targetUser)
+		if targetUser == "root" || targetUser == "0" {
+			userGoal = "goal:root"
+		}
+
+		for _, w := range report.Writeable {
+			if resolveCommandPath(cron.Command, w.Path) {
+				fileID := fmt.Sprintf("file:%s", w.Path)
+				g.AddNode(fileID, "File")
+				g.AddEdgeWeight(fileID, userGoal, fmt.Sprintf("Executed by %s CronJob: %s", targetUser, cron.Command), 10)
 			}
 		}
 	}
@@ -89,17 +98,27 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 	// 3. Map Sudo Privileges
 	for _, sudo := range report.SudoPrivileges {
 		if sudo.NoPassword {
+			targetUser := sudo.RunAs
+			userGoal := fmt.Sprintf("goal:user:%s", targetUser)
+			if strings.Contains(targetUser, "root") || targetUser == "0" {
+				userGoal = "goal:root"
+			}
+
 			if strings.Contains(sudo.Command, "ALL") {
-				g.AddEdgeWeight(currentUser, "goal:root", "NOPASSWD sudo ALL", 9)
+				if targetUser != report.TargetUser {
+					g.AddEdgeWeight(currentUser, userGoal, fmt.Sprintf("NOPASSWD sudo ALL as %s", targetUser), 9)
+				}
 			} else {
 				cmdID := fmt.Sprintf("cmd:%s", sudo.Command)
 				g.AddNode(cmdID, "Command")
-				g.AddEdgeWeight(currentUser, cmdID, "NOPASSWD sudo", 7)
+				if targetUser != report.TargetUser {
+					g.AddEdgeWeight(currentUser, cmdID, fmt.Sprintf("NOPASSWD sudo as %s", targetUser), 7)
+				}
 				for _, w := range report.Writeable {
 					if resolveCommandPath(sudo.Command, w.Path) {
 						fileID := fmt.Sprintf("file:%s", w.Path)
 						g.AddEdgeWeight(cmdID, fileID, "Executes writable file", 8)
-						g.AddEdgeWeight(fileID, "goal:root", "Results in root execution", 10)
+						g.AddEdgeWeight(fileID, userGoal, fmt.Sprintf("Results in %s execution", targetUser), 10)
 					}
 				}
 			}
@@ -159,15 +178,39 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 		}
 	}
 
-	// 8. Map tmux/screen session hijack to root (#4)
+	// 8. Map tmux/screen session hijack to user goals (#4)
 	for _, sh := range report.SessionHijack {
 		if sh.IsDangerous {
+			targetUser := sh.TargetUser
+			if targetUser == report.TargetUser {
+				continue
+			}
+			
+			userGoal := fmt.Sprintf("goal:user:%s", targetUser)
+			if strings.Contains(targetUser, "root") || targetUser == "0" {
+				userGoal = "goal:root"
+			}
+
 			sessionID := fmt.Sprintf("session:%s", sh.Path)
 			g.AddNode(sessionID, "File")
 			g.AddEdgeWeight(currentUser, sessionID, "Can hijack terminal session", 8)
-			if strings.Contains(sh.TargetUser, "root") {
-				g.AddEdgeWeight(sessionID, "goal:root", "Root session hijack", 10)
+			g.AddEdgeWeight(sessionID, userGoal, fmt.Sprintf("%s session hijack", targetUser), 10)
+		}
+	}
+
+	// 9. Map SSH Keys to user goals
+	for _, key := range report.SSHKeys {
+		if key.IsDangerous && key.TargetUser != report.TargetUser {
+			targetUser := key.TargetUser
+			userGoal := fmt.Sprintf("goal:user:%s", targetUser)
+			if strings.Contains(targetUser, "root") || targetUser == "0" {
+				userGoal = "goal:root"
 			}
+
+			keyID := fmt.Sprintf("file:%s", key.Path)
+			g.AddNode(keyID, "File")
+			g.AddEdgeWeight(currentUser, keyID, fmt.Sprintf("Can access %s for %s", key.Type, targetUser), 8)
+			g.AddEdgeWeight(keyID, userGoal, fmt.Sprintf("SSH access as %s", targetUser), 10)
 		}
 	}
 

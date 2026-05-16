@@ -1,11 +1,24 @@
 # Talaria v2.0 — Changelog Report
 
 ## Overview
-This release introduces 10 major improvements including: performance optimizations (mutex contention fix, dynamic I/O semaphore), 4 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
+This release introduces 12 major improvements including: a completely modernized terminal reporting engine, performance optimizations (mutex contention fix, dynamic I/O semaphore), 5 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload, udev rules injection), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
 
 ---
 
 ## Detailed Changes
+
+### #12 — Terminal Reporting Engine & UX Overhaul (`core/reporting.go`, `main.go`)
+**Impact:** 💎 Professionalized output & scan dashboard
+
+**New Features:**
+- **Structured Findings:** All scan results now use a standardized tree-view format with clear severity labels and exploit advice.
+- **Section Headers:** Scanners are now grouped into visual sections for better readability.
+- **Scan Summary:** Added a final dashboard summarizing critical/high/medium findings and total execution time.
+- **Improved UX:** Removed redundant scan status messages to focus on actionable findings.
+
+**Files changed:** `core/reporting.go` (NEW), `main.go` (UI overhaul)
+
+---
 
 ### #5 — Mutex Contention Fix (`main.go`)
 **Impact:** ⚡ Performance improvement (scan-time reduction)
@@ -171,6 +184,18 @@ Risk level downgrade is now:
 
 ---
 
+### #11 — Udev Rules Injection (`scanners/writeable.go`)
+**Impact:** 🎯 New privilege escalation vector (low FP, high reliability)
+
+**New function `ScanUdevRules()`:**
+- Recursively scans `/etc/udev/rules.d`, `/lib/udev/rules.d`, `/usr/lib/udev/rules.d`, and `/run/udev/rules.d` for writable files or directories.
+- Identifies potential for command injection via the `RUN` key in udev rules, which executes as root on device hot-plug events.
+- Reports findings as CRITICAL risk level with specific exploit reasoning.
+
+**Files changed:** `scanners/writeable.go` (new `ScanUdevRules()` function), `main.go` (integrated into writable module)
+
+---
+
 ## Files Summary
 
 | File | Status | Lines Added | Lines Removed |
@@ -180,11 +205,11 @@ Risk level downgrade is now:
 | `core/graph.go` | Modified | +100 | -20 |
 | `models/report.go` | Modified | +2 | -0 |
 | `scanners/groups.go` | Modified | +6 | -0 |
-| `scanners/writeable.go` | Modified | +80 | -0 |
+| `scanners/writeable.go` | Modified | +160 | -0 |
 | `scanners/sessions.go` | **New** | 130 | 0 |
 | `scanners/kernelconfig.go` | **New** | 120 | 0 |
 
-**Total:** ~640 lines added, ~100 lines modified
+**Total:** ~720 lines added, ~100 lines modified
 
 ---
 

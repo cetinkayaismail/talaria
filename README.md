@@ -63,6 +63,7 @@ Talaria covers a wide array of local privilege escalation vectors through more t
 ### Persistence & Scheduling
 - **Cron Jobs & Systemd Timers:** Detection of misconfigured scheduled tasks and wildcard injection vulnerabilities (`tar *`, `chown *`).
 - **Service Analysis:** Audits the writability of binaries and scripts invoked by root-level system services (`ExecStart`).
+- **Udev Rules:** Detection of writable udev rule files/directories that allow code execution on device hot-plug.
 
 ### Filesystem & Credentials
 - **Sensitive Data Harvesting:** High-speed scanning for credentials in configuration files, cloud provider metadata (.aws, .kube), shell histories, and system logs.

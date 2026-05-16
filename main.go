@@ -143,19 +143,25 @@ func main() {
 	// ── Stealth: activate package-level config (no-op when flags not set) ────
 	if *maskName != "" {
 		scanners.MaskProcess(*maskName)
-		fmt.Printf("\033[1;90m[stealth] Process masked as: %s\033[0m\n", *maskName)
 	}
 	if *atimeRestore {
 		scanners.StealthCfg.AtimeRestore = true
-		fmt.Printf("\033[1;90m[stealth] atime-restore: enabled\033[0m\n")
+	}
+
+	core.PrintBanner()
+	if *maskName != "" {
+		fmt.Printf("%s[stealth] Process masked as: %s%s\n", core.ColorGray, *maskName, core.ColorReset)
+	}
+	if *atimeRestore {
+		fmt.Printf("%s[stealth] atime-restore: enabled%s\n", core.ColorGray, core.ColorReset)
 	}
 
 	// ── Lazy CPU count for adaptive throttle (computed once) ─────────────────
 	numCPUs := 1
 	if *throttleLoad > 0 {
 		numCPUs = scanners.GetNumCPUs()
-		fmt.Printf("\033[1;90m[stealth] Adaptive throttle: load/cpu > %.2f → extra pause (cpus=%d)\033[0m\n",
-			*throttleLoad, numCPUs)
+		fmt.Printf("%s[stealth] Adaptive throttle: load/cpu > %.2f → extra pause (cpus=%d)%s\n",
+			core.ColorGray, *throttleLoad, numCPUs, core.ColorReset)
 	}
 
 	applyEvasion := func() {
@@ -215,10 +221,11 @@ func main() {
 	}
 	ioSemaphore := make(chan struct{}, ioLimitVal)
 	if *ioLimit != 0 || ioLimitVal != 2 {
-		fmt.Printf("\033[1;90m[io] I/O concurrency limit: %d (based on RLIMIT_NOFILE=%d)\033[0m\n", ioLimitVal, getAvailableFileDescriptors())
+		fmt.Printf("%s[io] I/O concurrency limit: %d (based on RLIMIT_NOFILE=%d)%s\n", core.ColorGray, ioLimitVal, getAvailableFileDescriptors(), core.ColorReset)
 	}
 
-	fmt.Println("\033[1;34m[!] Talaria Assessment Started\033[0m")
+	fmt.Printf("%s[!] Talaria Assessment Started%s\n", core.ColorBlue, core.ColorReset)
+	startTime := time.Now()
 	runAll := selectedModules["all"]
 	timeout := 2 * time.Second
 
@@ -258,31 +265,29 @@ func main() {
 				<-ioSemaphore
 				storeSecrets(files, content)
 
-				fmt.Printf("\033[1;32m[+] Scanning Secrets in: %s\033[0m\n", target)
-				for _, f := range files {
-					color := "\033[1;33m"
-					if f.RiskLevel == "CRITICAL" {
-						color = "\033[1;31m"
-					} else if f.RiskLevel == "HIGH" {
-						color = "\033[1;35m"
-					}
-					reason := f.Type
-					for _, c := range content {
-						if c.Path == f.Path {
-							reason += " | " + c.Snippet
-							break
+				if len(files) > 0 {
+					core.PrintSectionHeader(fmt.Sprintf("Secrets: %s", target))
+					for _, f := range files {
+						reason := f.Type
+						for _, c := range content {
+							if c.Path == f.Path {
+								reason += " | " + c.Snippet
+								break
+							}
 						}
+						core.PrintFinding(f.RiskLevel, "Secret Found", map[string]string{
+							"Path":   f.Path,
+							"Detail": reason,
+						}, "")
 					}
-					fmt.Printf("%s[%s] Secret Found\033[0m\n └─ Path   : %s\n └─ Detail : %s\n", color, f.RiskLevel, f.Path, reason)
 				}
 			}
 
 			rootFiles, rootContent := scanners.ScanRootSecrets()
 			if len(rootFiles) > 0 {
 				storeSecrets(rootFiles, rootContent)
-				fmt.Printf("\033[1;32m[+] Scanning Root Secrets...\033[0m\n")
+				core.PrintSectionHeader("Root Secrets")
 				for _, f := range rootFiles {
-					color := "\033[1;31m"
 					reason := f.Type
 					for _, c := range rootContent {
 						if c.Path == f.Path {
@@ -290,7 +295,10 @@ func main() {
 							break
 						}
 					}
-					fmt.Printf("%s[%s] Root Secret Found\033[0m\n └─ Path   : %s\n └─ Detail : %s\n", color, f.RiskLevel, f.Path, reason)
+					core.PrintFinding("CRITICAL", "Root Secret Found", map[string]string{
+						"Path":   f.Path,
+						"Detail": reason,
+					}, "")
 				}
 			}
 		}()
@@ -309,15 +317,24 @@ func main() {
 				mu.Lock()
 				report.SUID = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning SUID Binaries...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] SUID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
-						if !isProfessional && r.ExploitHint != "" {
-							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
+				if len(results) > 0 {
+					core.PrintSectionHeader("SUID Binaries")
+					for _, r := range results {
+						severity := "INFO"
+						if r.IsDangerous {
+							severity = "CRITICAL"
 						}
-					} else {
-						fmt.Printf("\033[1;33m[INFO] SUID Binary\033[0m\n └─ Path   : %s\n", r.Path)
+						
+						details := map[string]string{"Path": r.Path}
+						if r.Reason != "" {
+							details["Reason"] = r.Reason
+						}
+						
+						hint := ""
+						if !isProfessional && r.ExploitHint != "" {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(severity, "SUID Binary", details, hint)
 					}
 				}
 			}
@@ -337,12 +354,18 @@ func main() {
 				mu.Lock()
 				report.SGID = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning SGID Binaries...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] SGID Binary Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
-						if !isProfessional && r.ExploitHint != "" {
-							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
+				if len(results) > 0 {
+					core.PrintSectionHeader("SGID Binaries")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional && r.ExploitHint != "" {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding("CRITICAL", "SGID Binary Found", map[string]string{
+								"Path":   r.Path,
+								"Reason": r.Reason,
+							}, hint)
 						}
 					}
 				}
@@ -361,10 +384,16 @@ func main() {
 				mu.Lock()
 				report.Processes = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Processes...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Dangerous Process\033[0m\n └─ PID    : %d\n └─ User   : %s\n └─ Command: %s\n", r.PID, r.User, r.Command)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Processes")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "Dangerous Process", map[string]string{
+								"PID":     fmt.Sprintf("%d", r.PID),
+								"User":    r.User,
+								"Command": r.Command,
+							}, "")
+						}
 					}
 				}
 			}
@@ -384,12 +413,19 @@ func main() {
 				mu.Lock()
 				report.CronJobs = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Cron Jobs & Systemd Timers...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] CronJob Found\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
-					} else if r.IsRootJob {
-						fmt.Printf("\033[1;33m[INFO] Root CronJob\033[0m\n └─ Command: %s\n", r.Command)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Cron Jobs & Timers")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "CronJob Found", map[string]string{
+								"Command": r.Command,
+								"Reason":  r.Reason,
+							}, "")
+						} else if r.IsRootJob {
+							core.PrintFinding("INFO", "Root CronJob", map[string]string{
+								"Command": r.Command,
+							}, "")
+						}
 					}
 				}
 			}
@@ -403,7 +439,10 @@ func main() {
 				mu.Unlock()
 				for _, r := range systemdResults {
 					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Systemd Timer Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
+						core.PrintFinding("CRITICAL", "Systemd Timer Found", map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, "")
 					}
 				}
 			}
@@ -421,14 +460,21 @@ func main() {
 				mu.Lock()
 				report.SudoPrivileges = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Sudo Privileges...\033[0m\n")
-				for _, r := range results {
-					if r.HasLDPreload {
-						fmt.Printf("\033[1;35m[CRITICAL] Sudo Privilege (LD_PRELOAD)\033[0m\n └─ Reason : %s\n", r.Reason)
-					} else if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Sudo Privilege Found\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
-					} else if r.NoPassword {
-						fmt.Printf("\033[1;33m[HIGH] Sudo NOPASSWD\033[0m\n └─ Command: %s\n └─ Reason : %s\n", r.Command, r.Reason)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Sudo Privileges")
+					for _, r := range results {
+						severity := "INFO"
+						if r.HasLDPreload || r.IsDangerous {
+							severity = "CRITICAL"
+						} else if r.NoPassword {
+							severity = "HIGH"
+						}
+						
+						details := map[string]string{"Reason": r.Reason}
+						if r.Command != "" {
+							details["Command"] = r.Command
+						}
+						core.PrintFinding(severity, "Sudo Privilege", details, "")
 					}
 				}
 			}
@@ -448,10 +494,15 @@ func main() {
 				mu.Lock()
 				report.Capabilities = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Capabilities...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Capability Found\033[0m\n └─ Path   : %s\n └─ Capabs : %s\n", r.Path, r.Capabilities)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Capabilities")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "Capability Found", map[string]string{
+								"Path":   r.Path,
+								"Capabs": r.Capabilities,
+							}, "")
+						}
 					}
 				}
 			}
@@ -469,10 +520,12 @@ func main() {
 				mu.Lock()
 				report.NFSExports = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning NFS Exports...\033[0m\n")
-				for _, r := range results {
-					if r.HasNoRootSquash {
-						fmt.Printf("\033[1;31m[CRITICAL] NFS no_root_squash on %s\033[0m\n", r.Path)
+				if len(results) > 0 {
+					core.PrintSectionHeader("NFS Exports")
+					for _, r := range results {
+						if r.HasNoRootSquash {
+							core.PrintFinding("CRITICAL", "NFS no_root_squash", map[string]string{"Path": r.Path}, "")
+						}
 					}
 				}
 			}
@@ -490,13 +543,23 @@ func main() {
 				mu.Lock()
 				report.NetworkConnections = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Network Connections...\033[0m\n")
-				for _, r := range results {
-					if r.State == "LISTEN" {
-						if r.IsDangerous {
-							fmt.Printf("\033[1;31m[CRITICAL] Suspicious Network Listener\033[0m\n └─ Addr   : %s:%d (%s)\n └─ Process: %s\n └─ Reason : %s\n", r.LocalAddr, r.LocalPort, r.Protocol, r.ProcessName, r.Reason)
-						} else {
-							fmt.Printf("\033[1;33m[INFO] Active Listener\033[0m\n └─ Addr   : %s:%d (%s)\n └─ Process: %s\n", r.LocalAddr, r.LocalPort, r.Protocol, r.ProcessName)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Network Connections")
+					for _, r := range results {
+						if r.State == "LISTEN" {
+							severity := "INFO"
+							if r.IsDangerous {
+								severity = "CRITICAL"
+							}
+							
+							details := map[string]string{
+								"Addr":    fmt.Sprintf("%s:%d (%s)", r.LocalAddr, r.LocalPort, r.Protocol),
+								"Process": r.ProcessName,
+							}
+							if r.Reason != "" {
+								details["Reason"] = r.Reason
+							}
+							core.PrintFinding(severity, "Active Listener", details, "")
 						}
 					}
 				}
@@ -515,28 +578,28 @@ func main() {
 				mu.Lock()
 				report.Vulnerabilities = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning System Vulnerabilities...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						for _, v := range r.Vulnerabilities {
-							statusColor := "\033[1;31m"
-							statusText := "CRITICAL"
-							if v.PatchStatus == "likely_patched" {
-								statusColor = "\033[1;33m"
-								statusText = "POTENTIAL"
-							}
-							fmt.Printf("%s[%s] %s Vulnerability\033[0m\n"+
-								" └─ CVE     : %s\n"+
-								" └─ Name    : %s\n"+
-								" └─ Version : %s\n"+
-								" └─ Exploit : %s\n",
-								statusColor, statusText, r.Software, v.CVE, v.Name, r.Version, v.ExploitHint)
-							if v.PatchStatus == "likely_patched" {
-								fmt.Printf(" └─ Status  : Likely patched on this distribution (backport detected)\n")
+				if len(results) > 0 {
+					core.PrintSectionHeader("System Vulnerabilities")
+					for _, r := range results {
+						if r.IsDangerous {
+							for _, v := range r.Vulnerabilities {
+								severity := "CRITICAL"
+								if v.PatchStatus == "likely_patched" {
+									severity = "POTENTIAL"
+								}
+								
+								details := map[string]string{
+									"CVE":     v.CVE,
+									"Name":    v.Name,
+									"Version": r.Version,
+									"Software": r.Software,
+								}
+								if v.PatchStatus == "likely_patched" {
+									details["Status"] = "Likely patched (backport detected)"
+								}
+								core.PrintFinding(severity, "Vulnerability Found", details, v.ExploitHint)
 							}
 						}
-					} else {
-						fmt.Printf("\033[1;32m[OK] %s %s — No known kernel CVEs matched\033[0m\n", r.Software, r.Version)
 					}
 				}
 			}
@@ -556,16 +619,15 @@ func main() {
 				mu.Lock()
 				report.Writeable = append(report.Writeable, results...)
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Writeable Files...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						color := "\033[1;33m"
-						if r.RiskLevel == "CRITICAL" {
-							color = "\033[1;31m"
-						} else if r.RiskLevel == "MEDIUM" {
-							color = "\033[1;34m"
+				if len(results) > 0 {
+					core.PrintSectionHeader("Writeable Files")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding(r.RiskLevel, "Writable File Found", map[string]string{
+								"Path":   r.Path,
+								"Reason": r.Reason,
+							}, "")
 						}
-						fmt.Printf("%s[%s] Writable File Found\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", color, r.RiskLevel, r.Path, r.Reason)
 					}
 				}
 			}
@@ -576,7 +638,10 @@ func main() {
 				report.Writeable = append(report.Writeable, genResults...)
 				mu.Unlock()
 				for _, r := range genResults {
-					fmt.Printf("\033[1;31m[CRITICAL] Systemd Generator Writable\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
+					core.PrintFinding("CRITICAL", "Systemd Generator Writable", map[string]string{
+						"Path":   r.Path,
+						"Reason": r.Reason,
+					}, "")
 				}
 			}
 
@@ -587,7 +652,24 @@ func main() {
 				report.Writeable = append(report.Writeable, svcResults...)
 				mu.Unlock()
 				for _, r := range svcResults {
-					fmt.Printf("\033[1;31m[CRITICAL] Writable Systemd Service\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Reason)
+					core.PrintFinding("CRITICAL", "Writable Systemd Service", map[string]string{
+						"Path":   r.Path,
+						"Reason": r.Reason,
+					}, "")
+				}
+			}
+
+			// ── Writable udev rules (#5) ───────────────────────────────────
+			udevResults, err := scanners.ScanUdevRules()
+			if err == nil && len(udevResults) > 0 {
+				mu.Lock()
+				report.Writeable = append(report.Writeable, udevResults...)
+				mu.Unlock()
+				for _, r := range udevResults {
+					core.PrintFinding("CRITICAL", r.Type, map[string]string{
+						"Path":   r.Path,
+						"Reason": r.Reason,
+					}, "")
 				}
 			}
 		}()
@@ -606,12 +688,17 @@ func main() {
 				mu.Lock()
 				report.Sockets = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Sockets...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Dangerous Socket\033[0m\n └─ Path   : %s\n └─ Service: %s\n", r.Path, r.Service)
-					} else if r.IsWritable {
-						fmt.Printf("\033[1;33m[INFO] Writable Socket\033[0m\n └─ Path   : %s\n", r.Path)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Sockets")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "Dangerous Socket", map[string]string{
+								"Path":    r.Path,
+								"Service": r.Service,
+							}, "")
+						} else if r.IsWritable {
+							core.PrintFinding("INFO", "Writable Socket", map[string]string{"Path": r.Path}, "")
+						}
 					}
 				}
 			}
@@ -631,12 +718,20 @@ func main() {
 				mu.Lock()
 				report.FilePermissions = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning File Permissions...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] File Permission Issue\033[0m\n └─ Path   : %s\n └─ Reason : %s\n", r.Path, r.Issue)
-					} else if r.IsWorldWritable {
-						fmt.Printf("\033[1;33m[HIGH] World Writable\033[0m\n └─ Path   : %s\n", r.Path)
+				if len(results) > 0 {
+					core.PrintSectionHeader("File Permissions")
+					for _, r := range results {
+						severity := "INFO"
+						if r.IsDangerous {
+							severity = "CRITICAL"
+						} else if r.IsWorldWritable {
+							severity = "HIGH"
+						}
+						
+						core.PrintFinding(severity, "File Permission Issue", map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Issue,
+						}, "")
 					}
 				}
 			}
@@ -656,12 +751,19 @@ func main() {
 				mu.Lock()
 				report.FilePermsExploit = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning File Permissions Exploit...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] File Permissions Exploit\033[0m\n └─ Path   : %s\n └─ Method : %s\n └─ Vector : %s\n", r.Path, r.ExploitMethod, r.PotentialAttackVector)
-						if !isProfessional {
-							fmt.Printf(" └─ Exploit: Prepend a malicious binary to your PATH and run the target.\n")
+				if len(results) > 0 {
+					core.PrintSectionHeader("File Permissions Exploit")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = "Prepend a malicious binary to your PATH and run the target."
+							}
+							core.PrintFinding("CRITICAL", "File Permissions Exploit", map[string]string{
+								"Path":   r.Path,
+								"Method": r.ExploitMethod,
+								"Vector": r.PotentialAttackVector,
+							}, hint)
 						}
 					}
 				}
@@ -680,12 +782,18 @@ func main() {
 				mu.Lock()
 				report.Groups = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Group Memberships...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Privileged Group Membership\033[0m\n └─ Group  : %s\n └─ Reason : %s\n", r.GroupName, r.Reason)
-						if !isProfessional && r.ExploitHint != "" {
-							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Group Memberships")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional && r.ExploitHint != "" {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding("CRITICAL", "Privileged Group Membership", map[string]string{
+								"Group":  r.GroupName,
+								"Reason": r.Reason,
+							}, hint)
 						}
 					}
 				}
@@ -704,12 +812,18 @@ func main() {
 				mu.Lock()
 				report.Services = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Local Services (MySQL/Redis)...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] %s Vulnerability Found\033[0m\n └─ Service : %s\n └─ Reason  : %s\n", r.ServiceName, r.ServiceName, r.Reason)
-						if !isProfessional && r.ExploitHint != "" {
-							fmt.Printf(" └─ Exploit : %s\n", r.ExploitHint)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Local Services")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional && r.ExploitHint != "" {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding("CRITICAL", "Service Vulnerability", map[string]string{
+								"Service": r.ServiceName,
+								"Reason":  r.Reason,
+							}, hint)
 						}
 					}
 				}
@@ -728,12 +842,18 @@ func main() {
 				mu.Lock()
 				report.Packages = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Package Managers (doas, snap, flatpak)...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] %s Misconfiguration Found\033[0m\n └─ Tool   : %s\n └─ Reason : %s\n", r.Name, r.Name, r.Reason)
-						if !isProfessional && r.ExploitHint != "" {
-							fmt.Printf(" └─ Exploit: %s\n", r.ExploitHint)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Package Managers")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional && r.ExploitHint != "" {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding("CRITICAL", "Package Misconfiguration", map[string]string{
+								"Tool":   r.Name,
+								"Reason": r.Reason,
+							}, hint)
 						}
 					}
 				}
@@ -752,10 +872,15 @@ func main() {
 				mu.Lock()
 				report.PATHHijack = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning $PATH for Hijacking Vectors...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] PATH Hijacking Vector\033[0m\n └─ Dir    : %s\n └─ Reason : %s\n", r.Directory, r.Reason)
+				if len(results) > 0 {
+					core.PrintSectionHeader("PATH Hijacking")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "PATH Hijacking Vector", map[string]string{
+								"Dir":    r.Directory,
+								"Reason": r.Reason,
+							}, "")
+						}
 					}
 				}
 			}
@@ -774,25 +899,29 @@ func main() {
 			mu.Lock()
 			report.SSHKeys = results
 			mu.Unlock()
-			fmt.Printf("\033[1;32m[+] Scanning SSH Keys...\033[0m\n")
-			for _, r := range results {
-				if r.IsDangerous {
-					if r.Type == "private_key" {
-						fmt.Printf("\033[1;31m[CRITICAL] Readable SSH Private Key\033[0m\n"+
-							" └─ Path    : %s\n"+
-							" └─ Owner   : %s\n"+
-							" └─ Exploit : chmod 400 id_rsa && ssh -i id_rsa %s@<target>\n"+
-							" └─ Preview : %s\n",
-							r.Path, r.TargetUser, r.TargetUser, r.Preview)
-					} else {
-						fmt.Printf("\033[1;31m[CRITICAL] SSH Key Vector\033[0m\n"+
-							" └─ Path    : %s\n"+
-							" └─ Type    : %s\n"+
-							" └─ Reason  : %s\n",
-							r.Path, r.Type, r.Reason)
+			if len(results) > 0 {
+				core.PrintSectionHeader("SSH Keys")
+				for _, r := range results {
+					if r.IsDangerous {
+						if r.Type == "private_key" {
+							core.PrintFinding("CRITICAL", "SSH Private Key Exposed", map[string]string{
+								"Path":    r.Path,
+								"Owner":   r.TargetUser,
+								"Preview": r.Preview,
+							}, fmt.Sprintf("chmod 400 %s && ssh -i %s %s@localhost", r.Path, r.Path, r.TargetUser))
+						} else {
+							core.PrintFinding("CRITICAL", "SSH Key Vector", map[string]string{
+								"Path":   r.Path,
+								"Type":   r.Type,
+								"Reason": r.Reason,
+							}, "")
+						}
+					} else if r.Type == "private_key" && r.Preview == "" {
+						core.PrintFinding("INFO", "SSH Private Key Found (not readable)", map[string]string{
+							"Path":  r.Path,
+							"Owner": r.TargetUser,
+						}, "")
 					}
-				} else if r.Type == "private_key" && r.Preview == "" {
-					fmt.Printf("\033[1;33m[INFO] SSH Private Key Exists (not readable)\033[0m\n └─ Path : %s | Owner: %s\n", r.Path, r.TargetUser)
 				}
 			}
 		}()
@@ -808,9 +937,12 @@ func main() {
 				mu.Lock()
 				report.PtraceScope = result
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning ptrace Scope...\033[0m\n")
 				if result.IsDangerous {
-					fmt.Printf("\033[1;31m[CRITICAL] Ptrace Scope Vulnerability\033[0m\n └─ Scope  : %d\n └─ Reason : %s\n", result.Scope, result.Reason)
+					core.PrintSectionHeader("Ptrace Scope")
+					core.PrintFinding("CRITICAL", "Ptrace Scope Vulnerability", map[string]string{
+						"Scope":  fmt.Sprintf("%d", result.Scope),
+						"Reason": result.Reason,
+					}, "")
 				}
 			}
 		}()
@@ -829,12 +961,17 @@ func main() {
 				mu.Lock()
 				report.ContainerEscape = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Container Escape Vectors...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Container Escape Vector\033[0m\n └─ Vector : %s\n └─ Reason : %s\n", r.Vector, r.Reason)
-					} else {
-						fmt.Printf("\033[1;33m[INFO] %s\033[0m\n", r.Vector)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Container Escape")
+					for _, r := range results {
+						severity := "INFO"
+						if r.IsDangerous {
+							severity = "CRITICAL"
+						}
+						core.PrintFinding(severity, "Container Escape Vector", map[string]string{
+							"Vector": r.Vector,
+							"Reason": r.Reason,
+						}, "")
 					}
 				}
 			}
@@ -854,10 +991,15 @@ func main() {
 				mu.Lock()
 				report.DBusPolicy = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning D-Bus Policies...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] D-Bus Policy Flaw\033[0m\n └─ Service: %s\n └─ Reason : %s\n", r.ServiceName, r.Reason)
+				if len(results) > 0 {
+					core.PrintSectionHeader("D-Bus Policies")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "D-Bus Policy Flaw", map[string]string{
+								"Service": r.ServiceName,
+								"Reason":  r.Reason,
+							}, "")
+						}
 					}
 				}
 			}
@@ -875,10 +1017,16 @@ func main() {
 				mu.Lock()
 				report.SessionHijack = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Session Hijack Vectors (Tmux/Screen)...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						fmt.Printf("\033[1;31m[CRITICAL] Session Hijack Vector\033[0m\n └─ Socket : %s\n └─ Owner  : %s\n └─ Reason : %s\n", r.Path, r.TargetUser, r.Reason)
+				if len(results) > 0 {
+					core.PrintSectionHeader("Session Hijack")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "Session Hijack Vector", map[string]string{
+								"Socket": r.Path,
+								"Owner":  r.TargetUser,
+								"Reason": r.Reason,
+							}, "")
+						}
 					}
 				}
 			}
@@ -898,16 +1046,15 @@ func main() {
 				mu.Lock()
 				report.KernelConfig = results
 				mu.Unlock()
-				fmt.Printf("\033[1;32m[+] Scanning Kernel Config...\033[0m\n")
-				for _, r := range results {
-					if r.IsDangerous {
-						color := "\033[1;33m"
-						if r.RiskLevel == "CRITICAL" {
-							color = "\033[1;31m"
-						} else if r.RiskLevel == "HIGH" {
-							color = "\033[1;35m"
+				if len(results) > 0 {
+					core.PrintSectionHeader("Kernel Config")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding(r.RiskLevel, "Kernel Config Issue", map[string]string{
+								"Config": r.ConfigKey,
+								"Reason": r.Reason,
+							}, "")
 						}
-						fmt.Printf("%s[%s] Kernel Config Issue\033[0m\n └─ Config : %s\n └─ Reason : %s\n", color, r.RiskLevel, r.ConfigKey, r.Reason)
 					}
 				}
 			}
@@ -922,7 +1069,9 @@ func main() {
 	if *outputFile != "" {
 		saveReport(report, *outputFile, *outputFormat, *encryptKey)
 	}
-	fmt.Println("\n\033[1;34m[*] Scan Complete!\033[0m")
+
+	duration := time.Since(startTime).String()
+	core.PrintSummary(report, duration)
 
 	// ── Self-Destruct ────────────────────────────────────────────────────────
 	if *selfDestruct {
