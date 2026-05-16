@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"bufio"
+	"bytes"
 	"io/fs"
 	"math"
 	"os"
@@ -240,10 +241,10 @@ func analyzeFileContent(path, fileName string) string {
 	}
 	defer f.Close()
 
-	// Binary check via file header
+	// Binary check via file header (Magic Bytes + Null Bytes)
 	header := make([]byte, 512)
 	n, err := f.Read(header)
-	if err == nil && n > 0 && isBinaryBytes(header[:n]) {
+	if err == nil && n > 0 && isBinaryContent(header[:n]) {
 		return ""
 	}
 	f.Seek(0, 0)
@@ -609,14 +610,35 @@ func isBinary(name string) bool {
 	return binExts[ext]
 }
 
-// isBinaryBytes checks for null bytes in the file header
-func isBinaryBytes(data []byte) bool {
+// isBinaryContent checks for common binary file signatures and null bytes
+func isBinaryContent(data []byte) bool {
+	// Check magic numbers
+	magicSignatures := [][]byte{
+		{0x7F, 'E', 'L', 'F'},     // ELF
+		{'M', 'Z'},                 // PE (Windows)
+		{0xCA, 0xFE, 0xBA, 0xBE},   // Mach-O (macOS)
+		{0xCF, 0xFA, 0xED, 0xFE},   // Mach-O 64-bit
+		{0x50, 0x4B, 0x03, 0x04},   // ZIP / JAR / APK
+		{0x25, 0x50, 0x44, 0x46},   // PDF
+	}
+	for _, sig := range magicSignatures {
+		if len(data) >= len(sig) && bytes.HasPrefix(data, sig) {
+			return true
+		}
+	}
+
+	// Fallback: Check for null bytes
 	for _, b := range data {
 		if b == 0 {
 			return true
 		}
 	}
 	return false
+}
+
+// isBinaryBytes is kept for backward compatibility but calls isBinaryContent
+func isBinaryBytes(data []byte) bool {
+	return isBinaryContent(data)
 }
 
 // --- Unused but kept for backward compat ---

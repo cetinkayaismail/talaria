@@ -1,6 +1,6 @@
 package models
 
-import "Talaria/scanners"
+import "talaria/scanners"
 
 type ScanReport struct {
 	ScanTime           string                             `json:"scan_time"`
@@ -31,4 +31,6 @@ type ScanReport struct {
 	DBusPolicy         []scanners.DBusPolicyResult        `json:"dbus_policy,omitempty"`
 	Services           []scanners.ServiceAuditResult      `json:"services,omitempty"`
 	Packages           []scanners.PackageAuditResult      `json:"packages,omitempty"`
+	SessionHijack      []scanners.SessionHijackResult     `json:"session_hijack,omitempty"`
+	KernelConfig       []scanners.KernelConfigResult      `json:"kernel_config,omitempty"`
 }

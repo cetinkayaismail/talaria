@@ -264,3 +264,74 @@ func ScanSystemdGenerators() ([]WriteableResult, error) {
 
 	return results, nil
 }
+
+// ScanWritableServices checks for writable systemd service unit files in /etc/systemd/system
+func ScanWritableServices() ([]WriteableResult, error) {
+	var results []WriteableResult
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return results, err
+	}
+	uid, _ := strconv.Atoi(currentUser.Uid)
+
+	gidStrings, _ := currentUser.GroupIds()
+	userGids := make(map[int]bool)
+	for _, g := range gidStrings {
+		id, _ := strconv.Atoi(g)
+		userGids[id] = true
+	}
+
+	checkDir := func(root string) {
+		filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return filepath.SkipDir
+			}
+			if info.IsDir() {
+				return nil
+			}
+			// Only check .service files
+			if !strings.HasSuffix(path, ".service") {
+				return nil
+			}
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				return nil
+			}
+			canWrite := false
+			if uid == int(stat.Uid) && (stat.Mode&syscall.S_IWUSR != 0) {
+				canWrite = true
+			} else if userGids[int(stat.Gid)] && (stat.Mode&syscall.S_IWGRP != 0) {
+				canWrite = true
+			} else if stat.Mode&syscall.S_IWOTH != 0 {
+				canWrite = true
+			}
+			if canWrite {
+				results = append(results, WriteableResult{
+					Path:            path,
+					OwnerUID:        int(stat.Uid),
+					CurrentUserOwns: (uid == int(stat.Uid)),
+					IsExecutable:    false,
+					IsDangerous:     true,
+					Type:            "Writable Systemd Service",
+					RiskLevel:       "CRITICAL",
+					Reason:          "Systemd service unit file is writable. Modify ExecStart to execute code as root on restart.",
+				})
+			}
+			return nil
+		})
+	}
+
+	// Check /etc/systemd/system for writable service files
+	if _, err := os.Stat("/etc/systemd/system"); err == nil {
+		checkDir("/etc/systemd/system")
+	}
+
+	// Check /etc/systemd/system/*.d/ override directories
+	sysdDirs, _ := filepath.Glob("/etc/systemd/system/*.d")
+	for _, d := range sysdDirs {
+		checkDir(d)
+	}
+
+	return results, nil
+}

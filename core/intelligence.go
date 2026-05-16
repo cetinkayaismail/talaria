@@ -3,8 +3,9 @@ package core
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
-	"Talaria/models"
+	"talaria/models"
 )
 
 type ChainResult struct {
@@ -25,12 +26,16 @@ func init() {
 	registeredChains = []AttackChain{
 		&WritableScheduledChain{},
 		&LDPreloadChain{},
+		&LdSoPreloadChain{},         // (#2)
 		&SGIDShadowChain{},
 		&WritableSSHKeysChain{},
 		&WritableSSHDirChain{},
 		&PtraceRootChain{},
 		&DockerSocketGroupChain{},
 		&DockerContainerEscapeChain{},
+		&WritablePATHSUIDChain{},    // (#1)
+		&SessionHijackChain{},       // (#4)
+		&WritableServiceChain{},     // (#3)
 	}
 }
 
@@ -43,32 +48,110 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 		allResults = append(allResults, results...)
 	}
 
-	// Run DFS Graph Analysis
+	// Run DFS Graph Analysis — search for ALL goal types
 	graph := BuildIntelligenceGraph(report)
 	startNode := fmt.Sprintf("user:%s", report.TargetUser)
-	paths := graph.FindPaths(startNode, "goal:root", 5)
+	goals := []string{"goal:root", "goal:sudo", "goal:shadow", "goal:docker_group"}
 
-	for _, path := range paths {
-		if len(path) == 0 {
-			continue
-		}
-		
-		desc := "Attack Path:\n"
-		var targetPath string
-		for i, edge := range path {
-			desc += fmt.Sprintf("  %d. %s -> (%s) -> %s\n", i+1, edge.From.ID, edge.Description, edge.To.ID)
-			// Heuristic to grab a target path for AppArmor checking
-			if strings.HasPrefix(edge.To.ID, "file:") {
-				targetPath = strings.TrimPrefix(edge.To.ID, "file:")
+	// Helper to collect all file paths from an edge path for defense checking
+	collectTargetPaths := func(path []Edge) []string {
+		var paths []string
+		for _, edge := range path {
+			if strings.HasPrefix(edge.To.ID, "file:") || strings.HasPrefix(edge.To.ID, "suid:") {
+				p := strings.TrimPrefix(edge.To.ID, "file:")
+				p = strings.TrimPrefix(p, "suid:")
+				paths = append(paths, p)
+			}
+			if strings.HasPrefix(edge.From.ID, "file:") || strings.HasPrefix(edge.From.ID, "suid:") {
+				p := strings.TrimPrefix(edge.From.ID, "file:")
+				p = strings.TrimPrefix(p, "suid:")
+				paths = append(paths, p)
 			}
 		}
+		return paths
+	}
+
+	// Check if ANY file in the path is blocked by defenses
+	isAnyPathBlocked := func(targetPaths []string) (bool, string) {
+		for _, tp := range targetPaths {
+			if tp == "" {
+				continue
+			}
+			defenses := assessDefenses(tp)
+			if defenses.AppArmorEnabled {
+				return true, fmt.Sprintf(" [DEFENSE: %s is confined by AppArmor]", tp)
+			}
+			if defenses.SELinuxEnabled {
+				return true, " [DEFENSE: SELinux enforcing on this system]"
+			}
+			if checkDefenseMechanisms(tp) {
+				return true, fmt.Sprintf(" [DEFENSE ACTIVE: %s is confined by AppArmor]", tp)
+			}
+		}
+		return false, ""
+	}
+
+	for _, goal := range goals {
+		paths := graph.FindPaths(startNode, goal, 5)
+
+		for _, path := range paths {
+			if len(path) == 0 {
+				continue
+			}
+
+			desc := "Attack Path:\n"
+			for i, edge := range path {
+				desc += fmt.Sprintf("  %d. %s -> (%s) -> %s (weight:%d)\n", i+1, edge.From.ID, edge.Description, edge.To.ID, edge.Weight)
+			}
+
+			targetPaths := collectTargetPaths(path)
+
+			goalName := strings.TrimPrefix(goal, "goal:")
+			riskLevel := "100% CONFIRMED"
+
+			// Check ALL files in the path for defenses
+			blocked, blockMsg := isAnyPathBlocked(targetPaths)
+			if blocked {
+				riskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
+				desc += blockMsg
+			}
 
 		allResults = append(allResults, ChainResult{
-			Name:        fmt.Sprintf("Complex Attack Graph Found (%d steps)", len(path)),
+			Name:        fmt.Sprintf("Attack Graph: %s (%d steps) → %s", goalName, len(path), goalName),
 			Description: desc,
-			RiskLevel:   "100% CONFIRMED",
-			TargetPath:  targetPath,
+			RiskLevel:   riskLevel,
+			TargetPath:  strings.Join(targetPaths, ","),
 		})
+		}
+
+		// Also try FindBestPath for highest-weighted path
+		bestPath := graph.FindBestPath(startNode, goal, 5)
+		if bestPath != nil {
+			totalWeight := 0
+			desc := "Best Attack Path:\n"
+			for i, edge := range bestPath {
+				totalWeight += edge.Weight
+				desc += fmt.Sprintf("  %d. %s -> (%s) [weight:%d] -> %s\n", i+1, edge.From.ID, edge.Description, edge.Weight, edge.To.ID)
+			}
+
+			targetPaths := collectTargetPaths(bestPath)
+
+			goalName := strings.TrimPrefix(goal, "goal:")
+			riskLevel := "100% CONFIRMED"
+
+			blocked, blockMsg := isAnyPathBlocked(targetPaths)
+			if blocked {
+				riskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
+				desc += blockMsg
+			}
+
+		allResults = append(allResults, ChainResult{
+			Name:        fmt.Sprintf("Best Attack Graph: %s (%d steps, score=%d) → %s", goalName, len(bestPath), totalWeight, goalName),
+			Description: desc,
+			RiskLevel:   riskLevel,
+			TargetPath:  strings.Join(targetPaths, ","),
+		})
+		}
 	}
 
 	if len(allResults) == 0 {
@@ -76,15 +159,28 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 		return
 	}
 
-	// Apply Context-Aware Downgrading (AppArmor / SELinux Checks)
+	// Apply Context-Aware Downgrading (AppArmor / SELinux Checks) (#9)
 	for i, res := range allResults {
-		if res.RiskLevel == "100% CONFIRMED" && res.TargetPath != "" {
-			if checkDefenseMechanisms(res.TargetPath) {
-				allResults[i].RiskLevel = "POTENTIAL - BLOCKED BY APPARMOR"
-				if allResults[i].Description != "" {
-					allResults[i].Description += " | "
+		if res.RiskLevel == "100% CONFIRMED" {
+			defenses := assessDefenses(res.TargetPath)
+			if defenses.AppArmorEnabled || defenses.SELinuxEnabled {
+				allResults[i].RiskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
+				sb := res.Description
+				if defenses.AppArmorEnabled {
+					sb += fmt.Sprintf(" [DEFENSE: %s is confined by AppArmor]", res.TargetPath)
 				}
-				allResults[i].Description += fmt.Sprintf("[DEFENSE ACTIVE: %s is confined by AppArmor]", res.TargetPath)
+				if defenses.SELinuxEnabled {
+					sb += fmt.Sprintf(" [DEFENSE: SELinux enforcing on this system]")
+				}
+				allResults[i].Description = sb
+			} else if res.TargetPath != "" {
+				if checkDefenseMechanisms(res.TargetPath) {
+					allResults[i].RiskLevel = "POTENTIAL - BLOCKED BY APPARMOR"
+					if allResults[i].Description != "" {
+						allResults[i].Description += " | "
+					}
+					allResults[i].Description += fmt.Sprintf("[DEFENSE ACTIVE: %s is confined by AppArmor]", res.TargetPath)
+				}
 			}
 		}
 	}
@@ -102,6 +198,47 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 			fmt.Printf("  Exploit: %s\n", res.Exploit)
 		}
 	}
+}
+
+// ── Defense Assessment (#9) ──────────────────────────────────────────────
+
+// DefenseStatus holds the results of defense mechanism checks
+type DefenseStatus struct {
+	AppArmorEnabled bool
+	SELinuxEnabled  bool
+	IsContainer     bool
+}
+
+// assessDefenses checks multiple defense layers for a target path
+func assessDefenses(targetPath string) DefenseStatus {
+	status := DefenseStatus{}
+
+	// Check AppArmor via /proc/self/attr/apparmor/current
+	if data, err := os.ReadFile("/proc/self/attr/apparmor/current"); err == nil {
+		profile := strings.TrimSpace(string(data))
+		if profile != "" && profile != "unconfined" {
+			status.AppArmorEnabled = true
+		}
+	}
+
+	// Check SELinux via /proc/self/attr/current or /selinux/enforce
+	if data, err := os.ReadFile("/proc/self/attr/current"); err == nil {
+		ctx := strings.TrimSpace(string(data))
+		if len(ctx) > 0 && !strings.Contains(ctx, "unconfined") && strings.Contains(ctx, ":") {
+			status.SELinuxEnabled = true
+		}
+	}
+
+	// Check /selinux/enforce as alternative
+	if _, err := os.Stat("/selinux/enforce"); err == nil {
+		if data, err := os.ReadFile("/selinux/enforce"); err == nil {
+			if strings.TrimSpace(string(data)) == "1" {
+				status.SELinuxEnabled = true
+			}
+		}
+	}
+
+	return status
 }
 
 // ── CHAIN 1: Writable script/binary vs. scheduled execution ──────────────
@@ -175,6 +312,39 @@ func (c *LDPreloadChain) Evaluate(report *models.ScanReport) []ChainResult {
 			Exploit:     "Set LD_PRELOAD=<your.so>, run any NOPASSWD sudo command → root shell.",
 		}}
 	}
+	return nil
+}
+
+// ── CHAIN 2b: LD_SO_PRELOAD /etc/ld.so.preload writable (#2) ──────────
+type LdSoPreloadChain struct{}
+
+func (c *LdSoPreloadChain) Evaluate(report *models.ScanReport) []ChainResult {
+	// Check if /etc/ld.so.preload exists and is writable
+	for _, w := range report.Writeable {
+		if w.Path == "/etc/ld.so.preload" && w.IsDangerous {
+			return []ChainResult{{
+				Name:        "/etc/ld.so.preload is writable",
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Write a malicious shared library path to /etc/ld.so.preload. Every SUID binary run afterwards will load it.",
+				Exploit:     "echo '/tmp/malicious.so' > /etc/ld.so.preload → run any SUID binary → root shell",
+				TargetPath:  "/etc/ld.so.preload",
+			}}
+		}
+	}
+
+	// Also check /etc/ld.so.conf.d/ for writable config files
+	for _, w := range report.Writeable {
+		if strings.HasPrefix(w.Path, "/etc/ld.so.conf.d/") && w.IsDangerous {
+			return []ChainResult{{
+				Name:        fmt.Sprintf("Writable ld.so.conf.d entry: %s", w.Path),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Add a malicious library path to ldconfig. Next ldconfig run or SUID binary execution loads it.",
+				Exploit:     "Add '/tmp/malicious_libs' to the config and place a .so with a standard name override. Run ldconfig or wait for cron.",
+				TargetPath:  w.Path,
+			}}
+		}
+	}
+
 	return nil
 }
 
@@ -314,7 +484,78 @@ func (c *DockerContainerEscapeChain) Evaluate(report *models.ScanReport) []Chain
 	return results
 }
 
-// resolveCommandPath intelligently checks if a command string eventually targets a specific file path
+// ── CHAIN 9: Writable PATH + SUID binary cross-chain (#1) ──────────────
+type WritablePATHSUIDChain struct{}
+
+func (c *WritablePATHSUIDChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+
+	for _, ph := range report.PATHHijack {
+		if !ph.IsDangerous || !ph.IsWriteable {
+			continue
+		}
+
+		for _, suid := range report.SUID {
+			if !suid.IsDangerous {
+				continue
+			}
+			// Check if the SUID binary is a script (not ELF) that might use PATH-resolved commands
+			if strings.HasSuffix(suid.Path, ".sh") || strings.HasSuffix(suid.Path, ".py") ||
+				strings.HasSuffix(suid.Path, ".pl") || strings.HasSuffix(suid.Path, ".rb") {
+				results = append(results, ChainResult{
+					Name:        fmt.Sprintf("Writable PATH entry '%s' can hijack SUID script '%s'", ph.Directory, suid.Path),
+					RiskLevel:   "100% CONFIRMED",
+					Description: fmt.Sprintf("Place a malicious binary named after a common command (ls, cp, ps) in %s. When the SUID script runs, it executes your payload as root.", ph.Directory),
+					Exploit:     fmt.Sprintf("echo '#!/bin/sh\ncp /bin/bash /tmp/rootbash && chmod +s /tmp/rootbash' > %s/ls && chmod +x %s/ls && PATH=%s:$PATH %s", ph.Directory, ph.Directory, ph.Directory, suid.Path),
+					TargetPath:  suid.Path,
+				})
+			}
+		}
+	}
+
+	return results
+}
+
+// ── CHAIN 10: Session hijack (tmux/screen) to root (#4) ──────────────
+type SessionHijackChain struct{}
+
+func (c *SessionHijackChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, sh := range report.SessionHijack {
+		if sh.IsDangerous && strings.Contains(sh.TargetUser, "root") {
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Tmux/Screen session of root hijackable via '%s'", sh.Path),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Attach to the root tmux/screen session and execute commands with root privileges.",
+				Exploit:     fmt.Sprintf("tmux -S %s attach || screen -x root/", sh.Path),
+				TargetPath:  sh.Path,
+			})
+		}
+	}
+	return results
+}
+
+// ── CHAIN 11: Writable systemd service files (#3) ──────────────
+type WritableServiceChain struct{}
+
+func (c *WritableServiceChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, w := range report.Writeable {
+		if strings.Contains(w.Type, "Writable Systemd Service") || strings.Contains(w.Type, "Systemd Generator Writable") {
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Writable systemd unit: %s", w.Path),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Modify ExecStart to execute a malicious command as root on next service restart or system boot.",
+				Exploit:     fmt.Sprintf("echo -e '[Service]\\nExecStart=/tmp/rootshell\\n' > %s && systemctl daemon-reload && systemctl restart <service>", w.Path),
+				TargetPath:  w.Path,
+			})
+		}
+	}
+	return results
+}
+
+// resolveCommandPath intelligently checks if a command string eventually targets a specific file path.
+// It handles: direct absolute paths, basename (PATH-resolved), cd+command patterns with filepath.Abs.
 func resolveCommandPath(command string, targetPath string) bool {
 	// Direct match (absolute path used in command)
 	if strings.Contains(command, targetPath) {
@@ -322,7 +563,6 @@ func resolveCommandPath(command string, targetPath string) bool {
 	}
 
 	// Basename match for PATH-resolved execution
-	// Example: command="overwrite.sh", targetPath="/usr/local/bin/overwrite.sh"
 	targetParts := strings.Split(targetPath, "/")
 	if len(targetParts) > 0 {
 		baseName := targetParts[len(targetParts)-1]
@@ -337,17 +577,18 @@ func resolveCommandPath(command string, targetPath string) bool {
 		parts = strings.Split(command, ";")
 	}
 
+	// Track current directory for 'cd dir && cmd' patterns
 	var currentDir string
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
+
 		if strings.HasPrefix(part, "cd ") {
 			currentDir = strings.TrimSpace(strings.TrimPrefix(part, "cd "))
 		} else if currentDir != "" {
-			// Extract binary name being executed
 			cmdFields := strings.Fields(part)
 			if len(cmdFields) > 0 {
 				var execName string
-				// If command is an interpreter (bash script.sh), script is usually the 2nd arg
+				// interpreters like "bash script.sh" → script is the 2nd arg
 				interpreters := map[string]bool{"bash": true, "sh": true, "python": true, "python3": true, "perl": true, "ruby": true}
 				if interpreters[cmdFields[0]] && len(cmdFields) > 1 {
 					execName = cmdFields[1]
@@ -356,27 +597,15 @@ func resolveCommandPath(command string, targetPath string) bool {
 				}
 
 				if execName != "" {
-					// Clean up potential ./ prefix
 					execName = strings.TrimPrefix(execName, "./")
-					
-					// Resolve assuming currentDir from previous cd command
-					// filepath.Join will handle trailing slashes correctly
-					// Since targetPath is absolute (from WalkDir), we construct the absolute path here
-					// Note: If currentDir is relative, this won't work perfectly without resolving against home, 
-					// but cron/sudo usually use absolute paths for cd.
-					
-					// Only proceed if currentDir is absolute to avoid false positives
-					// We'll just construct it.
-					// We can't easily use filepath here without importing, but main.go already imports path/filepath? 
-					// Let's check imports. Main.go doesn't import path/filepath currently. We should avoid adding imports if possible, or just use string concat safely.
-					
-					var resolvedPath string
-					if strings.HasSuffix(currentDir, "/") {
-						resolvedPath = currentDir + execName
-					} else {
-						resolvedPath = currentDir + "/" + execName
+
+					// Build the resolved path and normalize it via filepath.Abs
+					fullPath := currentDir + "/" + execName
+					resolvedPath, err := filepath.Abs(fullPath)
+					if err != nil {
+						resolvedPath = fullPath
 					}
-					
+
 					if resolvedPath == targetPath {
 						return true
 					}
@@ -392,15 +621,14 @@ func checkDefenseMechanisms(targetPath string) bool {
 	if targetPath == "" {
 		return false
 	}
-	
-	// Example: /usr/bin/man becomes usr.bin.man
+
 	basePath := strings.TrimPrefix(targetPath, "/")
 	profileName := strings.ReplaceAll(basePath, "/", ".")
-	
+
 	apparmorProfile := fmt.Sprintf("/etc/apparmor.d/%s", profileName)
 	if _, err := os.Stat(apparmorProfile); err == nil {
-		return true // AppArmor profile exists and likely confines this path
+		return true
 	}
-	
+
 	return false
 }

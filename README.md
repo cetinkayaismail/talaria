@@ -16,10 +16,34 @@ Talaria is a high-performance reconnaissance framework designed for Linux Privil
 
 By leveraging native system calls and concurrent execution, Talaria completes comprehensive system audits in seconds, prioritizing high-signal attack vectors while maintaining a minimal footprint.
 
+---
+
+## Version 2.0 - Technical Milestone
+
+Talaria v2.0 introduces a major architectural shift focused on offensive intelligence and performance optimization.
+
+### Performance & Scalability
+- **Mutex Contention Optimization:** Redesigned internal locking mechanisms to move I/O operations outside of critical sections, significantly reducing scan-time overhead on multi-core systems.
+- **Dynamic I/O Concurrency:** Adaptive I/O semaphore that automatically scales based on system file descriptor limits (RLIMIT_NOFILE), ensuring maximum throughput.
+- **Magic Byte Identification:** Implemented file signature analysis (ELF, PE, ZIP, etc.) to reliably distinguish binary files from text, ensuring accurate secret scanning with minimal false positives.
+
+### Offensive Intelligence Engine (v2.0)
+- **Weighted Attack Graphs:** Transitioned to a weighted graph model that prioritizes attack vectors based on risk level and exploitation reliability.
+- **Multi-Goal Analysis:** The correlation engine now simultaneously identifies paths leading to root, sudo privileges, shadow group access, and docker group membership.
+- **Context-Aware Defense Assessment:** Integrated real-time detection of active AppArmor profiles and SELinux enforcement into the attack chain validation logic.
+
+### New Detection Modules
+- **Session Hijacking:** Identification of writable tmux and screen sockets for user/root session takeover.
+- **Kernel Configuration Audit:** Detection of dangerous kernel parameters (e.g., CONFIG_DEVKMEM, CONFIG_STRICT_DEVMEM=n) in /proc/config.gz and /boot.
+- **Systemd Service Security:** Recursive auditing of writable systemd service units and generators.
+- **Enhanced PATH Resolution:** Improved directory change (cd) tracking with absolute path normalization for more accurate cross-chain analysis.
+
+---
+
 ## Core Advantages
 
 - **Advanced Binary Analysis:** Performs deep analysis of ELF headers (RPATH/RUNPATH) and binary strings to detect SO Hijacking and PATH injection vectors in compiled SUID/SGID files.
-- **Professional Reporting Mode:** Includes a dedicated mode (`--professional`) that suppresses exploit hints and CTF-style tips, providing a clean, action-oriented report suitable for corporate security audits.
+- **Professional Reporting Mode:** Includes a dedicated mode (--professional) that suppresses exploit hints and CTF-style tips, providing a clean, action-oriented report suitable for corporate security audits.
 - **Intelligence Engine:** Correlates findings to identify complex attack chains, such as writable scripts executed via privileged CronJobs or system services.
 - **Operational Security (OPSEC):** Features opt-in stealth mechanisms including process name masking, adaptive I/O throttling, atime restoration, and AES-256-GCM encrypted reports.
 - **Static & Portable:** Zero external dependencies. Talaria compiles into a standalone static binary, ensuring compatibility across diverse Linux distributions.
