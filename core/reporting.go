@@ -3,8 +3,11 @@ package core
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"talaria/models"
 )
+
+var printMu sync.Mutex
 
 // ANSI Color Codes
 const (
@@ -35,6 +38,9 @@ func PrintBanner() {
 
 // PrintSectionHeader prints a clear, bordered section header
 func PrintSectionHeader(title string) {
+	printMu.Lock()
+	defer printMu.Unlock()
+
 	width := 60
 	title = " " + strings.ToUpper(title) + " "
 	sideLen := (width - len(title)) / 2
@@ -47,6 +53,9 @@ func PrintSectionHeader(title string) {
 
 // PrintFinding prints a structured finding block
 func PrintFinding(severity string, title string, details map[string]string, exploit string) {
+	printMu.Lock()
+	defer printMu.Unlock()
+
 	color := ColorGray
 	label := severity
 	
