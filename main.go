@@ -388,11 +388,15 @@ func main() {
 					core.PrintSectionHeader("Processes")
 					for _, r := range results {
 						if r.IsDangerous {
-							core.PrintFinding("CRITICAL", "Dangerous Process", map[string]string{
+							details := map[string]string{
 								"PID":     fmt.Sprintf("%d", r.PID),
 								"User":    r.User,
 								"Command": r.Command,
-							}, "")
+							}
+							if len(r.EnvSecrets) > 0 {
+								details["EnvSecrets"] = strings.Join(r.EnvSecrets, ", ")
+							}
+							core.PrintFinding("CRITICAL", "Dangerous Process", details, "")
 						}
 					}
 				}
@@ -666,6 +670,20 @@ func main() {
 				report.Writeable = append(report.Writeable, udevResults...)
 				mu.Unlock()
 				for _, r := range udevResults {
+					core.PrintFinding("CRITICAL", r.Type, map[string]string{
+						"Path":   r.Path,
+						"Reason": r.Reason,
+					}, "")
+				}
+			}
+
+			// ── MOTD & Profile.d Hijacking ─────────────────────────────────
+			motdResults, err := scanners.ScanMotdProfiledHijack()
+			if err == nil && len(motdResults) > 0 {
+				mu.Lock()
+				report.Writeable = append(report.Writeable, motdResults...)
+				mu.Unlock()
+				for _, r := range motdResults {
 					core.PrintFinding("CRITICAL", r.Type, map[string]string{
 						"Path":   r.Path,
 						"Reason": r.Reason,

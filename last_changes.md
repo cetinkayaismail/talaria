@@ -1,7 +1,7 @@
 # Talaria v2.0 — Changelog Report
 
 ## Overview
-This release introduces 12 major improvements including: a completely modernized terminal reporting engine, performance optimizations (mutex contention fix, dynamic I/O semaphore), 5 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload, udev rules injection), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
+This release introduces 13 major improvements including: a completely modernized terminal reporting engine, performance optimizations (mutex contention fix, dynamic I/O semaphore), 6 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload, udev rules injection, MOTD & profile.d hijacking), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
 
 ---
 
@@ -196,20 +196,34 @@ Risk level downgrade is now:
 
 ---
 
+### #13 — MOTD & Profile.d Hijack Scanner (`scanners/writeable.go`)
+**Impact:** 🎯 New privilege escalation vector (zero FP, highly reliable)
+
+**New function `ScanMotdProfiledHijack()`:**
+- Recursively audits `/etc/profile.d/` and `/etc/update-motd.d/` directories and scripts.
+- Also audits the critical `/etc/profile` file.
+- Identifies any writable directories/scripts in these locations where non-root users can write/append malicious commands.
+- Since files in these directories are executed automatically when users or root log in, they represent extremely reliable privilege escalation and lateral movement vectors.
+- Reports findings as CRITICAL risk level with clear, custom reasons.
+
+**Files changed:** `scanners/writeable.go` (new `ScanMotdProfiledHijack()` function), `main.go` (integrated into writeable module)
+
+---
+
 ## Files Summary
 
 | File | Status | Lines Added | Lines Removed |
 |------|--------|-------------|---------------|
-| `main.go` | Modified | +150 | -50 |
+| `main.go` | Modified | +165 | -50 |
 | `core/intelligence.go` | Modified | +250 | -30 |
 | `core/graph.go` | Modified | +100 | -20 |
 | `models/report.go` | Modified | +2 | -0 |
 | `scanners/groups.go` | Modified | +6 | -0 |
-| `scanners/writeable.go` | Modified | +160 | -0 |
+| `scanners/writeable.go` | Modified | +285 | -0 |
 | `scanners/sessions.go` | **New** | 130 | 0 |
 | `scanners/kernelconfig.go` | **New** | 120 | 0 |
 
-**Total:** ~720 lines added, ~100 lines modified
+**Total:** ~860 lines added, ~100 lines modified
 
 ---
 

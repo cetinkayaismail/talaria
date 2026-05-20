@@ -415,3 +415,127 @@ func ScanUdevRules() ([]WriteableResult, error) {
 
 	return results, nil
 }
+
+// ScanMotdProfiledHijack checks for writable files/directories in profile.d and update-motd.d paths, and /etc/profile itself.
+func ScanMotdProfiledHijack() ([]WriteableResult, error) {
+	var results []WriteableResult
+	targets := []struct {
+		path        string
+		dirType     string
+		fileType    string
+		dirReason   string
+		fileReason  string
+	}{
+		{
+			path:       "/etc/profile.d",
+			dirType:    "Writable profile.d Directory",
+			fileType:   "Writable profile.d Script",
+			dirReason:  "The profile.d directory is writable. Attackers can plant a new script to execute automatically when any user logs in.",
+			fileReason: "A profile.d script is writable. Attackers can modify it to execute malicious commands when any user logs in.",
+		},
+		{
+			path:       "/etc/update-motd.d",
+			dirType:    "Writable update-motd.d Directory",
+			fileType:   "Writable update-motd.d Script",
+			dirReason:  "The update-motd.d directory is writable. Attackers can plant a new script to execute automatically as root on login.",
+			fileReason: "An update-motd.d script is writable. Attackers can modify it to execute malicious commands as root on login.",
+		},
+	}
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+	uid, _ := strconv.Atoi(currentUser.Uid)
+	gidStrings, _ := currentUser.GroupIds()
+	userGids := make(map[int]bool)
+	for _, g := range gidStrings {
+		id, _ := strconv.Atoi(g)
+		userGids[id] = true
+	}
+
+	for _, target := range targets {
+		if _, err := os.Stat(target.path); err != nil {
+			continue
+		}
+
+		filepath.WalkDir(target.path, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				return nil
+			}
+
+			// Check Write Permission
+			mode := stat.Mode
+			canWrite := false
+
+			if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
+				canWrite = true
+			} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
+				canWrite = true
+			} else if mode&syscall.S_IWOTH != 0 {
+				canWrite = true
+			}
+
+			if canWrite {
+				typeName := target.fileType
+				reason := target.fileReason
+				if d.IsDir() {
+					typeName = target.dirType
+					reason = target.dirReason
+				}
+
+				results = append(results, WriteableResult{
+					Path:            path,
+					OwnerUID:        int(stat.Uid),
+					CurrentUserOwns: (uid == int(stat.Uid)),
+					IsExecutable:    !d.IsDir() && (info.Mode()&0111 != 0),
+					IsDangerous:     true,
+					Type:            typeName,
+					RiskLevel:       "CRITICAL",
+					Reason:          reason,
+				})
+			}
+			return nil
+		})
+	}
+
+	// Also check /etc/profile itself
+	if info, err := os.Stat("/etc/profile"); err == nil {
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			mode := stat.Mode
+			canWrite := false
+			if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
+				canWrite = true
+			} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
+				canWrite = true
+			} else if mode&syscall.S_IWOTH != 0 {
+				canWrite = true
+			}
+
+			if canWrite {
+				results = append(results, WriteableResult{
+					Path:            "/etc/profile",
+					OwnerUID:        int(stat.Uid),
+					CurrentUserOwns: (uid == int(stat.Uid)),
+					IsExecutable:    false,
+					IsDangerous:     true,
+					Type:            "Writable /etc/profile",
+					RiskLevel:       "CRITICAL",
+					Reason:          "The /etc/profile file is writable. Attackers can append malicious commands to execute when any user logs in.",
+				})
+			}
+		}
+	}
+
+	return results, nil
+}

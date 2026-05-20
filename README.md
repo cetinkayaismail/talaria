@@ -78,6 +78,21 @@ Talaria covers a wide array of local privilege escalation vectors through more t
 
 ---
 
+## Project Architecture & Data Flow
+
+To facilitate community contributions and provide transparency into Talaria's inner workings, the following diagram illustrates the high-level data pipeline and project structure:
+
+<p align="center">
+  <img src="screenshots/architecture.png" alt="Talaria Architecture Map" width="800">
+</p>
+
+- **scanners/**: Modular collection layer. Each security vector is isolated in its own scanner module for easy expansion.
+- **main.go**: The orchestrator. Handles concurrency, stealth delays, and aggregate data into a central report model.
+- **core/**: The "Intelligence" layer. Processes raw findings through weighted attack graphs (`graph.go`) and cross-referencing logic (`intelligence.go`).
+- **models/**: Defines the structured data schemas used across the entire framework.
+
+---
+
 ## Getting Started
 
 ### Installation
@@ -107,9 +122,6 @@ make build
 ```
 
 For comprehensive documentation on flags and stealth features, refer to [USAGE.md](USAGE.md).
-
----
-
 
 ---
 

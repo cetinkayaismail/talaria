@@ -17,6 +17,7 @@ type ProcessResult struct {
 	UID         int
 	Command     string
 	IsDangerous bool
+	EnvSecrets  []string
 }
 
 // CriticalProcesses: Debug tools and network shells that indicate active exploitation
@@ -81,12 +82,19 @@ func ScanProcesses() ([]ProcessResult, error) {
 		userName := lookupUsername(uid)
 		isDangerous := checkProcessDanger(cmdline, uid)
 
+		// Read environment variables for exposed secrets
+		envSecrets, _ := getProcessEnviron(entry)
+		if len(envSecrets) > 0 {
+			isDangerous = true
+		}
+
 		results = append(results, ProcessResult{
 			PID:         pid,
 			User:        userName,
 			UID:         uid,
 			Command:     cmdline,
 			IsDangerous: isDangerous,
+			EnvSecrets:  envSecrets,
 		})
 	}
 
@@ -208,4 +216,73 @@ func ScanPtraceScope() (*PtraceScopeResult, error) {
 		reason = "ptrace_scope=3: ptrace fully disabled"
 	}
 	return &PtraceScopeResult{Scope: val, IsDangerous: isDangerous, Reason: reason}, nil
+}
+
+// getProcessEnviron reads the environment variables of a process and flags sensitive keys.
+func getProcessEnviron(pid string) ([]string, error) {
+	data, err := os.ReadFile(filepath.Join("/proc", pid, "environ"))
+	if err != nil {
+		return nil, err // Gracefully return error (EACCES etc.)
+	}
+	return parseEnviron(data), nil
+}
+
+// parseEnviron parses environ bytes into sensitive findings.
+func parseEnviron(data []byte) []string {
+	var envSecrets []string
+	vars := strings.Split(string(data), "\x00")
+	sensitiveKeys := []string{
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+		"PASSWORD", "PASSWD", "SECRET", "TOKEN", "API_KEY", "PRIVATE_KEY",
+		"CREDENTIALS", "AUTH_TOKEN", "ACCESS_KEY", "JWT_TOKEN", "DB_PASS",
+		"DB_PASSWORD",
+	}
+
+	for _, v := range vars {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+
+		parts := strings.SplitN(v, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := parts[0]
+		val := parts[1]
+
+		upperKey := strings.ToUpper(key)
+		isSensitive := false
+		for _, sk := range sensitiveKeys {
+			if strings.Contains(upperKey, sk) {
+				isSensitive = true
+				break
+			}
+		}
+
+		if isSensitive {
+			// Skip placeholders and extremely short values
+			if isFalsePositive(val) {
+				continue
+			}
+
+			// Mask the secret value
+			maskedVal := maskSecretValue(val)
+			envSecrets = append(envSecrets, key+"="+maskedVal)
+		}
+	}
+	return envSecrets
+}
+
+// maskSecretValue masks sensitive values to prevent cleartext credential leakage in output.
+func maskSecretValue(val string) string {
+	if len(val) <= 4 {
+		return "****"
+	}
+	visibleLen := 4
+	if len(val) < visibleLen {
+		visibleLen = len(val)
+	}
+	return val[:visibleLen] + "********"
 }
