@@ -1,7 +1,7 @@
 # Talaria v2.0 — Changelog Report
 
 ## Overview
-This release introduces 13 major improvements including: a completely modernized terminal reporting engine, performance optimizations (mutex contention fix, dynamic I/O semaphore), 6 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload, udev rules injection, MOTD & profile.d hijacking), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
+This release introduces 15 major improvements including: a completely modernized terminal reporting engine, performance optimizations (mutex contention fix, dynamic I/O semaphore), 8 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload, udev rules injection, MOTD & profile.d hijacking, process environment secrets, Polkit JS Rules auditing), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
 
 ---
 
@@ -210,20 +210,51 @@ Risk level downgrade is now:
 
 ---
 
+### #14 — Process Environment Secret Scanner (`scanners/processes.go`)
+**Impact:** 🔑 High-performance active RAM credential discovery (safe, zero panics)
+
+**New features & capabilities:**
+- **Integrated Loop Optimization:** Environment variable scanning is executed *directly inside the existing `/proc` traversal loop*, keeping speed impact extremely negligible.
+- **Access Error Protection:** Gracefully handles and skips any `permission denied` (EACCES) errors or terminated processes during environment reads, guaranteeing zero program panics.
+- **Sensitive Key Analysis:** Scans all process environments (excluding own processes) against a blacklist of high-confidence keys (AWS, DB Passwords, Tokens, API keys).
+- **Masked Credential Leakage:** Masks values in output (e.g. `AWS_SECRET_ACCESS_KEY=supe********`) to prevent leaking cleartext credentials in logs or reports.
+- **Extracted Parser Testability:** Pure byte parsing is isolated into `parseEnviron()` with complete unit test coverage.
+
+**Files changed:** `scanners/processes.go` (new parsing & masking), `scanners/processes_test.go` (NEW unit tests), `main.go` (integrated into process rendering)
+
+---
+
+### #15 — Polkit JS Rules Analysis Scanner (`scanners/polkit.go`)
+**Impact:** 🛡️ Zero False Positive custom PolicyKit policy auditor
+
+**New features & capabilities:**
+- **Directory Path Isolation:** Only audits custom administrator-created rules in `/etc/polkit-1/rules.d/` (cutting out 95% of standard system-package rule noise).
+- **Parentheses/Brace Matching Tokenizer:** Safe, robust JS block extractor (`extractJavaScriptBlock`) isolates each `polkit.addRule` callback boundary.
+- **Standard Administrative Whitelisting:** Standard privileged groups (`wheel`, `sudo`, `admin`, `root`, `systemd-journal`) are automatically whitelisted and skipped, guaranteeing **zero False Positives** on default configurations.
+- **Vulnerability Catching:** Flags rule declarations allowing passwordless authorization (`polkit.Result.YES` / `AUTH_SELF_KEEP`) for sensitive actions to general users/groups.
+
+**Files changed:** `scanners/polkit.go` (NEW), `scanners/polkit_test.go` (NEW unit tests), `models/report.go` (new report field), `main.go` (integrated polkit module)
+
+---
+
 ## Files Summary
 
 | File | Status | Lines Added | Lines Removed |
 |------|--------|-------------|---------------|
-| `main.go` | Modified | +165 | -50 |
+| `main.go` | Modified | +205 | -50 |
 | `core/intelligence.go` | Modified | +250 | -30 |
 | `core/graph.go` | Modified | +100 | -20 |
-| `models/report.go` | Modified | +2 | -0 |
+| `models/report.go` | Modified | +3 | -0 |
 | `scanners/groups.go` | Modified | +6 | -0 |
 | `scanners/writeable.go` | Modified | +285 | -0 |
+| `scanners/processes.go` | Modified | +75 | -0 |
+| `scanners/processes_test.go` | **New** | 65 | 0 |
+| `scanners/polkit.go` | **New** | 225 | 0 |
+| `scanners/polkit_test.go` | **New** | 80 | 0 |
 | `scanners/sessions.go` | **New** | 130 | 0 |
 | `scanners/kernelconfig.go` | **New** | 120 | 0 |
 
-**Total:** ~860 lines added, ~100 lines modified
+**Total:** ~1450 lines added, ~120 lines modified
 
 ---
 
@@ -239,6 +270,7 @@ Risk level downgrade is now:
 |-------------|-------------|
 | `sessions` | Tmux/Screen session hijacking vectors |
 | `kernelconfig` | Kernel config leak (CONFIG_STRICT_DEVMEM, etc.) |
+| `polkit` | Custom PolicyKit JavaScript rules logic auditing |
 
 Both new modules are included in `--scan all` by default.
 

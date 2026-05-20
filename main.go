@@ -1079,6 +1079,34 @@ func main() {
 		}()
 	}
 
+	// --- POLKIT RULES MODULE ---
+	if (runAll || selectedModules["polkit"]) && !excludedModules["polkit"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanPolkitRules()
+			if err == nil {
+				mu.Lock()
+				report.PolkitRules = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Polkit Rules")
+					for _, r := range results {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "Dangerous Polkit Rule", map[string]string{
+								"File":       r.FilePath,
+								"Action":     r.Action,
+								"Authorized": r.Authorized,
+								"Reason":     r.Reason,
+							}, "")
+						}
+					}
+				}
+			}
+		}()
+	}
+
 	wg.Wait()
 
 	// --- CROSS-REFERENCING (Analysis Phase) ---

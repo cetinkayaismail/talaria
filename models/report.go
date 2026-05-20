@@ -33,4 +33,5 @@ type ScanReport struct {
 	Packages           []scanners.PackageAuditResult      `json:"packages,omitempty"`
 	SessionHijack      []scanners.SessionHijackResult     `json:"session_hijack,omitempty"`
 	KernelConfig       []scanners.KernelConfigResult      `json:"kernel_config,omitempty"`
+	PolkitRules        []scanners.PolkitRuleResult        `json:"polkit_rules,omitempty"`
 }
