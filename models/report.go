@@ -34,4 +34,5 @@ type ScanReport struct {
 	SessionHijack      []scanners.SessionHijackResult     `json:"session_hijack,omitempty"`
 	KernelConfig       []scanners.KernelConfigResult      `json:"kernel_config,omitempty"`
 	PolkitRules        []scanners.PolkitRuleResult        `json:"polkit_rules,omitempty"`
+	HistorySecrets     []scanners.HistorySecretResult     `json:"history_secrets,omitempty"`
 }

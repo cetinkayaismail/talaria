@@ -1,7 +1,7 @@
 # Talaria v2.0 — Changelog Report
 
 ## Overview
-This release introduces 15 major improvements including: a completely modernized terminal reporting engine, performance optimizations (mutex contention fix, dynamic I/O semaphore), 8 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload, udev rules injection, MOTD & profile.d hijacking, process environment secrets, Polkit JS Rules auditing), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
+This release introduces 16 major improvements including: a completely modernized terminal reporting engine, performance optimizations (mutex contention fix, dynamic I/O semaphore), 9 new privilege escalation scanners (tmux/screen hijack, kernel config leak, writable systemd services, ld.so.preload, udev rules injection, MOTD & profile.d hijacking, process environment secrets, Polkit JS Rules auditing, shell command history secrets scraping), 2 new cross-chain attack vectors (PATH+SUID, writable service chain), enhanced graph analysis with weighted edges, advanced defense assessment (AppArmor + SELinux), and expanded group scanning (video, input).
 
 ---
 
@@ -237,24 +237,41 @@ Risk level downgrade is now:
 
 ---
 
+### #16 — Shell Command History Secrets Scraper (`scanners/history.go`)
+**Impact:** 📜 High-selectivity password & credential harvester from command histories
+
+**New features & capabilities:**
+- **Real User Discovery:** Resolves actual user homes dynamically by parsing `/etc/passwd`, focusing strictly on real home directories (`/home/*` and `/root`) and cutting out system-package account noise.
+- **Buffered Scanning:** Traverses `.bash_history`, `.zsh_history`, `.sh_history`, and `.nano_history` files using `bufio.Scanner` for high-performance memory-safe operations.
+- **Regex Secret Extraction:** Scans for multiple credential styles (password assignments, command line flags, database connection strings) using precise non-greedy regex patterns.
+- **Automatic Output Masking:** Automatically masks cleartext secrets (`password=supe********`) in both terminal rendering and JSON output to prevent log leakage.
+- **Exposed Parser Unit Testing:** Isolated pure string matching inside `auditHistoryLine()` for full test coverage with zero filesystem dependency.
+
+**Files changed:** `scanners/history.go` (NEW), `scanners/history_test.go` (NEW unit tests), `models/report.go` (new history struct slice), `main.go` (integrated history scanner module), `core/reporting.go` (updated summary dashboard counter)
+
+---
+
 ## Files Summary
 
 | File | Status | Lines Added | Lines Removed |
 |------|--------|-------------|---------------|
-| `main.go` | Modified | +205 | -50 |
+| `main.go` | Modified | +235 | -50 |
+| `core/reporting.go` | Modified | +20 | -0 |
 | `core/intelligence.go` | Modified | +250 | -30 |
 | `core/graph.go` | Modified | +100 | -20 |
-| `models/report.go` | Modified | +3 | -0 |
+| `models/report.go` | Modified | +4 | -0 |
 | `scanners/groups.go` | Modified | +6 | -0 |
 | `scanners/writeable.go` | Modified | +285 | -0 |
 | `scanners/processes.go` | Modified | +75 | -0 |
 | `scanners/processes_test.go` | **New** | 65 | 0 |
 | `scanners/polkit.go` | **New** | 225 | 0 |
 | `scanners/polkit_test.go` | **New** | 80 | 0 |
+| `scanners/history.go` | **New** | 185 | 0 |
+| `scanners/history_test.go` | **New** | 90 | 0 |
 | `scanners/sessions.go` | **New** | 130 | 0 |
 | `scanners/kernelconfig.go` | **New** | 120 | 0 |
 
-**Total:** ~1450 lines added, ~120 lines modified
+**Total:** ~1850 lines added, ~125 lines modified
 
 ---
 
@@ -271,6 +288,7 @@ Risk level downgrade is now:
 | `sessions` | Tmux/Screen session hijacking vectors |
 | `kernelconfig` | Kernel config leak (CONFIG_STRICT_DEVMEM, etc.) |
 | `polkit` | Custom PolicyKit JavaScript rules logic auditing |
+| `history` | Command execution history credentials auditing |
 
 Both new modules are included in `--scan all` by default.
 

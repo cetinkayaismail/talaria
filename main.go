@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -1101,6 +1102,33 @@ func main() {
 								"Reason":     r.Reason,
 							}, "")
 						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- SHELL HISTORY MODULE ---
+	if (runAll || selectedModules["history"]) && !excludedModules["history"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanHistoryFiles()
+			if err == nil {
+				mu.Lock()
+				report.HistorySecrets = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Shell History Secrets")
+					for _, r := range results {
+						core.PrintFinding(r.RiskLevel, "Discovered Shell History Secret", map[string]string{
+							"User":   r.User,
+							"File":   r.HistoryFile,
+							"Line":   strconv.Itoa(r.LineNumber),
+							"Cmd":    r.Command,
+							"Reason": r.Reason,
+						}, "")
 					}
 				}
 			}
