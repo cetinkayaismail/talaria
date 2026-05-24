@@ -66,7 +66,8 @@ func main() {
 			"    services        - Local service audits (MySQL, Redis blank passwords)\n"+
 			"    packages        - Package manager audits (doas, snap, flatpak)\n"+
 			"    sessions        - Tmux/Screen session hijacking vectors\n"+
-			"    kernelconfig    - Kernel config leak (CONFIG_STRICT_DEVMEM, etc.)")
+			"    kernelconfig    - Kernel config leak (CONFIG_STRICT_DEVMEM, etc.)\n"+
+			"    polkit          - Custom PolicyKit JavaScript rules logic auditing")
 	searchPath   := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
 	outputFile   := flag.String("o", "", "Save report to file (combine with --format)")
 	outputFormat := flag.String("format", "text", "Report format: text or json")
@@ -148,6 +149,9 @@ func main() {
 	if *atimeRestore {
 		scanners.StealthCfg.AtimeRestore = true
 	}
+	// In professional/pentest report mode, mask discovered credentials in output.
+	// Default (CTF mode): show credentials in cleartext for immediate usability.
+	scanners.StealthCfg.MaskSecrets = isProfessional
 
 	core.PrintBanner()
 	if *maskName != "" {

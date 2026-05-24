@@ -251,27 +251,56 @@ Risk level downgrade is now:
 
 ---
 
+### #17 — Attack Graph & Intelligence Engine Expansion (`core/graph.go`, `core/intelligence.go`)
+**Impact:** 🔗 Four new vulnerability modules integrated into the Cross-Reference Attack Graph and Intelligence chains.
+
+**New features & capabilities:**
+- **File Permissions Chain:** Tracks writable or readable critical system files (`/etc/passwd`, `/etc/shadow`, `/etc/sudoers`) to construct instant privileges or credential cracking paths.
+- **Dangerous Capabilities Chain:** Mapped dangerous binary capabilities (`cap_setuid`, `cap_sys_admin`, `cap_dac_read_search`) directly to privilege escalation or sensitive file bypass paths.
+- **NFS no_root_squash Chain:** Evaluates writable NFS exports with `no_root_squash` to map remote SUID compilation and local execution root chains.
+- **Polkit Rules Chain:** Bridges custom dangerous PolicyKit rules to root goal paths.
+
+**Files changed:** `core/graph.go` (+75 lines), `core/intelligence.go` (+135 lines)
+
+---
+
+### #18 — False Positive Optimizations across Scanner Modules
+**Impact:** 🛡️ Drastically reduced false alarm rates across 5 core scanning modules while maintaining high performance.
+
+**New features & capabilities:**
+- **Shell History `-p` Flag Filter:** Ignore port numbers, port mapping formats, and commands not associated with passwords to eliminate noisy `-p` shell arguments.
+- **Dynamic SUID Sandbox Auditing:** Automatically checks if host security modules (AppArmor) are enabled; skips `/snap/` and `/flatpak/` ONLY if sandboxing is actively enforced, preventing false negatives on unconfined systems.
+- **SUID Lateral Movement Reporting:** Instead of discarding SUID/SGID files owned by non-root users, they are classified and reported as potential user-pivoting/lateral movement vectors.
+- **Secrets Template & Inline Comments Filter:** Strips inline comments heuristically before matching regex, and skips template variable styles (`<PASSWORD>`, `__TOKEN__`).
+- **PATH Hijack Precedence Check:** Downgrades directories that are appended *after* secure system paths.
+- **Strict Local network Connection Classification:** Loopback connections (127.0.0.1) are classified as local root LPE threats, while public interfaces are monitored for network exposure.
+
+**Files changed:** `scanners/history.go`, `scanners/suid.go`, `scanners/secrets.go`, `scanners/path_hijack.go`, `scanners/network.go`
+
+---
+
 ## Files Summary
 
 | File | Status | Lines Added | Lines Removed |
 |------|--------|-------------|---------------|
-| `main.go` | Modified | +235 | -50 |
+| `main.go` | Modified | +236 | -50 |
 | `core/reporting.go` | Modified | +20 | -0 |
-| `core/intelligence.go` | Modified | +250 | -30 |
-| `core/graph.go` | Modified | +100 | -20 |
+| `core/intelligence.go` | Modified | +385 | -30 |
+| `core/graph.go` | Modified | +175 | -20 |
 | `models/report.go` | Modified | +4 | -0 |
 | `scanners/groups.go` | Modified | +6 | -0 |
 | `scanners/writeable.go` | Modified | +285 | -0 |
 | `scanners/processes.go` | Modified | +75 | -0 |
-| `scanners/processes_test.go` | **New** | 65 | 0 |
 | `scanners/polkit.go` | **New** | 225 | 0 |
-| `scanners/polkit_test.go` | **New** | 80 | 0 |
-| `scanners/history.go` | **New** | 185 | 0 |
-| `scanners/history_test.go` | **New** | 90 | 0 |
+| `scanners/history.go` | Modified | +216 | 0 |
+| `scanners/suid.go` | Modified | +12 | -0 |
+| `scanners/secrets.go` | Modified | +26 | -10 |
+| `scanners/path_hijack.go` | Modified | +16 | -6 |
+| `scanners/network.go` | Modified | +14 | -10 |
 | `scanners/sessions.go` | **New** | 130 | 0 |
 | `scanners/kernelconfig.go` | **New** | 120 | 0 |
 
-**Total:** ~1850 lines added, ~125 lines modified
+**Total:** ~1920 lines added, ~155 lines modified
 
 ---
 
@@ -323,3 +352,7 @@ Both new modules are included in `--scan all` by default.
 ### Fix D — filepath.Abs in resolveCommandPath (`core/intelligence.go`)
 **Problem:** `cd ../sbin && cmd` patterns used string concatenation (`currentDir + "/" + execName`), which broke on relative paths like `../sbin`.
 **Fix:** Now uses `filepath.Abs(fullPath)` to normalize the resolved path, handling `../`, `./`, and double slashes correctly. Added `"path/filepath"` to imports.
+
+### Fix E — Stabilized Polkit Rules Parser with Brace-Matching (`scanners/polkit.go`)
+**Problem:** Regex-only PolicyKit JavaScript rule parsing was prone to failing or misinterpreting nested blocks/statements, risking False Positives/Negatives.
+**Fix:** Refined block segmentation using a parenthesis-and-brace-balanced tokenizer (`extractJavaScriptBlock`). Stabilized administrative group whitelisting and added a robust test suite to verify accurate detection without false alerts on default policies.

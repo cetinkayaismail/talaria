@@ -214,6 +214,77 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 		}
 	}
 
+	// 10. Map File Permissions
+	for _, fp := range report.FilePermissions {
+		if !fp.IsDangerous {
+			continue
+		}
+		fileID := fmt.Sprintf("file:%s", fp.Path)
+		g.AddNode(fileID, "File")
+		if fp.Path == "/etc/passwd" && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			g.AddEdgeWeight(currentUser, fileID, "Can write to /etc/passwd", 10)
+			g.AddEdgeWeight(fileID, "goal:root", "Writable passwd allows adding privileged user", 10)
+		} else if fp.Path == "/etc/shadow" {
+			if fp.IsWorldWritable || fp.IsGroupWritable {
+				g.AddEdgeWeight(currentUser, fileID, "Can write to /etc/shadow", 10)
+				g.AddEdgeWeight(fileID, "goal:root", "Writable shadow allows changing root password", 10)
+			} else if fp.IsWorldReadable || fp.Permissions == "readable" {
+				g.AddEdgeWeight(currentUser, fileID, "Can read /etc/shadow", 8)
+				g.AddEdgeWeight(fileID, "goal:shadow", "Readable shadow allows cracking password hashes", 10)
+			}
+		} else if fp.Path == "/etc/sudoers" && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			g.AddEdgeWeight(currentUser, fileID, "Can write to /etc/sudoers", 10)
+			g.AddEdgeWeight(fileID, "goal:root", "Writable sudoers allows arbitrary NOPASSWD privileges", 10)
+		} else if strings.HasPrefix(fp.Path, "/etc/sudoers.d/") && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			g.AddEdgeWeight(currentUser, fileID, fmt.Sprintf("Can write to sudoers drop-in %s", fp.Path), 10)
+			g.AddEdgeWeight(fileID, "goal:root", "Writable sudoers drop-in allows adding root privileges", 10)
+		} else if strings.HasPrefix(fp.Path, "/etc/ld.so.conf") && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			g.AddEdgeWeight(currentUser, fileID, fmt.Sprintf("Can write to library loader config %s", fp.Path), 9)
+			g.AddEdgeWeight(fileID, "goal:root", "Writable ld.so.conf allows library injection", 10)
+		} else if strings.HasPrefix(fp.Path, "/etc/logrotate.d/") && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			g.AddEdgeWeight(currentUser, fileID, fmt.Sprintf("Can write to logrotate config %s", fp.Path), 8)
+			g.AddEdgeWeight(fileID, "goal:root", "Writable logrotate allows privilege escalation via postrotate commands", 9)
+		}
+	}
+
+	// 11. Map Capabilities
+	for _, capResult := range report.Capabilities {
+		if !capResult.IsDangerous {
+			continue
+		}
+		capID := fmt.Sprintf("file:%s", capResult.Path)
+		g.AddNode(capID, "File")
+		capsLower := strings.ToLower(capResult.Capabilities)
+		if strings.Contains(capsLower, "cap_setuid") || strings.Contains(capsLower, "cap_sys_admin") || strings.Contains(capsLower, "cap_dac_override") {
+			g.AddEdgeWeight(currentUser, capID, fmt.Sprintf("Can execute capability binary %s", capResult.Path), 9)
+			g.AddEdgeWeight(capID, "goal:root", fmt.Sprintf("Binary has %s", capResult.Capabilities), 10)
+		} else if strings.Contains(capsLower, "cap_dac_read_search") {
+			g.AddEdgeWeight(currentUser, capID, fmt.Sprintf("Can execute capability binary %s", capResult.Path), 8)
+			g.AddEdgeWeight(capID, "goal:shadow", fmt.Sprintf("Binary has %s (bypass file read checks)", capResult.Capabilities), 9)
+		}
+	}
+
+	// 12. Map NFS Exports with no_root_squash
+	for _, nfs := range report.NFSExports {
+		if nfs.IsDangerous && nfs.IsWritable && nfs.HasNoRootSquash {
+			nfsID := fmt.Sprintf("file:%s", nfs.Path)
+			g.AddNode(nfsID, "File")
+			g.AddEdgeWeight(currentUser, nfsID, fmt.Sprintf("Can access writable NFS export %s", nfs.Path), 9)
+			g.AddEdgeWeight(nfsID, "goal:root", "NFS export has no_root_squash (upload SUID binary)", 10)
+		}
+	}
+
+	// 13. Map Polkit Rules
+	for _, pk := range report.PolkitRules {
+		if !pk.IsDangerous {
+			continue
+		}
+		ruleID := fmt.Sprintf("file:%s", pk.FilePath)
+		g.AddNode(ruleID, "File")
+		g.AddEdgeWeight(currentUser, ruleID, fmt.Sprintf("Subject to custom Polkit rule in %s", pk.FilePath), 9)
+		g.AddEdgeWeight(ruleID, "goal:root", fmt.Sprintf("Rule grants passwordless authorization for %s", pk.Action), 10)
+	}
+
 	return g
 }
 

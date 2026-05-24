@@ -114,31 +114,80 @@ func getSystemUsers() ([]userInfo, error) {
 
 // auditHistoryLine checks a single history line for hardcoded credentials and masks them
 func auditHistoryLine(line string, username string, path string, lineNum int) *HistorySecretResult {
+	trimmed := strings.TrimSpace(line)
+	// Skip comments (often templates or examples in history)
+	if strings.HasPrefix(trimmed, "#") {
+		return nil
+	}
+
 	// Standard credential assignment patterns:
-	// 1. assignment (e.g. password=secret, token: secret)
-	// 2. cli flags (e.g. -p'secret', --password='secret')
-	// 3. connections (e.g. mysql -u user -psecret)
 	reAssign := regexp.MustCompile(`(?i)(?:password|pass|secret|token|key|pwd)\s*(?:=|:)\s*['"]?([^'"\s&|;<>]+)['"]?`)
 	reCliFlag := regexp.MustCompile(`(?i)(?:-p|--password|--pass)\s*['"]?([^'"\s&|;<>]+)['"]?`)
 	reConnection := regexp.MustCompile(`(?i)(?:mysql|postgresql|postgres|redis|mongodb)(?:://[^:]+:([^@]+)@|(?:\s+[^-\s]+)*\s+-p\s*([^-\s]+))`)
+	
+	// New patterns for Cloud and API tokens (often exported in history)
+	reAWS := regexp.MustCompile(`\b(AKIA[0-9A-Z]{16})\b`)
+	reBearer := regexp.MustCompile(`(?i)Authorization:\s+Bearer\s+([A-Za-z0-9\-._~+/]+=*)`)
 
 	var secretVal string
 	var matchType string
+	var reason string
 
-	if m := reAssign.FindStringSubmatch(line); len(m) > 1 {
+	if m := reAWS.FindStringSubmatch(line); len(m) > 1 {
+		secretVal = m[1]
+		matchType = "aws_key"
+		reason = "Discovered AWS Access Key ID in shell history"
+	} else if m := reBearer.FindStringSubmatch(line); len(m) > 1 {
+		secretVal = m[1]
+		matchType = "bearer_token"
+		reason = "Discovered HTTP Bearer Token in shell history"
+	} else if m := reAssign.FindStringSubmatch(line); len(m) > 1 {
 		secretVal = m[1]
 		matchType = "assignment"
+		reason = "Discovered hardcoded password or credential assignment in shell history"
 	} else if m := reCliFlag.FindStringSubmatch(line); len(m) > 1 {
 		secretVal = m[1]
 		matchType = "cli_flag"
+		reason = "Discovered credentials passed as CLI argument in shell history"
+
+		// --- FP Reduction for CLI -p option ---
+		// Checks if the CLI flag is likely a port/numeric assignment, or if the command itself
+		// is not a tool that natively expects passwords/keys via CLI flag.
+		if strings.Contains(line, " -p ") || strings.Contains(line, " -p") {
+			// 1. Skip numeric ports (e.g., -p 22, -p 8080) and port mappings (e.g., -p 80:80)
+			isNumericOrPort := true
+			for _, char := range secretVal {
+				if (char < '0' || char > '9') && char != ':' {
+					isNumericOrPort = false
+					break
+				}
+			}
+			if isNumericOrPort {
+				return nil
+			}
+
+			// 2. Only allow -p flags for known tools that accept passwords (mysql, pg_dump, etc.)
+			fields := strings.Fields(strings.ToLower(line))
+			if len(fields) > 0 {
+				binaryName := filepath.Base(fields[0])
+				validPassTools := map[string]bool{
+					"mysql": true, "mysqldump": true, "mysqladmin": true, "pg_dump": true,
+					"psql": true, "redis-cli": true, "mongo": true, "mongodump": true,
+					"sshpass": true, "7z": true, "7za": true, "unzip": true, "rar": true,
+				}
+				if !validPassTools[binaryName] {
+					return nil
+				}
+			}
+		}
 	} else if m := reConnection.FindStringSubmatch(line); len(m) > 1 {
-		// reConnection has multiple capture groups due to alternate formats
 		if m[1] != "" {
 			secretVal = m[1]
 		} else if len(m) > 2 && m[2] != "" {
 			secretVal = m[2]
 		}
 		matchType = "connection"
+		reason = "Discovered database credentials in command execution history"
 	}
 
 	// Avoid false positive matches of placeholders or empty strings
@@ -146,19 +195,27 @@ func auditHistoryLine(line string, username string, path string, lineNum int) *H
 		return nil
 	}
 
-	// Mask the discovered credential inside the command line for secure output
-	maskedCmd := maskCredentials(line, secretVal)
+	// Extra FP protection for history: check if secret is just a variable evaluation
+	if strings.HasPrefix(secretVal, "$") || strings.HasPrefix(secretVal, "\\$") {
+		return nil
+	}
+	
+	// Extra FP protection for assignments (e.g. export PASS=...)
+	if matchType == "assignment" && calculateEntropy(secretVal) < 2.5 && !strings.Contains(line, "mysql") {
+		return nil
+	}
 
-	reason := "Discovered hardcoded password or credential in shell history"
-	if matchType == "connection" {
-		reason = "Discovered database credentials in command execution history"
+	// In professional mode mask the value; in CTF mode keep cleartext for direct use
+	displayCmd := line
+	if StealthCfg.MaskSecrets {
+		displayCmd = maskCredentials(line, secretVal)
 	}
 
 	return &HistorySecretResult{
 		User:        username,
 		HistoryFile: path,
 		LineNumber:  lineNum,
-		Command:     maskedCmd,
+		Command:     displayCmd,
 		RiskLevel:   "CRITICAL",
 		Reason:      reason,
 	}

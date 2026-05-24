@@ -426,26 +426,39 @@ func genericContentScan(f *os.File, path string) string {
 			continue
 		}
 
+		// --- FP Reduction: Strip inline comments heuristically ---
+		cleanLine := line
+		for _, marker := range []string{"#", "//", ";"} {
+			if idx := strings.Index(line, marker); idx >= 0 {
+				prefix := line[:idx]
+				// If quotes before the marker are even, the marker is an inline comment
+				if strings.Count(prefix, "\"")%2 == 0 && strings.Count(prefix, "'")%2 == 0 {
+					cleanLine = prefix
+					break
+				}
+			}
+		}
+
 		// 2. High-confidence regex patterns
-		if awsKeyRegex.MatchString(line) {
-			return "AWS Access Key ID: " + awsKeyRegex.FindString(line)
+		if awsKeyRegex.MatchString(cleanLine) {
+			return "AWS Access Key ID: " + awsKeyRegex.FindString(cleanLine)
 		}
-		if googleApiKeyRegex.MatchString(line) {
-			return "Google API Key: " + googleApiKeyRegex.FindString(line)
+		if googleApiKeyRegex.MatchString(cleanLine) {
+			return "Google API Key: " + googleApiKeyRegex.FindString(cleanLine)
 		}
-		if privateKeyRegex.MatchString(line) {
+		if privateKeyRegex.MatchString(cleanLine) {
 			return "Private Key Header detected"
 		}
 		
 		// Netrc check: ONLY apply if the filename actually is a netrc file.
 		if (fileName == ".netrc" || fileName == "_netrc" || fileName == "netrc") {
-			if m := netrcPassRegex.FindStringSubmatch(line); len(m) > 1 && !isFalsePositive(m[1]) {
+			if m := netrcPassRegex.FindStringSubmatch(cleanLine); len(m) > 1 && !isFalsePositive(m[1]) {
 				return "Netrc Password: " + m[1]
 			}
 		}
 
 		// 3. Assignment regex — all 3 capture groups (quoted double, quoted single, unquoted)
-		if m := assignmentRegex.FindStringSubmatch(line); len(m) > 1 {
+		if m := assignmentRegex.FindStringSubmatch(cleanLine); len(m) > 1 {
 			value := ""
 			quoted := false
 			for i, candidate := range m[1:] {
@@ -459,15 +472,18 @@ func genericContentScan(f *os.File, path string) string {
 			}
 
 			if value != "" && !isFalsePositive(value) {
-				keyName := extractKeyName(line)
+				keyName := extractKeyName(cleanLine)
 
 				// 1. Skip if value is just the key name (template)
 				if strings.EqualFold(value, keyName) {
 					continue
 				}
 
-				// 2. Skip template variables like ${VARIABLE} or {{SECRET}}
-				if strings.HasPrefix(value, "${") || strings.HasPrefix(value, "{{") || strings.Contains(value, "$(") {
+				// 2. Skip template variables like ${VARIABLE}, {{SECRET}}, <PASSWORD> or __PLACEHOLDER__
+				valTrim := strings.TrimSpace(value)
+				if strings.HasPrefix(valTrim, "${") || strings.HasPrefix(valTrim, "{{") || strings.Contains(valTrim, "$(") ||
+					(strings.HasPrefix(valTrim, "<") && strings.HasSuffix(valTrim, ">")) ||
+					(strings.HasPrefix(valTrim, "__") && strings.HasSuffix(valTrim, "__")) {
 					continue
 				}
 

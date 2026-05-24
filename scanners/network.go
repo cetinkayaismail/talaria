@@ -119,24 +119,28 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 		if state == "LISTEN" {
 			if isLPEVector {
 				isDangerous = true
-				reason = "LPE Gold Mine: Local service often contains credentials or exploitable logic."
+				if localIP == "127.0.0.1" || localIP == "::1" {
+					reason = "LPE Gold Mine: Local service (localhost only) contains credentials or exploitable logic."
+				} else {
+					reason = "EXPOSED LPE Gold Mine: Service exposed on public/any interface contains credentials or exploitable logic."
+				}
 			} else if (localIP == "0.0.0.0" || localIP == "::") {
 				// Exposed on ALL interfaces: only report if ROOT (per user request to reduce noise)
 				if uid == 0 {
 					isDangerous = true
-					reason = "Exposed Root Service: Privileged service exposed to network is a high-risk target."
+					reason = "Exposed Root Service: Privileged service exposed on all interfaces to network is a high-risk target."
 				} else {
 					// Skip non-root exposed services to keep report clean
 					continue 
 				}
-			} else if uid == 0 && localPort > 1024 && !isLocal(localIP) {
+			} else if uid == 0 && localPort > 1024 && (localIP != "127.0.0.1" && localIP != "::1") {
 				// Exposed on a specific IP (not localhost) and root
 				isDangerous = true
-				reason = "Suspicious Root Listener: High port root process on network interface."
-			} else if isLocal(localIP) && uid == 0 && localPort > 32768 {
-				// Localhost very high port root
+				reason = "Exposed Root Listener: High port root process on external/public network interface."
+			} else if (localIP == "127.0.0.1" || localIP == "::1") && uid == 0 {
+				// Localhost root listener (all ports)
 				isDangerous = true
-				reason = "Suspicious Local Root: Unusual high port listener on localhost."
+				reason = "Local Root Service: Service running as root listening on localhost. Highly exploitable for local privilege escalation."
 			}
 		}
 

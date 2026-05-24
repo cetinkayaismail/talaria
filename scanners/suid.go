@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"debug/elf"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/user"
@@ -34,8 +35,24 @@ var privilegedSGIDGroups = map[string]bool{
 	"audio": true, "video": true, "staff": true,
 }
 
+// checkSandboxContainment checks if AppArmor is enabled to enforce snap/flatpak sandboxing.
+func checkSandboxContainment() bool {
+	// 1. Check AppArmor enabled parameter
+	if data, err := os.ReadFile("/sys/module/apparmor/parameters/enabled"); err == nil {
+		if strings.TrimSpace(string(data)) == "Y" {
+			return true
+		}
+	}
+	// 2. Check if securityfs apparmor directory exists
+	if _, err := os.Stat("/sys/kernel/security/apparmor"); err == nil {
+		return true
+	}
+	return false
+}
+
 func ScanSUID(root string) ([]SUIDResult, error) {
 	var results []SUIDResult
+	sandboxEnforced := checkSandboxContainment()
 
 	// Only binaries that can be DIRECTLY used for PrivEsc or File Read
 	trueDangerousBinaries := map[string]bool{
@@ -76,6 +93,21 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 
 		// Check for SUID bit
 		if info.Mode()&os.ModeSetuid != 0 {
+			// --- FP Reduction for SUID Sandbox and Ownership ---
+			// 1. Skip sandboxed apps (Snap/Flatpak) ONLY if AppArmor/sandbox containment is enforced on the host
+			if sandboxEnforced {
+				if strings.HasPrefix(path, "/snap/") || strings.Contains(path, "/flatpak/") || strings.HasPrefix(path, "/var/lib/flatpak/") {
+					return nil
+				}
+			}
+
+			// 2. Extract stat and check ownership
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				return nil
+			}
+			isRootOwned := (stat.Uid == 0)
+
 			fileName := filepath.Base(path)
 
 			// Skip standard system SUID binaries to prevent noice
@@ -90,7 +122,11 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 
 			if _, ok := trueDangerousBinaries[strings.ToLower(fileName)]; ok {
 				isDangerous = true
-				reason = "Matches known GTFOBins executable. Can be abused for privilege escalation."
+				if isRootOwned {
+					reason = "Matches known GTFOBins executable. Can be abused for privilege escalation."
+				} else {
+					reason = fmt.Sprintf("Matches known GTFOBins executable owned by non-root user (UID %d). Can be abused for lateral movement / user pivoting.", stat.Uid)
+				}
 				
 				switch strings.ToLower(fileName) {
 				case "python", "python2", "python3":

@@ -19,6 +19,7 @@ import (
 // All fields default to zero/false so normal ./talaria execution is unaffected.
 var StealthCfg struct {
 	AtimeRestore bool // --atime-restore: restore file access times after reading
+	MaskSecrets  bool // --professional: mask credentials in outputs
 }
 
 // ─── Process Masking ─────────────────────────────────────────────────────────

