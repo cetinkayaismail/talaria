@@ -64,6 +64,13 @@ var kernelVulnerabilities = []KernelVulnerability{
 		ExploitHint: "Highly reliable LPE (May 2026). Successor to Dirty Frag. Targets RFC 8229 (ESP-over-TCP) logic. github.com/exploits/fragnesia",
 	},
 	{
+		CVE: "CVE-2026-31635", Name: "DirtyDecrypt",
+		Description: "Missing COW guard in rxgk_decrypt_skb() (DirtyCBC) allows write to privileged page cache → root",
+		MinVersion: [3]int{5, 10, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Only works on distributions compiling with CONFIG_RXGK enabled.",
+	},
+	{
 		CVE: "CVE-2026-31673", Name: "AF_UNIX Diagnostic Race",
 		Description: "Race condition in socket diagnostics allows memory corruption or info leak → LPE",
 		MinVersion: [3]int{3, 0, 0}, MaxVersion: [3]int{6, 19, 11},
@@ -125,6 +132,13 @@ var kernelVulnerabilities = []KernelVulnerability{
 		IsCritical:  true,
 		ExploitHint: "github.com/Notselwyn/CVE-2024-1086",
 	},
+	{
+		CVE: "CVE-2026-23111", Name: "nf_tables Use-After-Free",
+		Description: "UAF in nf_tables rule-processing logic allows local container breakout and escalation → root",
+		MinVersion: [3]int{5, 14, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Triggered via network namespaces. Restrict unprivileged user namespaces to mitigate.",
+	},
 
 	// --- OverlayFS ---
 	{
@@ -175,6 +189,13 @@ var kernelVulnerabilities = []KernelVulnerability{
 		MinVersion: [3]int{4, 4, 0}, MaxVersion: [3]int{5, 1, 17},
 		IsCritical:  false,
 		ExploitHint: "github.com/jas502n/CVE-2019-13272",
+	},
+	{
+		CVE: "CVE-2026-46333", Name: "ptrace Path Flaw",
+		Description: "Flaw in __ptrace_may_access() allows unprivileged capture of file descriptors via pidfd_getfd() → root",
+		MinVersion: [3]int{4, 8, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Allows capturing file descriptors from dying privileged processes to disclose files or run commands.",
 	},
 	{
 		CVE: "CVE-2021-4034", Name: "PwnKit (pkexec)",
