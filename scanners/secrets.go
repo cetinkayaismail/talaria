@@ -548,6 +548,8 @@ func isFalsePositive(val string) bool {
 		"changes", "updating", "without", "expires", "cracker", "authentication",
 		"generic", "nothing", "undefined", "required", "hashes", "binary",
 		"version", "installed", "disabled", "enabled", "checked", "modified",
+		"sha512", "yescrypt", "obscure", "blowfish", "optional", "try_first_pass",
+		"use_authtok",
 	}
 	for _, w := range exactNoise {
 		if valLower == w || valLower == w+"." || valLower == w+"," {
@@ -559,6 +561,7 @@ func isFalsePositive(val string) bool {
 	placeholderPatterns := []string{
 		"your_secret", "enter_pass", "password_here", "xxxxxx", "yyyyyy",
 		"[success=", "[default=", "requisite", "sufficient", "required", "pam_", // PAM module noise
+		"minlen=", "rounds=",
 	}
 	for _, p := range placeholderPatterns {
 		if strings.Contains(valLower, p) {

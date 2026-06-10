@@ -35,24 +35,17 @@ var privilegedSGIDGroups = map[string]bool{
 	"audio": true, "video": true, "staff": true,
 }
 
-// checkSandboxContainment checks if AppArmor is enabled to enforce snap/flatpak sandboxing.
-func checkSandboxContainment() bool {
-	// 1. Check AppArmor enabled parameter
-	if data, err := os.ReadFile("/sys/module/apparmor/parameters/enabled"); err == nil {
-		if strings.TrimSpace(string(data)) == "Y" {
-			return true
-		}
+// hasAppArmorProfile checks if a specific profile name pattern is loaded in AppArmor.
+func hasAppArmorProfile(name string) bool {
+	data, err := os.ReadFile("/sys/kernel/security/apparmor/profiles")
+	if err != nil {
+		return false
 	}
-	// 2. Check if securityfs apparmor directory exists
-	if _, err := os.Stat("/sys/kernel/security/apparmor"); err == nil {
-		return true
-	}
-	return false
+	return strings.Contains(string(data), name)
 }
 
 func ScanSUID(root string) ([]SUIDResult, error) {
 	var results []SUIDResult
-	sandboxEnforced := checkSandboxContainment()
 
 	// Only binaries that can be DIRECTLY used for PrivEsc or File Read
 	trueDangerousBinaries := map[string]bool{
@@ -94,9 +87,13 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 		// Check for SUID bit
 		if info.Mode()&os.ModeSetuid != 0 {
 			// --- FP Reduction for SUID Sandbox and Ownership ---
-			// 1. Skip sandboxed apps (Snap/Flatpak) ONLY if AppArmor/sandbox containment is enforced on the host
-			if sandboxEnforced {
-				if strings.HasPrefix(path, "/snap/") || strings.Contains(path, "/flatpak/") || strings.HasPrefix(path, "/var/lib/flatpak/") {
+			// 1. Skip sandboxed apps (Snap/Flatpak) ONLY if their AppArmor profiles are active/loaded
+			if strings.HasPrefix(path, "/snap/") {
+				if hasAppArmorProfile("snap.") {
+					return nil
+				}
+			} else if strings.Contains(path, "/flatpak/") || strings.HasPrefix(path, "/var/lib/flatpak/") {
+				if hasAppArmorProfile("flatpak") {
 					return nil
 				}
 			}

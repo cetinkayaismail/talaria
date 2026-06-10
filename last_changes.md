@@ -7,6 +7,28 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #19 — 2026 Linux Local Privilege Escalation Database (`scanners/vulnerabilities.go`)
+**Impact:** 🎯 Detects newly disclosed local privilege escalation vulnerabilities
+- **New Vulnerability Signatures:** Added semantic kernel version range checks and exploit instructions for:
+  - **CVE-2026-31635 (DirtyDecrypt / DirtyCBC):** Targets missing COW guard in `rxgk_decrypt_skb()`.
+  - **CVE-2026-23111 (nf_tables Use-After-Free):** Container breakout and local root via packet filtering.
+  - **CVE-2026-46333 (ptrace Path Flaw):** Capturing file descriptors from dying privileged processes.
+
+**Files changed:** `scanners/vulnerabilities.go`
+
+---
+
+### #20 — False Positive & Performance Optimizations (M2, M1, L1, L2)
+**Impact:** 🛡️ Drastically reduced false alarm rates and accelerated filesystem walk speed.
+- **Profile-Specific AppArmor Checks (M2):** Rather than skipping all `/snap/` and `/flatpak/` directories simply because AppArmor is enabled, Talaria now queries `/sys/kernel/security/apparmor/profiles` for specific profiles before ignoring these directories.
+- **PAM Configuration Noise Filtering (M1):** Added strict blocklisting for common PAM keywords (`sha512`, `yescrypt`, `obscure`, `blowfish`) in credential scanner heuristics.
+- **Passwd-based Shell Verification (L1):** Replaced static UID < 1000 check with `/etc/passwd` parsing. Only flags system user processes executing shell sessions if their configured default shell is non-interactive (`nologin` or `false`).
+- **Dynamic Directory Exclusions (L2):** Added `/sys/fs/cgroup`, `/sys/kernel/debug`, `/sys/devices`, and `/var/lib/flatpak` to global exclusions to prevent I/O delays.
+
+**Files changed:** `scanners/suid.go`, `scanners/secrets.go`, `scanners/processes.go`, `scanners/common.go`
+
+---
+
 ### #12 — Terminal Reporting Engine & UX Overhaul (`core/reporting.go`, `main.go`)
 **Impact:** 💎 Professionalized output & scan dashboard
 

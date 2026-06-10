@@ -12,6 +12,7 @@ var GlobalIgnoreDirs = []string{
 	"/var/lib/dpkg", "/var/lib/apt", "/var/lib/rpm", "/var/lib/mysql",
 	"/var/lib/docker", "/var/lib/systemd", "/lib/modules",
 	"/usr/lib/python", "/usr/lib/node_modules", "/usr/include",
+	"/sys/fs/cgroup", "/sys/kernel/debug", "/sys/devices", "/var/lib/flatpak",
 }
 
 // ShouldIgnore checks if a given path should be ignored based on GlobalIgnoreDirs.

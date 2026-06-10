@@ -31,6 +31,30 @@ var SuspiciousProcesses = []string{
 	"telnet", "wget", "curl",
 }
 
+// getSystemUserShells parses /etc/passwd and returns a map of UID -> default shell
+func getSystemUserShells() map[int]string {
+	shells := make(map[int]string)
+	data, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return shells
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		parts := strings.Split(trimmed, ":")
+		if len(parts) >= 7 {
+			uid, err := strconv.Atoi(parts[2])
+			if err == nil {
+				shells[uid] = parts[6]
+			}
+		}
+	}
+	return shells
+}
+
 // ScanProcesses enumerates the /proc filesystem to find high-value targets
 func ScanProcesses() ([]ProcessResult, error) {
 	var results []ProcessResult
@@ -41,6 +65,7 @@ func ScanProcesses() ([]ProcessResult, error) {
 		return nil, err
 	}
 	currentUID, _ := strconv.Atoi(currentUser.Uid)
+	userShells := getSystemUserShells()
 
 	// Open /proc directory
 	procDir, err := os.Open("/proc")
@@ -80,7 +105,7 @@ func ScanProcesses() ([]ProcessResult, error) {
 
 		// Identify if the process is a potential PrivEsc vector
 		userName := lookupUsername(uid)
-		isDangerous := checkProcessDanger(cmdline, uid)
+		isDangerous := checkProcessDanger(cmdline, uid, userShells)
 
 		// Read environment variables for exposed secrets
 		envSecrets, _ := getProcessEnviron(entry)
@@ -142,7 +167,7 @@ func lookupUsername(uid int) string {
 }
 
 // checkProcessDanger applies heuristics to flag suspicious processes
-func checkProcessDanger(cmdline string, uid int) bool {
+func checkProcessDanger(cmdline string, uid int, userShells map[int]string) bool {
 	if len(strings.Fields(cmdline)) == 0 {
 		return false
 	}
@@ -172,10 +197,14 @@ func checkProcessDanger(cmdline string, uid int) bool {
 		}
 	}
 
-	//  High-risk UID services running shells (system daemons shouldn't have interactive shells) 
-	if uid != 0 && (uid < 1000 || uid == 65534) { // system UIDs (www-data, nobody, etc.)
-		if strings.EqualFold(cmdBase, "bash") || strings.EqualFold(cmdBase, "sh") {
-			return true
+	//  High-risk shell execution by non-login system accounts (e.g., www-data, nobody running bash/sh)
+	if uid != 0 {
+		if shell, ok := userShells[uid]; ok {
+			if strings.Contains(shell, "nologin") || strings.Contains(shell, "false") {
+				if strings.EqualFold(cmdBase, "bash") || strings.EqualFold(cmdBase, "sh") || strings.EqualFold(cmdBase, "dash") || strings.EqualFold(cmdBase, "zsh") {
+					return true
+				}
+			}
 		}
 	}
 
