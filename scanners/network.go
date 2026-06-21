@@ -78,6 +78,13 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 			continue
 		}
 
+		// Ephemeral port noise filter (C3): skip outbound ESTABLISHED connections
+		// on ephemeral ports (32768+) — these are short-lived client connections, not LPE vectors.
+		// LISTEN on ephemeral ports is kept (backdoors can listen there).
+		if state == "ESTABLISHED" && localPort >= 32768 {
+			continue
+		}
+
 		// 0. EXCLUSION FILTER: Skip common noisy ports that provide little value for privesc
 		if localPort == 22 || localPort == 80 || localPort == 443 {
 			continue

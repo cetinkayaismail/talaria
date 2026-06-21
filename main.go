@@ -152,6 +152,14 @@ func main() {
 	// In professional/pentest report mode, mask discovered credentials in output.
 	// Default (CTF mode): show credentials in cleartext for immediate usability.
 	scanners.StealthCfg.MaskSecrets = isProfessional
+	
+	if *isStealth && *outputFile != "" {
+		if !strings.HasPrefix(*outputFile, "/dev/shm/") {
+			*outputFile = "/dev/shm/.r" // F2: Default to tmpfs to avoid disk I/O
+		}
+	}
+
+	scanners.InitUserContext() // Initialize shared user context (D2)
 
 	core.PrintBanner()
 	if *maskName != "" {
@@ -159,6 +167,9 @@ func main() {
 	}
 	if *atimeRestore {
 		fmt.Printf("%s[stealth] atime-restore: enabled%s\n", core.ColorGray, core.ColorReset)
+	}
+	if *isStealth && *outputFile != "" {
+		fmt.Printf("%s[stealth] report output redirected to tmpfs: %s%s\n", core.ColorGray, *outputFile, core.ColorReset)
 	}
 
 	// ── Lazy CPU count for adaptive throttle (computed once) ─────────────────
@@ -254,6 +265,7 @@ func main() {
 				ctfPaths := []string{
 					"/home", "/var/www", "/opt", "/srv", "/etc",
 					"/etc/openvpn", "/etc/vpn", "/etc/irssi",
+					"/var/www/html", "/opt/app", "/srv/app", // Deeper .env scanning paths (B3)
 				}
 				if _, err := os.Stat("/root"); err == nil {
 					ctfPaths = append(ctfPaths, "/root")
@@ -695,6 +707,48 @@ func main() {
 					}, "")
 				}
 			}
+
+			// ── SysV Init Scripts (A2) ─────────────────────────────────────
+			initResults, err := scanners.ScanInitScripts()
+			if err == nil && len(initResults) > 0 {
+				mu.Lock()
+				report.Writeable = append(report.Writeable, initResults...)
+				mu.Unlock()
+				for _, r := range initResults {
+					core.PrintFinding("CRITICAL", r.Type, map[string]string{
+						"Path":   r.Path,
+						"Reason": r.Reason,
+					}, "")
+				}
+			}
+
+			// ── Anacrontab Writability (B4) ─────────────────────────────────
+			anacronResults, err := scanners.ScanAnacronWritability()
+			if err == nil && len(anacronResults) > 0 {
+				mu.Lock()
+				report.Writeable = append(report.Writeable, anacronResults...)
+				mu.Unlock()
+				for _, r := range anacronResults {
+					core.PrintFinding("CRITICAL", r.Type, map[string]string{
+						"Path":   r.Path,
+						"Reason": r.Reason,
+					}, "")
+				}
+			}
+
+			// ── At Job Queue (A5) ──────────────────────────────────────────
+			atResults, err := scanners.ScanAtJobs()
+			if err == nil && len(atResults) > 0 {
+				mu.Lock()
+				report.Writeable = append(report.Writeable, atResults...)
+				mu.Unlock()
+				for _, r := range atResults {
+					core.PrintFinding("CRITICAL", r.Type, map[string]string{
+						"Path":   r.Path,
+						"Reason": r.Reason,
+					}, "")
+				}
+			}
 		}()
 	}
 
@@ -1046,6 +1100,25 @@ func main() {
 						if r.IsDangerous {
 							core.PrintFinding("CRITICAL", "Session Hijack Vector", map[string]string{
 								"Socket": r.Path,
+								"Owner":  r.TargetUser,
+								"Reason": r.Reason,
+							}, "")
+						}
+					}
+				}
+			}
+			// ── XAuthority Session Hijack (A4) ─────────────────────────────
+			xauthResults, err := scanners.ScanXAuthority()
+			if err == nil && len(xauthResults) > 0 {
+				mu.Lock()
+				report.XAuthority = xauthResults
+				mu.Unlock()
+				if len(xauthResults) > 0 {
+					core.PrintSectionHeader("X11 Authority")
+					for _, r := range xauthResults {
+						if r.IsDangerous {
+							core.PrintFinding("CRITICAL", "X11 Session Hijack", map[string]string{
+								"Path":   r.Path,
 								"Owner":  r.TargetUser,
 								"Reason": r.Reason,
 							}, "")

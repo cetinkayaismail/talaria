@@ -228,11 +228,9 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 			isDangerous := false
 
 			if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-				if g, err := user.LookupGroupId(strconv.Itoa(int(stat.Gid))); err == nil {
-					ownerGroup = g.Name
-					if privilegedSGIDGroups[strings.ToLower(g.Name)] {
-						isDangerous = true
-					}
+				ownerGroup = CachedGroupName(int(stat.Gid))
+				if privilegedSGIDGroups[strings.ToLower(ownerGroup)] {
+					isDangerous = true
 				}
 			}
 

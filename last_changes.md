@@ -7,6 +7,26 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #22 — Tier 1 Performance & Intelligence Hardening
+**Impact:** ⚡ Significant speed boost, 📉 lower FP rate, 🎯 new critical vectors.
+- **Performance Optimizations:** 
+  - **Shared `UserContext`:** Eliminates redundant `user.Current()` and `/etc/passwd` reads across all scanners.
+  - **GID Cache:** Caches `user.LookupGroupId()` avoiding repeated syscalls per file.
+- **False Positive Reductions:**
+  - **Ephemeral Port Filter:** Ignores outbound connections on ports >= 32768 to reduce noise from short-lived sessions.
+- **Detection Coverage:**
+  - **cgroup v2 Detection:** Updated container module to detect modern Docker/Podman environments via `0::/` unified hierarchy cross-checked with `/proc/1/mountinfo`.
+  - **Deeper `.env` scanning:** Added web-app specific `.env` scan paths (`/var/www/html`, `/opt/app`, `/srv/app`).
+- **Stealth Improvements:**
+  - **`/dev/shm` Default Output:** Forces report generation to tmpfs automatically in stealth mode.
+- **New Scanner Modules:**
+  - **SysV Init Scripts:** Checks `/etc/init.d/` and `/etc/rc*.d/` for writable scripts that execute on boot.
+  - **X11 Authority Theft:** Detects readable `.Xauthority` files for session hijacking.
+  - **Anacrontab Writability:** Checks `/etc/anacrontab` for injection into delayed root jobs.
+  - **`at` Job Queue:** Scans `/var/spool/at/` for writable scheduled jobs.
+
+---
+
 ### #19 — 2026 Linux Local Privilege Escalation Database (`scanners/vulnerabilities.go`)
 **Impact:** 🎯 Detects newly disclosed local privilege escalation vulnerabilities
 - **New Vulnerability Signatures:** Added semantic kernel version range checks and exploit instructions for:

@@ -33,6 +33,9 @@ Talaria v2.0 introduces a major architectural shift focused on offensive intelli
 - **Context-Aware Defense Assessment:** Integrated real-time detection of active AppArmor profiles and SELinux enforcement into the attack chain validation logic.
 
 ### New Detection Modules
+- **SysV Init Scripts:** Checks `/etc/init.d/` and `/etc/rc*.d/` for writable scripts executed on boot.
+- **X11 Session Hijacking:** Detects readable `.Xauthority` files enabling keylogging and screen capture of other users.
+- **Advanced Job Schedulers:** Added scanning for writable Anacron (`/etc/anacrontab`) and `at` job queues.
 - **Session Hijacking:** Identification of writable tmux and screen sockets for user/root session takeover.
 - **Kernel Configuration Audit:** Detection of dangerous kernel parameters (e.g., CONFIG_DEVKMEM, CONFIG_STRICT_DEVMEM=n) in /proc/config.gz and /boot.
 - **Systemd Service Security:** Recursive auditing of writable systemd service units and generators.

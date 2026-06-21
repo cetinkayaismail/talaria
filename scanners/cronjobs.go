@@ -151,9 +151,75 @@ func analyzeCronLine(line string, filePath string, currentUID int) *CronJobResul
 	return nil
 }
 
-// ScanAtJobs for backward compatibility with main.go
-func ScanAtJobs() ([]string, error) {
-	return []string{}, nil
+// ScanAtJobs scans the at job spool for writable job files (A5).
+// Writable at jobs can be modified to execute arbitrary commands as the job owner.
+func ScanAtJobs() ([]WriteableResult, error) {
+	var results []WriteableResult
+	ctx := GetUserContext()
+
+	atPaths := []string{"/var/spool/at", "/var/spool/cron/atjobs", "/var/spool/at/spool"}
+	for _, dir := range atPaths {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			info, err := os.Stat(path)
+			if err != nil {
+				continue
+			}
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				continue
+			}
+			if ctx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) && int(stat.Uid) != ctx.UID {
+				results = append(results, WriteableResult{
+					Path:            path,
+					OwnerUID:        int(stat.Uid),
+					CurrentUserOwns: false,
+					IsExecutable:    info.Mode()&0111 != 0,
+					IsDangerous:     true,
+					Type:            "Writable at Job",
+					RiskLevel:       "CRITICAL",
+					Reason:          "Scheduled at job file is writable. Modify to execute arbitrary commands as the job owner.",
+				})
+			}
+		}
+	}
+	return results, nil
+}
+
+// ScanAnacronWritability checks if /etc/anacrontab is writable (B4).
+// Anacrontab defines delayed root jobs — writable file allows code execution as root.
+func ScanAnacronWritability() ([]WriteableResult, error) {
+	var results []WriteableResult
+	ctx := GetUserContext()
+
+	info, err := os.Stat("/etc/anacrontab")
+	if err != nil {
+		return results, nil
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return results, nil
+	}
+	if ctx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
+		results = append(results, WriteableResult{
+			Path:            "/etc/anacrontab",
+			OwnerUID:        int(stat.Uid),
+			CurrentUserOwns: ctx.UID == int(stat.Uid),
+			IsExecutable:    false,
+			IsDangerous:     true,
+			Type:            "Writable Anacrontab",
+			RiskLevel:       "CRITICAL",
+			Reason:          "Anacrontab is writable. Inject or modify delayed root jobs for privilege escalation.",
+		})
+	}
+	return results, nil
 }
 
 // SystemdTimerResult holds findings for systemd unit files

@@ -31,7 +31,7 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 		containerType = "Docker"
 	}
 
-	// Check cgroup for docker/lxc/kubepods signatures
+	// Check cgroup for docker/lxc/kubepods signatures (cgroup v1)
 	if !isContainer {
 		if data, err := os.ReadFile("/proc/1/cgroup"); err == nil {
 			content := string(data)
@@ -44,6 +44,15 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 			} else if strings.Contains(content, "kubepods") {
 				isContainer = true
 				containerType = "Kubernetes Pod"
+			} else if strings.TrimSpace(content) == "0::/" || strings.Contains(content, "0::/") {
+				// cgroup v2: unified hierarchy shows "0::/" — cross-check with mountinfo (B5)
+				if mountData, err := os.ReadFile("/proc/1/mountinfo"); err == nil {
+					mc := string(mountData)
+					if strings.Contains(mc, "overlay") || strings.Contains(mc, "docker") || strings.Contains(mc, "containerd") {
+						isContainer = true
+						containerType = "Container (cgroupv2 + overlay)"
+					}
+				}
 			}
 		}
 	}
