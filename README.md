@@ -39,6 +39,8 @@ Talaria v2.0 introduces a major architectural shift focused on offensive intelli
 - **Multi-Goal Analysis:** The correlation engine now simultaneously identifies paths leading to root, sudo privileges, shadow group access, and docker group membership.
 - **Context-Aware Defense Assessment:** Integrated real-time detection of active AppArmor profiles and SELinux enforcement into the attack chain validation logic.
 
+> **Note:** For a comprehensive list of all technical changes, performance optimizations, and bug fixes in recent releases, please refer to the [CHANGELOG.md](CHANGELOG.md).
+
 ### New Detection Modules
 - **SysV Init Scripts:** Checks `/etc/init.d/` and `/etc/rc*.d/` for writable scripts executed on boot.
 - **X11 Session Hijacking:** Detects readable `.Xauthority` files enabling keylogging and screen capture of other users.
