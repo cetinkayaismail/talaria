@@ -23,11 +23,18 @@ By leveraging native system calls and concurrent execution, Talaria completes co
 Talaria v2.0 introduces a major architectural shift focused on offensive intelligence and performance optimization.
 
 ### Performance & Scalability
+- **Shared Context & Caching:** Eliminates redundant syscalls by globally caching `user.Current()` and `LookupGroupId()` across all 20+ modules, maximizing walk speeds.
 - **Mutex Contention Optimization:** Redesigned internal locking mechanisms to move I/O operations outside of critical sections, significantly reducing scan-time overhead on multi-core systems.
-- **Dynamic I/O Concurrency:** Adaptive I/O semaphore that automatically scales based on system file descriptor limits (RLIMIT_NOFILE), ensuring maximum throughput.
-- **Magic Byte Identification:** Implemented file signature analysis (ELF, PE, ZIP, etc.) to reliably distinguish binary files from text, ensuring accurate secret scanning with minimal false positives.
+- **Dynamic I/O Concurrency:** Adaptive I/O semaphore that automatically scales based on system file descriptor limits (RLIMIT_NOFILE), ensuring maximum throughput without file exhaustion.
+
+### Stealth & False Positive Reduction
+- **Ephemeral Port & PAM Noise Filtering:** Strictly ignores short-lived outbound connections (>= 32768) and strips common PAM/Crypto placeholders (`sha512`, `yescrypt`) to guarantee high-signal secrets.
+- **cgroup v2 & AppArmor Awareness:** Dynamically checks `/sys/kernel/security/apparmor/profiles` to bypass isolated Sandboxes safely, and utilizes `mountinfo` for modern cgroup v2 container detection.
+- **TMPFS Output:** Automatically forces report generation to `/dev/shm` (RAM disk) when in stealth mode to prevent disk forensic traces.
 
 ### Offensive Intelligence Engine (v2.0)
+- **Structured Terminal UI:** Completely modernized reporting engine featuring a structured tree-view format, section headers, and a summary dashboard.
+- **2026 CVE Database:** Integrated semantic version range checks for the latest Linux kernel Local Privilege Escalation vulnerabilities (e.g., DirtyFrag, nf_tables UAF, ptrace Path Flaw).
 - **Weighted Attack Graphs:** Transitioned to a weighted graph model that prioritizes attack vectors based on risk level and exploitation reliability.
 - **Multi-Goal Analysis:** The correlation engine now simultaneously identifies paths leading to root, sudo privileges, shadow group access, and docker group membership.
 - **Context-Aware Defense Assessment:** Integrated real-time detection of active AppArmor profiles and SELinux enforcement into the attack chain validation logic.
