@@ -10,7 +10,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// D3: sync.Pool for header buffers to reduce GC pressure during large scans
+var headerPool = sync.Pool{
+	New: func() interface{} { return make([]byte, 512) },
+}
 
 // SensitiveFileResult represents a file that matches sensitive patterns
 type SensitiveFileResult struct {
@@ -241,8 +247,9 @@ func analyzeFileContent(path, fileName string) string {
 	}
 	defer f.Close()
 
-	// Binary check via file header (Magic Bytes + Null Bytes)
-	header := make([]byte, 512)
+	// Binary check via file header (Magic Bytes + Null Bytes) — D3: uses sync.Pool
+	header := headerPool.Get().([]byte)
+	defer headerPool.Put(header)
 	n, err := f.Read(header)
 	if err == nil && n > 0 && isBinaryContent(header[:n]) {
 		return ""

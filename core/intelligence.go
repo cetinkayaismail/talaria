@@ -40,6 +40,7 @@ func init() {
 		&DangerousCapabilitiesChain{},
 		&NfsNoRootSquashChain{},
 		&PolkitDangerousRulesChain{},
+		&SuidWritableLibChain{}, // E4: SUID + Writable Library Path chain
 	}
 }
 
@@ -204,7 +205,15 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 		}
 	}
 
+	// C4: Deduplicate chain results — same Name+TargetPath can appear from multiple chains or DFS paths
+	seen := make(map[string]bool)
 	for _, res := range allResults {
+		dedup := res.Name + "|" + res.TargetPath
+		if seen[dedup] {
+			continue
+		}
+		seen[dedup] = true
+
 		severity := "HIGH"
 		if res.RiskLevel == "100% CONFIRMED" {
 			severity = "CRITICAL"
@@ -793,6 +802,26 @@ func (c *PolkitDangerousRulesChain) Evaluate(report *models.ScanReport) []ChainR
 			Description: fmt.Sprintf("Allows any user or vulnerable group to run action '%s' without credentials.", pk.Action),
 			Exploit:     fmt.Sprintf("Trigger the action via pkexec or dbus interface: %s", pk.Action),
 			TargetPath:  pk.FilePath,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 16: SUID + Writable Library Path (E4) ──────────────
+type SuidWritableLibChain struct{}
+
+func (c *SuidWritableLibChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, suid := range report.SUID {
+		if len(suid.WritableLibraryPaths) == 0 {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("SUID '%s' has writable library path → .so hijack", filepath.Base(suid.Path)),
+			RiskLevel:   "100% CONFIRMED",
+			Description: fmt.Sprintf("SUID binary %s loads libraries from writable path(s): %s", suid.Path, strings.Join(suid.WritableLibraryPaths, ", ")),
+			Exploit:     fmt.Sprintf("gcc -shared -fPIC -o %s/evil.so evil.c && %s  # .so is loaded with root privileges", suid.WritableLibraryPaths[0], suid.Path),
+			TargetPath:  suid.Path,
 		})
 	}
 	return results

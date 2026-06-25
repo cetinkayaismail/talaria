@@ -81,6 +81,17 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 		}
 
 		if canWrite {
+			// C1: Skip current-user-owned files in temp directories (noise reduction).
+			// Root-owned or other-user-owned writable files in /tmp are kept — they can be
+			// real vectors (race conditions, symlink attacks).
+			if uid == int(stat.Uid) {
+				for _, tempDir := range []string{"/tmp", "/var/tmp", "/dev/shm"} {
+					if strings.HasPrefix(path, tempDir+"/") {
+						return nil
+					}
+				}
+			}
+
 			fileName := filepath.Base(path)
 			isSUID := (info.Mode()&os.ModeSetuid != 0)
 			isExecutable := (info.Mode()&0111 != 0)

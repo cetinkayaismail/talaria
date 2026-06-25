@@ -68,7 +68,44 @@ func parseFile(filePath string, currentUID int) []CronJobResult {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") || strings.Contains(line, "=") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// A1: Detect dangerous environment variable definitions in crontab files
+		// instead of silently skipping them. LD_PRELOAD, LD_LIBRARY_PATH, PATH, SHELL
+		// in a writable crontab can be abused to hijack root cron job execution.
+		if strings.Contains(line, "=") {
+			dangerousEnvVars := []string{"LD_PRELOAD", "LD_LIBRARY_PATH", "PATH", "SHELL"}
+			parts := strings.SplitN(line, "=", 2)
+			envKey := strings.TrimSpace(parts[0])
+			envVal := ""
+			if len(parts) > 1 {
+				envVal = strings.TrimSpace(parts[1])
+			}
+			for _, dangerous := range dangerousEnvVars {
+				if strings.EqualFold(envKey, dangerous) {
+					// Check if the crontab file itself is writable by the current user
+					if info, statErr := os.Stat(filePath); statErr == nil {
+						if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+							isWritable := (info.Mode()&0002 != 0) ||
+								(int(stat.Uid) == currentUID && info.Mode()&0200 != 0)
+							if isWritable {
+								results = append(results, CronJobResult{
+									Owner:       "root",
+									Schedule:    "env",
+									Command:     line,
+									IsRootJob:   true,
+									IsDangerous: true,
+									Reason:      fmt.Sprintf("Writable crontab sets dangerous env var %s=%s — can hijack root job execution", envKey, envVal),
+									CronFile:    filePath,
+								})
+							}
+						}
+					}
+					break
+				}
+			}
 			continue
 		}
 
