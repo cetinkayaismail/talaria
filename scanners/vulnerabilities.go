@@ -66,6 +66,27 @@ var kernelVulnerabilities = []KernelVulnerability{
 		ExploitHint: "Highly reliable LPE (May 2026). Successor to Dirty Frag. Targets RFC 8229 (ESP-over-TCP) logic. github.com/exploits/fragnesia",
 	},
 	{
+		CVE: "CVE-2026-43503", Name: "DirtyClone",
+		Description: "Page cache corruption via cloned network packets allows privilege escalation → root",
+		MinVersion: [3]int{5, 10, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Variant of DirtyFrag. Unprivileged user can corrupt file-backed memory using cloned packets.",
+	},
+	{
+		CVE: "CVE-2026-46243", Name: "CIFSwitch",
+		Description: "Flaw in CIFS/SMB SPNEGO upcall path allows forging auth keys → root",
+		MinVersion: [3]int{5, 4, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Unprivileged user can forge authentication key descriptions to execute arbitrary code as root.",
+	},
+	{
+		CVE: "CVE-2026-43494", Name: "PinTheft",
+		Description: "Kernel reference count bug allows page cache poisoning → root",
+		MinVersion: [3]int{5, 4, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Exploits a reference count bug for page cache poisoning leading to LPE.",
+	},
+	{
 		CVE: "CVE-2026-31635", Name: "DirtyDecrypt",
 		Description: "Missing COW guard in rxgk_decrypt_skb() (DirtyCBC) allows write to privileged page cache → root",
 		MinVersion: [3]int{5, 10, 0}, MaxVersion: [3]int{6, 19, 11},
