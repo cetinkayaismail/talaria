@@ -485,6 +485,11 @@ func ScanMotdProfiledHijack() ([]WriteableResult, error) {
 				return nil
 			}
 
+			// Skip Symlinks to prevent false positives
+			if d.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+
 			info, err := d.Info()
 			if err != nil {
 				return nil
