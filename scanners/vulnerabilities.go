@@ -87,6 +87,13 @@ var kernelVulnerabilities = []KernelVulnerability{
 		ExploitHint: "Exploits a reference count bug for page cache poisoning leading to LPE.",
 	},
 	{
+		CVE: "CVE-2026-46331", Name: "pedit COW",
+		Description: "Memory corruption in tc pedit module (tcf_pedit_act) allows page-cache poisoning → root",
+		MinVersion: [3]int{4, 14, 0}, MaxVersion: [3]int{6, 19, 11},
+		IsCritical:  true,
+		ExploitHint: "Requires unprivileged user namespaces and act_pedit module. Silently poisons cached system binaries in memory.",
+	},
+	{
 		CVE: "CVE-2026-31635", Name: "DirtyDecrypt",
 		Description: "Missing COW guard in rxgk_decrypt_skb() (DirtyCBC) allows write to privileged page cache → root",
 		MinVersion: [3]int{5, 10, 0}, MaxVersion: [3]int{6, 19, 11},
