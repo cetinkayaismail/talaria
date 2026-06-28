@@ -294,15 +294,25 @@ func ScanWritableServices() ([]WriteableResult, error) {
 	}
 
 	checkDir := func(root string) {
-		filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return filepath.SkipDir
+				return nil
 			}
-			if info.IsDir() {
+			if d.IsDir() {
 				return nil
 			}
 			// Only check .service files
 			if !strings.HasSuffix(path, ".service") {
+				return nil
+			}
+			// Skip symlinks — most entries in /etc/systemd/system/ are symlinks
+			// to /usr/lib/systemd/system/ created by 'systemctl enable'.
+			// Symlinks always show as lrwxrwxrwx which causes false positives.
+			if d.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
 				return nil
 			}
 			stat, ok := info.Sys().(*syscall.Stat_t)

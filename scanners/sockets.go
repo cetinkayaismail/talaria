@@ -23,9 +23,25 @@ type SocketResult struct {
 // Optimized list for dangerous socket patterns looking for these in ctf's will give us a big lead most of the time direct path to root
 // This list is not exhaustive and can be expanded to include more dangerous sockets
 // It is also important to note that some of these sockets may not be dangerous and may be used for legitimate purposes
+// safeSystemSockets are standard system sockets present on every Linux system.
+// These are not exploitable through normal write access and should not be flagged as dangerous.
+var safeSystemSockets = map[string]bool{
+	"dev-log":                    true, // journald log socket
+	"socket":                     true, // journald socket
+	"stdout":                     true, // journald stdout
+	"syslog":                     true, // syslog compat socket
+	"notify":                     true, // systemd notification
+	"private":                    true, // systemd internal control
+	"io.systemd.Resolve":         true, // DNS resolver
+	"io.systemd.DynamicUser":     true, // userdb
+	"io.system.ManagedOOM":       true, // OOM manager
+	"system_bus_socket":          true, // D-Bus (policy-controlled)
+	"request":                    true, // uuidd
+}
+
 var dangerousSockets = []string{
 	"docker.sock", "docker", "kubernetes", "k8s", "containerd",
-	"cri.sock", "systemd", "dbus", "mysql", "postgres",
+	"cri.sock", "mysql", "postgres",
 	"redis", "mongodb", "lxd", "snapd",
 }
 
@@ -86,6 +102,20 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 			service := "Unknown"
 			isCriticalSocket := false
 
+			// Check if this is a known safe system socket first
+			if safeSystemSockets[fileName] {
+				// Safe system socket — still report as INFO but not dangerous
+				results = append(results, SocketResult{
+					Path:        path,
+					OwnerUID:    int(stat.Uid),
+					Permissions: info.Mode().Perm().String(),
+					IsWritable:  isWritable,
+					IsDangerous: false,
+					Service:     "system",
+				})
+				return nil
+			}
+
 			for _, pattern := range dangerousSockets {
 				if strings.Contains(strings.ToLower(fileName), pattern) {
 					service = pattern
@@ -94,8 +124,9 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 				}
 			}
 
-			// A socket is dangerous if it belongs to root and we can write to it
-			isDangerous := isCriticalSocket || (stat.Uid == 0)
+			// A socket is dangerous if it matches a known dangerous service pattern
+			// and we can write to it
+			isDangerous := isCriticalSocket
 
 			results = append(results, SocketResult{
 				Path:        path,

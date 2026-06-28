@@ -1,6 +1,8 @@
 package scanners
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
 	"os"
 	"os/exec"
@@ -341,8 +343,48 @@ func parseKernelVersion(ver string) [3]int {
 	return out
 }
 
+// isKernelConfigEnabled checks if a kernel config option is enabled (=y or =m)
+// by reading /proc/config.gz or /boot/config-<version>.
+func isKernelConfigEnabled(option string) bool {
+	// Try /proc/config.gz first (most reliable)
+	if f, err := os.Open("/proc/config.gz"); err == nil {
+		defer f.Close()
+		if gz, err := gzip.NewReader(f); err == nil {
+			defer gz.Close()
+			scanner := bufio.NewScanner(gz)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.HasPrefix(line, option+"=") {
+					val := strings.TrimPrefix(line, option+"=")
+					return val == "y" || val == "m"
+				}
+			}
+			return false
+		}
+	}
+
+	// Fallback: /boot/config-<kernelversion>
+	if data, err := os.ReadFile("/proc/sys/kernel/osrelease"); err == nil {
+		kver := strings.TrimSpace(string(data))
+		configPath := "/boot/config-" + kver
+		if f, err := os.Open(configPath); err == nil {
+			defer f.Close()
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.HasPrefix(line, option+"=") {
+					val := strings.TrimPrefix(line, option+"=")
+					return val == "y" || val == "m"
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 // checkKernelRange returns all CVEs whose range covers the given parsed version.
-// It also performs distro-specific patch checks.
+// It also performs distro-specific patch checks and runtime prerequisite validation.
 func checkKernelRange(parsed [3]int, rawVer string, distro DistroInfo) []KernelVulnerability {
 	var found []KernelVulnerability
 	for _, v := range kernelVulnerabilities {
@@ -351,11 +393,20 @@ func checkKernelRange(parsed [3]int, rawVer string, distro DistroInfo) []KernelV
 			continue
 		}
 		if versionInRange(parsed, v.MinVersion, v.MaxVersion) {
-			// Check for patches
+			// DirtyDecrypt requires CONFIG_RXGK — skip if not enabled
+			if v.CVE == "CVE-2026-31635" {
+				if !isKernelConfigEnabled("CONFIG_RXGK") {
+					v.PatchStatus = "not_applicable"
+					continue
+				}
+			}
+
+			// Check for distro-specific patches
 			v.PatchStatus = "vulnerable"
 			if fixed, ok := v.FixedIn[distro.ID]; ok {
 				if compareDistroVersions(rawVer, fixed) >= 0 {
 					v.PatchStatus = "likely_patched"
+					continue // Skip patched CVEs to reduce noise
 				}
 			}
 			found = append(found, v)

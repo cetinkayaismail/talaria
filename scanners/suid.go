@@ -64,7 +64,7 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 		"newuidmap": true, "passwd": true, "su": true, "sudo": true,
 		"pkexec": true, "mount": true, "umount": true, "ping": true, "ping6": true,
 		"traceroute": true, "traceroute6": true, "at": true, "newgrp": true,
-		"doas": true, "ssh-keysign": true, "fusermount": true,
+		"doas": true, "ssh-keysign": true, "fusermount": true, "fusermount3": true,
 	}
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

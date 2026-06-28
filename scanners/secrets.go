@@ -113,19 +113,29 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 		fileName := strings.ToLower(d.Name())
 		isInteresting := false
 
-		// --- TIER 1: Critical filenames — always flag, skip content scan ---
+		// --- TIER 1: Critical filenames — flag based on readability ---
 		for _, pattern := range criticalFilePatterns {
 			if strings.Contains(fileName, pattern) {
-				fileResults = append(fileResults, SensitiveFileResult{
-					Path:      path,
-					Type:      "Critical File (" + pattern + ")",
-					RiskLevel: "CRITICAL",
-				})
-				// Also try to grab the first line as a preview (confirms readability)
-				if snippet := previewFirstLine(path); snippet != "" {
+				// Verify the file is actually readable before flagging as CRITICAL.
+				// Files like /etc/shadow exist on every system but are only a finding
+				// if the current user can read them.
+				snippet := previewFirstLine(path)
+				if snippet != "" {
+					fileResults = append(fileResults, SensitiveFileResult{
+						Path:      path,
+						Type:      "Critical File (" + pattern + ")",
+						RiskLevel: "CRITICAL",
+					})
 					contentResults = append(contentResults, SensitiveContentResult{
 						Path:    path,
 						Snippet: "Preview: " + snippet,
+					})
+				} else {
+					// File exists but is not readable — report as INFO, not CRITICAL
+					fileResults = append(fileResults, SensitiveFileResult{
+						Path:      path,
+						Type:      "Critical File (" + pattern + ")",
+						RiskLevel: "INFO",
 					})
 				}
 				return nil

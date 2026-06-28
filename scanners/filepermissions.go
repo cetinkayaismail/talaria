@@ -129,9 +129,12 @@ func checkSingleFile(path string, expected os.FileMode, currentUID int) *FilePer
 
 	mode := info.Mode()
 	perms := mode.Perm()
+	isSticky := (mode & os.ModeSticky) != 0
 
 	// Use bitwise and native way of perm checking . this will give more accurate and faster results than normal scanning
-	isWorldWritable := (perms & 0o002) != 0
+	// World-writable directories with sticky bit (e.g., /tmp with 1777) are safe — users can only
+	// delete their own files. Only flag as world-writable if sticky bit is NOT set.
+	isWorldWritable := (perms & 0o002) != 0 && !isSticky
 	isGroupWritable := (perms & 0o020) != 0
 	isWorldReadable := (perms & 0o004) != 0
 
