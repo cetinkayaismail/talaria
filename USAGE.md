@@ -141,3 +141,9 @@ make stealth-bundle
 | `dbus` | D-Bus policy misconfigurations |
 | `services` | Local service audits (MySQL, Redis) |
 | `packages` | Package manager audits (doas, snap) |
+| `polkit` | Polkit/pkexec rules and misconfigurations |
+| `sessions` | Tmux and Screen session hijacking vectors |
+| `xauthority` | X11 (.Xauthority) session hijacking vectors |
+| `kernelconfig` | Dangerous kernel configurations and parameters |
+| `initscripts` | Writable SysV Init scripts and boot sequences |
+| `history` | Shell history harvesting and sensitive commands |
