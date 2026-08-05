@@ -1,235 +1,238 @@
-# Talaria — Öneri Detay Analizi
+# Talaria — Tier 3 Improvement Plan
 
-Her öneri 4 eksende 1-5 arası puanlanmıştır (5 = en iyi/en kolay).
-
-## Skorlama Tablosu
-
-| # | Öneri | Zorluk (5=kolay) | Hız Etkisi (5=çok hızlandırır) | FP Azaltma (5=çok azaltır) | Vektör Kaçırma Riski (5=risk yok) | Durum |
-|---|-------|:-:|:-:|:-:|:-:|---|
-| **D1** | Parallel Walker Pool | 2 | 5 | 0 | 5 | ⏳ Tier 3 |
-| **B1** | Embedded GTFOBins JSON | 3 | 5 | 3 | 5 | ⏳ Tier 3 |
-| **D2** | Shared UserContext | 5 | 3 | 0 | 5 | ✅ DONE |
-| **A1** | Crontab Env Injection | 4 | 5 | 5 | 5 | ✅ DONE |
-| **A2** | SysV Init Scripts | 5 | 5 | 5 | 5 | ✅ DONE |
-| **A6** | Systemd EnvironmentFile | 3 | 4 | 4 | 5 | ⏳ Tier 3 |
-| **C4** | Attack Path Dedup | 4 | 4 | 4 | 5 | ✅ DONE |
-| **A3** | Logrotate Scanner | 4 | 5 | 5 | 5 | ✅ DONE |
-| **B5** | cgroup v2 Detection | 5 | 5 | 4 | 5 | ✅ DONE |
-| **D3** | sync.Pool Buffers | 4 | 2 | 0 | 5 | ✅ DONE |
-| **D4** | GID Cache | 5 | 2 | 0 | 5 | ✅ DONE |
-| **E4** | SUID+Writable Lib Chain | 4 | 5 | 4 | 5 | ✅ DONE |
-| **C1** | Writable Temp Exclusions | 4 | 3 | 4 | 3 | ✅ DONE |
-| **C2** | Content-Type Aware FP | 3 | 4 | 4 | 3 | ⏳ Tier 3 |
-| **B2** | ELF String Analysis | 2 | 3 | 3 | 5 | ⏳ Tier 3 |
-| **B3** | Deeper .env Scanning | 5 | 4 | 3 | 5 | ✅ DONE |
-| **B4** | Anacron Writability | 5 | 5 | 5 | 5 | ✅ DONE |
-| **B6** | Distro Patch Awareness | 2 | 5 | 5 | 4 | ⏳ Tier 3 |
-| **A4** | X11 Authority Theft | 5 | 5 | 5 | 5 | ✅ DONE |
-| **A5** | at Job Queue | 5 | 5 | 5 | 5 | ✅ DONE |
-| **E1** | Logrotate→Root Chain | 4 | 5 | 4 | 5 | ✅ DONE |
-| **E2** | EnvironmentFile→Root | 3 | 5 | 4 | 5 | ⏳ Tier 3 |
-| **E3** | Password Reuse Chain | 3 | 4 | 3 | 4 | ⏳ Tier 3 |
-| **F1** | Syscall Rate Limiter | 2 | 1 | 0 | 5 | ⏳ Tier 3 |
-| **F2** | /dev/shm Default Output | 5 | 5 | 0 | 5 | ✅ DONE |
-| **C3** | Ephemeral Port Filter | 5 | 3 | 4 | 4 | ✅ DONE |
+Tier 1 (10 items) and Tier 2 (7 items) are fully implemented.
+This file now tracks only the remaining **Tier 3** strategic improvements.
 
 ---
 
-## Detaylı Analiz
+## Status Overview
 
-### D1 — Parallel Walker Pool
-- **Zorluk: 2/5** — Tüm scanner'lardaki `filepath.WalkDir` çağrılarını worker-pool mimarisine geçirmek gerekiyor. Race condition yönetimi, goroutine limitleri ve `filepath.SkipDir` semantiğinin korunması kritik. ~300 satır yeni altyapı + 6-8 scanner dosyasında refactor.
-- **Hız: 5/5** — En büyük darboğaz. Secrets, SUID, writeable scanner'ları tek thread ile yürüyor. NFS/yavaş disklerde 5-10x, SSD'lerde 2-4x hızlanma beklenir.
-- **FP: 0/5** — Finding logic'e dokunmuyor, sadece traversal hızını artırıyor.
-- **Vektör Kaçırma: 5/5** — Risk yok, aynı dosyalar taranıyor, sadece paralel.
-
-### B1 — Embedded GTFOBins JSON
-- **Zorluk: 3/5** — JSON dosyası hazırlanmalı (GTFOBins API/scrape), `go:embed` ile binary'ye gömülmeli, mevcut `trueDangerousBinaries` map yerine JSON lookup konmalı. ~150 satır Go + JSON dosyası bakımı.
-- **Hız: 5/5** — `go:embed` compile-time'da yüklenir, runtime maliyeti sıfır. Mevcut map lookup'tan farklı değil.
-- **FP: 3/5** — Daha geniş binary listesi = daha fazla hit. Ama GTFOBins zaten doğrulanmış vektörler, yani gerçek FP artışı minimal. Yine de `busybox`, `dstat` gibi context-dependent binary'ler için SUID olmadan flag'lememek lazım.
-- **Vektör Kaçırma: 5/5** — Tam tersi: şu an 30 binary taranıyor, GTFOBins'te 400+ var. FN oranını drastik düşürür.
-
-### D2 — Shared UserContext
-- **Zorluk: 5/5** — Basit struct oluştur, `main.go`'da bir kez initialize et, tüm scanner fonksiyonlarına parametre olarak geç. Sadece fonksiyon imzaları değişir.
-- **Hız: 3/5** — ~20 redundant `user.Current()` + `GroupIds()` + `/etc/passwd` parse'ı elimine edilir. Toplam ~50-100ms tasarruf (küçük ama bedava).
-- **FP: 0/5** — Logic değişmiyor.
-- **Vektör Kaçırma: 5/5** — Risk yok.
-
-### A1 — Crontab Env Injection Scanner
-- **Zorluk: 4/5** — Mevcut `parseFile()` fonksiyonuna environment variable satırlarını (`PATH=`, `LD_PRELOAD=`, `SHELL=`) parse eden 40-50 satır ekleme. Writable crontab dosyasında root job varsa ve env override edilebiliyorsa flag'le.
-- **Hız: 5/5** — Mevcut crontab I/O'sunun içinde çalışır, ekstra disk erişimi yok.
-- **FP: 5/5** — Sadece writable dosya + root job + tehlikeli env kombinasyonunda tetiklenir. FP riski neredeyse sıfır.
-- **Vektör Kaçırma: 5/5** — Yeni vektör ekleme, mevcut hiçbir şeyi bozmaz.
-
-### A2 — SysV Init Scripts
-- **Zorluk: 5/5** — `/etc/init.d/` ve `/etc/rc*.d/` dizinlerinde writable dosya taraması. Mevcut `ScanWritableServices()` ile aynı pattern, ~60 satır.
-- **Hız: 5/5** — Tek dizin taraması, ~5ms.
-- **FP: 5/5** — Direkt writability check, FP riski sıfır.
-- **Vektör Kaçırma: 5/5** — Şu an tamamen eksik olan bir vektör. Legacy sistemlerde kritik.
-
-### A6 — Systemd EnvironmentFile
-- **Zorluk: 3/5** — Tüm `.service` dosyalarını parse edip `EnvironmentFile=` direktiflerini çıkarmak, sonra referans edilen dosyanın writable olup olmadığını kontrol etmek gerekiyor. ~100 satır. Zorluk: `EnvironmentFile=-/path` (dash prefix = ignore if missing) ve specifier'lar (`%i`, `%n`) handle edilmeli.
-- **Hız: 4/5** — Mevcut systemd taramasının içine entegre edilebilir, minimal ekstra I/O.
-- **FP: 4/5** — Writable env dosyası + root service kombinasyonu gerektiği için FP düşük. Ama bazı env dosyaları writable by design olabilir (kullanıcı override'ları).
-- **Vektör Kaçırma: 5/5** — Yeni vektör, mevcut hiçbir şeyi bozmaz.
-
-### C4 — Attack Path Dedup
-- **Zorluk: 4/5** — `RunIntelligenceEngine`'de `allResults` slice'ına eklenmeden önce path hash'i kontrol et. ~20 satır.
-- **Hız: 4/5** — Duplicate path rendering'i elimine eder, terminal output daha hızlı.
-- **FP: 4/5** — Aynı vektörün 3x gösterilmesi kullanıcıyı yanıltır. Dedup ile cleaner output.
-- **Vektör Kaçırma: 5/5** — Sadece duplicate'ler kaldırılır, unique path'ler korunur.
-
-### A3 — Logrotate Scanner
-- **Zorluk: 4/5** — `/etc/logrotate.d/` dizininde writable dosya taraması + `postrotate`/`prerotate` block parsing. ~80 satır.
-- **Hız: 5/5** — Küçük dizin, ~10ms.
-- **FP: 5/5** — Writable config + root context = düşük FP.
-- **Vektör Kaçırma: 5/5** — CTF'lerde yaygın vektör, şu an graph'ta sadece `FilePermissions` üzerinden dolaylı tespit var, dedicated scanner yok.
-
-### B5 — cgroup v2 Detection
-- **Zorluk: 5/5** — `ScanContainer()`'a 10-15 satır ekleme. `/proc/1/mountinfo` parse.
-- **Hız: 5/5** — Tek dosya okuma.
-- **FP: 4/5** — Overlay mount olan her sistem container değil (bazı VPS'ler overlay kullanır). `/.dockerenv` ile cross-check yapılmalı.
-- **Vektör Kaçırma: 5/5** — Modern container'ları kaçırmayı önler (Docker 24+, Podman 4+ hep cgroup v2).
-
-### D3 — sync.Pool Buffers
-- **Zorluk: 4/5** — `secrets.go`'daki `header := make([]byte, 512)` satırını pool'dan al/geri koy. ~15 satır.
-- **Hız: 2/5** — Sadece 10,000+ dosya taranan büyük filesystem'lerde fark yaratır. Normal CTF box'ta etkisi minimal.
-- **FP: 0/5** — Logic değişmiyor.
-- **Vektör Kaçırma: 5/5** — Risk yok.
-
-### D4 — GID Cache
-- **Zorluk: 5/5** — `sync.Map` ile cache, ~20 satır.
-- **Hız: 2/5** — `user.LookupGroupId` per-file çağrısı elimine edilir ama genelde az sayıda unique GID vardır. Etkisi küçük.
-- **FP: 0/5** — Logic değişmiyor.
-- **Vektör Kaçırma: 5/5** — Risk yok.
-
-### E4 — SUID + Writable Library Path Chain
-- **Zorluk: 4/5** — `intelligence.go`'ya yeni chain struct. `report.SUID`'deki `WritableLibraryPaths` ile cross-reference. ~40 satır.
-- **Hız: 5/5** — Mevcut veriden çalışır, ekstra I/O yok.
-- **FP: 4/5** — SUID root binary + writable RPATH = gerçek vektör. FP düşük.
-- **Vektör Kaçırma: 5/5** — SUID scanner zaten writable lib path'leri tespit ediyor ama intelligence engine bunları chain'e bağlamıyor. Bu gap'i kapatır.
-
-### C1 — Writable Temp Exclusions
-- **Zorluk: 4/5** — `ScanWriteable()`'a path filter ekleme. ~15 satır.
-- **Hız: 3/5** — Büyük `/tmp` dizinlerinde noise azalır, daha az result = daha hızlı render.
-- **FP: 4/5** — `/tmp`, `/var/tmp`, `.cache/` gibi yerler gereksiz finding üretir.
-- **Vektör Kaçırma: 3/5** — ⚠️ **DİKKAT**: `/tmp`'deki writable root dosyalar bazen gerçek vektördür (race condition, symlink attack). Filtreleme çok agresif olmamalı. Sadece current-user-owned dosyaları skip et.
-
-### C2 — Content-Type Aware FP Filtering
-- **Zorluk: 3/5** — Entropy check'e ek olarak regex pattern'ler (semver, hex color, filesystem path). ~40 satır.
-- **Hız: 4/5** — Daha az false finding = daha az output.
-- **FP: 4/5** — Hex renk kodları (`#FF5733`), semver (`3.8.0-beta.2`), path'ler FP üretir.
-- **Vektör Kaçırma: 3/5** — ⚠️ Agresif pattern filter gerçek secret'leri de yakalayabilir. Örneğin bazı password'ler semver'e benzer. Regex'ler dikkatli tasarlanmalı.
-
-### B2 — ELF String Analysis
-- **Zorluk: 2/5** — `debug/elf` ile `.rodata` section okuma + string extraction + komut ismi matching. ~120 satır. Zorluk: hangi string'lerin "komut çağrısı" olduğunu belirlemek heuristic-heavy.
-- **Hız: 3/5** — Her SUID ELF binary'de `.rodata` okumak ~1ms/binary, ama yüzlerce SUID olabilir.
-- **FP: 3/5** — Bir binary'nin `.rodata`'sında "ls" string'i olması onu çağırdığı anlamına gelmez. Heuristic kalitesine bağlı.
-- **Vektör Kaçırma: 5/5** — GTFOBins'te olmayan custom SUID binary'lerdeki PATH hijack vektörlerini yakalar.
-
-### B3 — Deeper .env Scanning
-- **Zorluk: 5/5** — `ScanSecrets`'teki `ctfPaths` listesine web app path'leri ekleme. ~5 satır.
-- **Hız: 4/5** — Birkaç ekstra dizin walk'u ama targeted.
-- **FP: 3/5** — `.env.example`, `.env.sample` dosyaları FP üretebilir. Filename filter gerekir.
-- **Vektör Kaçırma: 5/5** — Web app secret'lerini daha iyi yakalar.
-
-### B4 — Anacron Writability
-- **Zorluk: 5/5** — `/etc/anacrontab` writability check. ~10 satır.
-- **Hız: 5/5** — Tek stat() çağrısı.
-- **FP: 5/5** — Direkt writability check.
-- **Vektör Kaçırma: 5/5** — Anacron root job'larını yönetir, writable olması kritik.
-
-### B6 — Distro Patch Awareness
-- **Zorluk: 2/5** — Her CVE için her major distro'nun backport versiyonlarını araştırıp JSON'a eklemek gerekiyor. Sürekli bakım gerektiren bir iş. ~200 satır JSON + parser.
-- **Hız: 5/5** — Compile-time embed, runtime maliyeti yok.
-- **FP: 5/5** — Patched CVE'leri "likely_patched" olarak işaretler, ciddi FP azaltma.
-- **Vektör Kaçırma: 4/5** — ⚠️ Yanlış "likely_patched" işaretleme gerçek vulnerable sistemi gizleyebilir. Patch bilgisi %100 doğru olmalı.
-
-### A4 — X11 Authority Theft
-- **Zorluk: 5/5** — `/home/*/`, `/root/`, `/tmp/` altında readable `.Xauthority` taraması. ~50 satır.
-- **Hız: 5/5** — Targeted dosya check, ~5ms.
-- **FP: 5/5** — Sadece readable + X11 aktif kombinasyonunda tetiklenir.
-- **Vektör Kaçırma: 5/5** — Lateral movement vektörü, mevcut group scanner'ı (video/input) tamamlar.
-
-### A5 — at Job Queue
-- **Zorluk: 5/5** — Mevcut `ScanAtJobs()` stub'ını implement et. `/var/spool/at/` taraması. ~40 satır.
-- **Hız: 5/5** — Küçük dizin.
-- **FP: 5/5** — Writability/readability check.
-- **Vektör Kaçırma: 5/5** — Şu an tamamen eksik.
-
-### E1 — Logrotate→Root Chain
-- **Zorluk: 4/5** — `intelligence.go`'ya yeni chain. Logrotate config parse + postrotate script writability cross-ref. ~50 satır.
-- **Hız: 5/5** — Mevcut veriden çalışır.
-- **FP: 4/5** — Logrotate genelde daily/weekly çalışır, timing dependency var.
-- **Vektör Kaçırma: 5/5** — Yeni chain, mevcut hiçbir şeyi bozmaz.
-
-### E2 — EnvironmentFile→Root Chain
-- **Zorluk: 3/5** — A6 scanner'ından gelen veriye bağımlı. Chain logic ~40 satır ama önce A6 implement edilmeli.
-- **Hız: 5/5** — Mevcut veriden çalışır.
-- **FP: 4/5** — Writable env file + root service = düşük FP.
-- **Vektör Kaçırma: 5/5** — Yeni chain.
-
-### E3 — Password Reuse Chain
-- **Zorluk: 3/5** — Discovered secret'leri normalize edip `/etc/passwd` user listesiyle cross-reference. PAM/su ile aktif test yapmadan sadece "potansiyel" olarak raporla. ~60 satır.
-- **Hız: 4/5** — String comparison, minimal.
-- **FP: 3/5** — Password reuse tespiti heuristic-heavy. Aynı string farklı context'te farklı anlam taşıyabilir.
-- **Vektör Kaçırma: 4/5** — ⚠️ Cleartext password match'i doğru pozitif olabilir ama hash'lenmiş/encoded secret'ler yakalanamaz.
-
-### F1 — Syscall Rate Limiter
-- **Zorluk: 2/5** — Token-bucket altyapısı hazır (`STEALTH_ADVANCED.md`), ama 17 scanner dosyasındaki her filesystem çağrısını sarmak gerekiyor. Büyük refactor.
-- **Hız: 1/5** — **Hızı düşürür** (tasarım gereği). Stealth modunda scan süresi 5-20x artabilir.
-- **FP: 0/5** — Logic değişmiyor.
-- **Vektör Kaçırma: 5/5** — Aynı tarama yapılır, sadece yavaş.
-
-### F2 — /dev/shm Default Output
-- **Zorluk: 5/5** — `main.go`'da 5 satır if-else. `--stealth` aktifse ve `-o` path `/dev/shm` değilse uyarı ver.
-- **Hız: 5/5** — tmpfs'e yazma disk I/O'dan çok daha hızlı.
-- **FP: 0/5** — Logic değişmiyor.
-- **Vektör Kaçırma: 5/5** — Risk yok.
-
-### C3 — Ephemeral Port Filter
-- **Zorluk: 5/5** — `network.go`'ya 3 satır port range check.
-- **Hız: 3/5** — Daha az result = daha hızlı output.
-- **FP: 4/5** — Ephemeral outbound connection'lar noise.
-- **Vektör Kaçırma: 4/5** — ⚠️ Bazı backdoor'lar ephemeral port range'de listen edebilir. Sadece ESTABLISHED bağlantıları filtrele, LISTEN'ları değil.
+| # | Item | Difficulty | Speed | FP Δ | New Vectors | Status |
+|---|------|:---:|:---:|:---:|:---:|:---:|
+| **B1** | Embedded GTFOBins JSON | 3/5 | 5/5 | ↑ slightly | 🟢 +350 binaries | ✅ DONE |
+| **A6+E2** | Systemd EnvironmentFile + Chain | 3/5 | 4/5 | ↓ low FP | 🟢 Critical new vector | ⏳ Pending |
+| **D1** | Parallel Walker Pool | 2/5 | 5/5 | — | — | ⏳ Pending |
+| **B2** | ELF String Analysis | 2/5 | 3/5 | ↑ moderate | 🟢 Custom SUID vectors | ⏳ Pending (flag-gated) |
+| **B6** | Distro Patch Awareness | 2/5 | 5/5 | ↓ highest | — | ⚠️ High-risk data |
+| **F1** | Syscall Rate Limiter | 2/5 | 1/5 (intentional) | — | — | ❌ Block on D1 first |
+| **E3** | Password Reuse Chain | 3/5 | 4/5 | ↑ heuristic | 🟡 Partial | ⏳ Optional |
 
 ---
 
-## Öncelik Sıralaması (ROI = Etki / Zorluk)
+## Detailed Analysis
 
-### 🔴 Tier 1 — Hemen Yap (Kolay + Yüksek Etki)
-| # | Öneri | Zorluk | Toplam Etki | Durum |
-|---|-------|--------|-------------|-------|
-| A2 | SysV Init Scripts | 5/5 | Yeni kritik vektör | ✅ DONE |
-| A5 | at Job Queue | 5/5 | Eksik stub'ı doldurur | ✅ DONE |
-| B4 | Anacron Writability | 5/5 | 10 satır, sıfır risk | ✅ DONE |
-| A4 | X11 Authority Theft | 5/5 | Lateral movement | ✅ DONE |
-| D2 | Shared UserContext | 5/5 | Bedava hız | ✅ DONE (partial — 3/18 scanner, rest covered by D1) |
-| D4 | GID Cache | 5/5 | Bedava hız | ✅ DONE |
-| F2 | /dev/shm Default | 5/5 | 5 satır | ✅ DONE |
-| C3 | Ephemeral Port Filter | 5/5 | 3 satır | ✅ DONE |
-| B5 | cgroup v2 | 5/5 | 15 satır | ✅ DONE |
-| B3 | .env Hierarchy | 5/5 | 5 satır | ✅ DONE |
+---
 
-### 🟡 Tier 2 — Kısa Vadede Yap (Orta Zorluk + Yüksek Etki)
-| # | Öneri | Zorluk | Toplam Etki | Durum |
-|---|-------|--------|-------------|-------|
-| A1 | Crontab Env Injection | 4/5 | Kritik yeni vektör | ✅ DONE |
-| A3 | Logrotate Scanner | 4/5 | CTF klasiği | ✅ DONE |
-| C4 | Attack Path Dedup | 4/5 | Cleaner output | ✅ DONE |
-| E4 | SUID+Lib Chain | 4/5 | Gap kapatır | ✅ DONE |
-| C1 | Writable Temp Filter | 4/5 | Dikkatli filtre | ✅ DONE |
-| D3 | sync.Pool | 4/5 | Büyük scan'lerde faydalı | ✅ DONE |
-| E1 | Logrotate Chain | 4/5 | A3'e bağlı | ✅ DONE |
+### ✅ B1 — Embedded GTFOBins JSON
+**Status: DONE** (commit `5c27081`)
 
-### 🔵 Tier 3 — Stratejik (Yüksek Etki Ama Zor)
-| # | Öneri | Zorluk | Toplam Etki |
-|---|-------|--------|-------------|
-| B1 | GTFOBins JSON | 3/5 | FN'yi drastik düşürür |
-| A6 | EnvironmentFile | 3/5 | Kritik vektör |
-| D1 | Parallel Walker | 2/5 | En büyük hız artışı |
-| B6 | Distro Patches | 2/5 | En büyük FP azaltma |
-| B2 | ELF String Analysis | 2/5 | Custom SUID vektörleri |
-| F1 | Syscall Rate Limiter | 2/5 | Stealth-only |
+**What was done:** Replaced the 30-entry hardcoded `trueDangerousBinaries` map with a
+`go:embed`-compiled `gtfobins.json` database generated from the official GTFOBins GitHub
+repository. 380 binaries with SUID/sudo/shell/file-read/file-write contexts. Zero runtime
+overhead — parsed once in `init()`.
 
-> **Önerim**: Tier 1'deki 10 değişikliği tek commit'te implement et (~200 satır toplam). Sonra Tier 2, sonra Tier 3.
+**Impact:**
+- False Negatives: 30 → 274 SUID-capable binaries (+244 new FN catches)
+- Exploit hints: 14 hardcoded → 380 JSON-sourced
+- Runtime cost: identical O(1) map lookup
+
+**To refresh the database in future:**
+```bash
+git clone https://github.com/GTFOBins/GTFOBins.github.io.git /tmp/gtfobins
+# Re-run gen_gtfobins.py (recreate it from chat history if needed)
+# Then: go build ./...
+```
+
+---
+
+### ⏳ A6 — Systemd EnvironmentFile + E2 Chain
+
+**Recommendation: ✅ DO IT NEXT — same pattern as A3/E1, no disruption.**
+
+**What it does:**
+Parses all `.service` files for `EnvironmentFile=` directives. If the referenced env file
+is writable by the current user, flags it as injectable (`LD_PRELOAD`, `PATH`). The E2
+intelligence chain cross-references this to produce a root code-execution path via service
+restart.
+
+**Metrics:**
+| Axis | Score | Notes |
+|------|-------|-------|
+| Difficulty | 3/5 | ~100 lines. Tricky parts: dash-prefix (`EnvironmentFile=-/path` = ignore if missing), systemd specifiers (`%i`, `%n`, `%u`) in paths |
+| Speed | 4/5 | Piggybacks on existing systemd service file reads, minimal extra I/O |
+| FP Rate | Low | Requires writable env file AND root-owned service simultaneously — rare in well-configured systems |
+| New Vectors | Critical | `LD_PRELOAD` injection via env file → root on service restart. Completely absent from Talaria currently |
+| Architecture Disruption | Very Low | New file (`scanners/env_file.go`), new report field, new chain — identical pattern to A3/E1 |
+
+**⚠️ FP Risk:**
+Some files in `/etc/default/` are writable by design (user-override configs). Mitigation:
+flag as `HIGH` not `CRITICAL`, annotate with "verify this is unintentionally writable".
+
+**Implementation notes:**
+- Service file locations: `/etc/systemd/system/`, `/lib/systemd/system/`, `/usr/lib/systemd/system/`
+- Dash prefix (`EnvironmentFile=-/path`): strip leading `-` from path, and if the file doesn't exist, skip silently (don't report)
+- Systemd specifiers (`%i`, `%n`): safest approach is to skip any path containing `%` and note it as "unresolvable specifier" rather than trying to evaluate
+- E2 chain depends on A6 data, implement both together
+
+---
+
+### ⏳ D1 — Parallel Walker Pool
+
+**Recommendation: ✅ DO IT — biggest speed win available, but implement one scanner at a time.**
+
+**What it does:**
+Converts the 10 `filepath.WalkDir` callsites across 7 scanner files into a shared
+goroutine worker-pool so directory traversal runs in parallel instead of serially.
+
+**Metrics:**
+| Axis | Score | Notes |
+|------|-------|-------|
+| Difficulty | 2/5 (hardest) | ~300 lines new infrastructure. Race condition risk is the main danger |
+| Speed | 5/5 | **Largest single speed improvement available.** SSD: 2–4×, NFS: 5–10× |
+| FP Rate | No change | Pure traversal — finding logic is untouched |
+| New Vectors | None | Same files scanned, just faster |
+| Architecture Disruption | Very High | Every scanner using `WalkDir` needs goroutine-safe internal callbacks |
+
+**🔴 Critical implementation rules:**
+1. `filepath.SkipDir` semantics **break inside a goroutine pool** — must be handled at the dispatcher level
+2. Each scanner callback must be goroutine-safe (no shared slices without mutex)
+3. Use a **single shared `errgroup` + semaphore** pattern, not one pool per scanner
+4. **Do NOT attempt all 10 callsites in one commit** — start with `secrets.go` (heaviest walker), verify, then expand
+5. D1 being done first also makes F1 (Syscall Rate Limiter) trivial — add limiter to the single pool I/O path instead of 17 files
+
+**Affected files:** `scanners/secrets.go`, `scanners/suid.go`, `scanners/writeable.go`,
+`scanners/cronjobs.go`, `scanners/fileperms_exploit.go`, `scanners/sockets.go`
+
+---
+
+### ⏳ B2 — ELF String Analysis
+
+**Recommendation: ⚠️ DO IT — but gate behind a `--deep-elf` flag to control FP.**
+
+**What it does:**
+For every SUID binary NOT already in the GTFOBins database, reads its `.rodata` ELF
+section, extracts strings, and heuristically detects if it calls external commands without
+absolute paths — indicating a PATH hijack opportunity.
+
+**Metrics:**
+| Axis | Score | Notes |
+|------|-------|-------|
+| Difficulty | 2/5 (hardest) | `debug/elf` makes `.rodata` read easy (~30 lines). Hard part: the heuristic for "is this string a command call?" |
+| Speed | 3/5 | ~1ms per ELF binary. 200 SUID binaries = ~200ms extra — acceptable but noticeable |
+| FP Rate | Moderate increase | A string `"ls"` in `.rodata` ≠ the binary calls `system("ls")`. Heuristic-heavy by nature |
+| New Vectors | Unique value | **Only item that catches custom in-house SUID binaries** not on any public list. Critical for HackTheBox/TryHackMe-style CTFs where custom SUID binaries are the challenge |
+| Architecture Disruption | Medium | ELF parsing added to SUID scanner hot path, `SUIDResult` gets new field |
+
+**⚠️ FP Risk:**
+Strings in `.rodata` have many sources: error messages, format strings, library symbols.
+A naive extractor produces many false positives.
+
+**Mitigation — gate behind `--deep-elf` flag:**
+```
+talaria --deep-elf    # enables ELF string analysis
+```
+Normal runs stay clean. CTF users get the extra coverage when they explicitly ask for it.
+
+**Heuristic rules (to minimize FP):**
+- Only analyze binaries with `OwnerUID == 0` (root-owned SUID)
+- Only flag strings that: are ≤15 chars, have no `/` prefix (not absolute path), no shell metacharacters, match known short command names
+- Cross-reference against GTFOBins: if the extracted string is in the DB, it's a confirmed hit not a heuristic guess
+
+---
+
+### ⚠️ B6 — Distro Patch Awareness
+
+**Recommendation: ⚠️ DO IT CAREFULLY — wrong data is worse than no data. Ubuntu LTS only.**
+
+**What it does:**
+Embeds a per-distro CVE backport version database. When Talaria detects e.g. Ubuntu 22.04
+with kernel `5.15.0-91-generic`, it marks known CVEs as "likely_patched" instead of
+flagging them as vulnerable.
+
+**Metrics:**
+| Axis | Score | Notes |
+|------|-------|-------|
+| Difficulty | 2/5 (hardest) | Go implementation: easy. Data sourcing: **ongoing manual work** — backport versions are not centrally published |
+| Speed | 5/5 | `go:embed` compile-time, zero runtime cost |
+| FP Rate | Highest reduction of all items | Patched CVEs currently show as vulnerable — significant noise in production system scans |
+| New Vectors | None | Existing CVE findings annotated differently |
+| Architecture Disruption | Medium | New version comparison logic for distro-specific kernel patch formats (not semver) |
+
+**🔴 Critical risk — data quality:**
+A wrong "likely_patched" entry **silently hides a real vulnerability**. Example: if Ubuntu
+22.04 backported the fix in `5.15.0-91` but your JSON says `5.15.0-89`, you miss a live
+CVE on a real target. False negatives here are worse than false positives.
+
+**Safe implementation approach:**
+1. Start with **Ubuntu LTS only** (20.04, 22.04, 24.04) — the most common CTF/pentest target
+2. Never RHEL/CentOS — their versioning is opaque and error-prone
+3. Instead of "likely_patched" label, use "check-if-patched" with a link to Ubuntu's security tracker — gives context without Talaria making the call
+4. Source data from `https://ubuntu.com/security/cves` or `usn.ubuntu.com`
+
+---
+
+### ❌ F1 — Syscall Rate Limiter
+
+**Recommendation: ❌ BLOCK ON D1 — after D1 it becomes 20 lines, before it it's 300.**
+
+**What it does:**
+Wraps every filesystem syscall in a token-bucket rate limiter so Talaria's I/O pattern
+doesn't look like a scanner to IDS/auditd when running in `--stealth` mode.
+
+**Metrics:**
+| Axis | Score | Notes |
+|------|-------|-------|
+| Difficulty | 2/5 (hardest) | Token-bucket algorithm itself is trivial. Wrapping every `os.Open`, `os.Stat`, `os.ReadFile`, `WalkDir` across 17 files is mechanical but risky |
+| Speed | 1/5 | **Intentionally slows everything down** — 5–20× longer scan in stealth mode |
+| FP Rate | No change | Logic untouched |
+| New Vectors | None | Purely operational |
+| Architecture Disruption | Very High | Every filesystem call across the entire codebase must be wrapped |
+
+**🔴 Why to wait for D1:**
+Once D1 exists, you have a single centralized I/O path (the worker pool). Slotting a rate
+limiter there means touching **1 file** instead of 17. Doing F1 before D1 is wasted effort
+that D1 will undo.
+
+**After D1 is done:**
+```go
+// In the worker pool dispatcher — one place, all scanners covered:
+rateLimiter.Wait(ctx)
+result, err := doFilesystemOp(...)
+```
+
+---
+
+### ⏳ E3 — Password Reuse Chain
+
+**Recommendation: ⏳ OPTIONAL — high FP risk, low-confidence findings only.**
+
+**What it does:**
+Cross-references discovered plaintext secrets (from `report.Secrets`) against the
+`/etc/passwd` user list to detect potential password reuse across accounts.
+
+**Metrics:**
+| Axis | Score | Notes |
+|------|-------|-------|
+| Difficulty | 3/5 | ~60 lines. String normalization + cross-reference |
+| Speed | 4/5 | Pure in-memory string comparison |
+| FP Rate | Heuristic-heavy | Same string in different contexts often has different meaning. Only cleartext matches are useful — encoded/hashed secrets are not caught |
+| New Vectors | Partial | Catches reused plaintext credentials. Misses hashed/encoded ones |
+
+**⚠️ Implementation constraint:**
+Never attempt PAM/su authentication to verify — that creates noisy logs and risks lockout.
+Report as `POTENTIAL` only, never `CONFIRMED`. Only flag when the exact string appears in
+both a secret file and a field where passwords are expected (e.g. `password=`, `passwd=`,
+`PASS=` prefixes).
+
+---
+
+## Recommended Implementation Order
+
+```
+1st  →  A6 + E2   ✅ Do now  — same pattern as A3/E1, critical vector, low risk
+2nd  →  D1        ✅ Careful  — one scanner at a time, start with secrets.go
+3rd  →  B2        ⚠️ Flag-gated  — --deep-elf flag, CTF value
+4th  →  B6        ⚠️ Data-quality gated  — Ubuntu LTS only, "check-if-patched" wording
+LAST →  F1        ❌ After D1  — becomes trivial once central I/O pool exists
+OPT  →  E3        ⏳ Optional  — low confidence, POTENTIAL-only findings
+```

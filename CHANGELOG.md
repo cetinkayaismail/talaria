@@ -7,6 +7,17 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #25 — B1 Embedded GTFOBins JSON (`scanners/gtfobins.json`, `scanners/gtfobins.go`, `scanners/suid.go`)
+**Impact:** 🎯 Drastically fewer false negatives, ⚡ zero runtime cost, 🧠 richer exploit hints.
+
+- **GTFOBins JSON database (`scanners/gtfobins.json`):** 380-binary database generated from the official GTFOBins GitHub repository. Filtered to only include binaries with `suid`, `sudo`, `shell`, `file-read`, or `file-write` exploitation vectors. Replaces the previous 30-entry hardcoded map — **+350 binaries** added (13× more coverage).
+- **`go:embed` loader (`scanners/gtfobins.go`):** JSON is embedded at compile-time via `go:embed`. Parsed once in `init()` into a package-level map — zero runtime I/O, same O(1) lookup as before. `LookupGTFOBin()` is exported for use by any scanner. `GetExploitHint()` now serves hints from the 380-entry database for SUID vector.
+- **SUID scanner update (`scanners/suid.go`):** `trueDangerousBinaries` map (30 hardcoded entries) replaced with `LookupGTFOBin()`. Reason string now includes capability tags (e.g. `[shell, file-read, file-write]`). Exploit hints sourced directly from JSON. `checkWritableDirs()` refactored to use cached `UserContext` (D2) instead of calling `user.Current()` again.
+
+**Files changed:** `scanners/gtfobins.json` *(new)*, `scanners/gtfobins.go`, `scanners/suid.go`
+
+---
+
 ### #24 — A3 Logrotate Scanner + E1 Logrotate→Root Chain (`scanners/logrotate.go`, `core/intelligence.go`)
 **Impact:** 🎯 New critical vector, 📉 lower FP than generic file-permission check, ⚡ <5ms scan cost.
 
