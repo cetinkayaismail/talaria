@@ -1,5 +1,37 @@
 # Talaria Project — Agent Rules
 
+---
+
+## Language
+
+Always communicate in **English** — in chat responses, code comments, variable names,
+commit messages, and documentation — unless the user explicitly asks otherwise.
+Never switch to another language unprompted.
+
+---
+
+## Pre-Change Metric Report
+
+Before implementing **any** code change (feature, scanner, chain, fix, refactor),
+you MUST produce a short report covering these 5 metrics:
+
+```
+📊 Pre-Change Report: <Item Name>
+─────────────────────────────────────────────────────
+⚡ Speed impact       : <e.g. "<5ms single ReadDir", "2-4x faster walk", "zero — in-memory only">
+📉 FP rate change     : <e.g. "reduces noise — skips user-owned temp files", "slight increase — more binaries flagged", "no change">
+🏗️  Architecture risk  : <e.g. "additive only — new file, no existing code touched", "HIGH — 7 scanner files refactored">
+🎯 New vectors added  : <e.g. "writable postrotate script (was invisible)", "none — data replacement">
+🔍 Vectors that could be missed : <e.g. "inline shell snippets skipped by design", "none identified">
+─────────────────────────────────────────────────────
+Recommendation: <proceed / proceed with caution / block on X first>
+```
+
+This report must appear **before** any file is created or edited.
+Do not skip this step even for small changes.
+
+---
+
 ## Automatic Changelog Updates
 
 After **every implementation commit**, you MUST update `CHANGELOG.md` without being asked.
