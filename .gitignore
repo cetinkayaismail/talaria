@@ -45,6 +45,8 @@ talaria.sh
 
 # Internal research notes — not for public repo
 internal/
+codebase_analysis.md
+scan_results
 
 # Agent configuration and architecture reference (local workspace only)
 .agents/
