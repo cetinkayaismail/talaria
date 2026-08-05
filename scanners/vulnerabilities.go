@@ -202,6 +202,47 @@ var kernelVulnerabilities = []KernelVulnerability{
 		ExploitHint: "Affects Ubuntu 20.04/22.04. Check /etc/lsb-release",
 	},
 
+	// --- io_uring Subsystem (2024-2026) ---
+	{
+		CVE: "CVE-2024-0582", Name: "io_uring Provided Buffer Ring UAF",
+		Description: "Use-after-free in io_uring IORING_REGISTER_PBUF_RING buffer ring registration allows local root",
+		MinVersion: [3]int{5, 10, 0}, MaxVersion: [3]int{6, 6, 8},
+		IsCritical:  true,
+		ExploitHint: "Requires unprivileged io_uring (sysctl kernel.io_uring_disabled != 2). Reliable SLUB heap overwrite.",
+	},
+	{
+		CVE: "CVE-2023-2598", Name: "io_uring Fixed Buffer OOB Access",
+		Description: "Out-of-bounds access in io_sqe_buffer_register allows kernel memory write → root",
+		MinVersion: [3]int{5, 10, 0}, MaxVersion: [3]int{6, 3, 1},
+		IsCritical:  true,
+		ExploitHint: "Abuses registered fixed buffers to achieve arbitrary kernel read/write.",
+	},
+
+	// --- Netfilter / Wireless (2024-2026) ---
+	{
+		CVE: "CVE-2024-26921", Name: "nf_tables State Allocation UAF",
+		Description: "UAF in netfilter/nf_tables state allocation allows local privilege escalation & container breakout",
+		MinVersion: [3]int{5, 14, 0}, MaxVersion: [3]int{6, 8, 3},
+		IsCritical:  true,
+		ExploitHint: "Requires net namespaces (unprivileged user namespaces enabled).",
+	},
+	{
+		CVE: "CVE-2024-26593", Name: "Bluetooth L2CAP Socket UAF",
+		Description: "Use-after-free in net/bluetooth/l2cap_core.c socket handling allows local root",
+		MinVersion: [3]int{4, 19, 0}, MaxVersion: [3]int{6, 7, 3},
+		IsCritical:  true,
+		ExploitHint: "Requires bluetooth module loaded. Exploits L2CAP socket state race condition.",
+	},
+
+	// --- eBPF Subsystem ---
+	{
+		CVE: "CVE-2023-2163", Name: "eBPF Verifier ALU32 Bounds Truncation",
+		Description: "eBPF verifier branch pruning miscalculates ALU32 register bounds → arbitrary kernel R/W",
+		MinVersion: [3]int{5, 7, 0}, MaxVersion: [3]int{6, 2, 8},
+		IsCritical:  true,
+		ExploitHint: "Requires kernel.unprivileged_bpf_disabled = 0. Achieves arbitrary kernel R/W primitive.",
+	},
+
 	// --- Sudo / Polkit (userspace but commonly checked alongside kernel) ---
 	// These are checked separately via ScanSystemVersions binary checks.
 

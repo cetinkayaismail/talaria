@@ -7,6 +7,17 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #27 — 2024–2026 Kernel LPE Signatures Added (`scanners/vulnerabilities.go`)
+**Impact:** 🎯 Expanded kernel LPE vulnerability detection across `io_uring`, `netfilter`, `bluetooth`, and `eBPF`.
+
+- **`io_uring` Subsystem Coverage:** Added signatures for `CVE-2024-0582` (`IORING_REGISTER_PBUF_RING` UAF) and `CVE-2023-2598` (`io_sqe_buffer_register` fixed buffer OOB write).
+- **`netfilter` & Network Subsystems:** Added signatures for `CVE-2024-26921` (`nf_tables` state allocation UAF) and `CVE-2024-26593` (`net/bluetooth/l2cap_core.c` UAF).
+- **`eBPF` Subsystem:** Added signature for `CVE-2023-2163` (ALU32 register bounds calculation error leading to arbitrary kernel R/W primitive).
+
+**Files changed:** `scanners/vulnerabilities.go`
+
+---
+
 ### #25 — B1 Embedded GTFOBins JSON (`scanners/gtfobins.json`, `scanners/gtfobins.go`, `scanners/suid.go`)
 **Impact:** 🎯 Drastically fewer false negatives, ⚡ zero runtime cost, 🧠 richer exploit hints.
 
