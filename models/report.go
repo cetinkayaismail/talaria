@@ -36,4 +36,5 @@ type ScanReport struct {
 	PolkitRules        []scanners.PolkitRuleResult        `json:"polkit_rules,omitempty"`
 	HistorySecrets     []scanners.HistorySecretResult     `json:"history_secrets,omitempty"`
 	XAuthority         []scanners.XAuthorityResult        `json:"xauthority,omitempty"`
+	Logrotate          []scanners.LogrotateResult         `json:"logrotate,omitempty"`
 }

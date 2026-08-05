@@ -749,6 +749,20 @@ func main() {
 					}, "")
 				}
 			}
+
+			// ── Logrotate Config Scanner (A3) ──────────────────────────────
+			logrotateResults, err := scanners.ScanLogrotate()
+			if err == nil && len(logrotateResults) > 0 {
+				mu.Lock()
+				report.Logrotate = logrotateResults
+				mu.Unlock()
+				for _, r := range logrotateResults {
+					core.PrintFinding(r.RiskLevel, "Writable Logrotate Config", map[string]string{
+						"Path":   r.ConfigPath,
+						"Reason": r.Reason,
+					}, "")
+				}
+			}
 		}()
 	}
 
