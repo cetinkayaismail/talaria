@@ -7,6 +7,32 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #24 — A3 Logrotate Scanner + E1 Logrotate→Root Chain (`scanners/logrotate.go`, `core/intelligence.go`)
+**Impact:** 🎯 New critical vector, 📉 lower FP than generic file-permission check, ⚡ <5ms scan cost.
+
+- **A3 — Logrotate Scanner (`scanners/logrotate.go`):** New dedicated scanner covering `/etc/logrotate.conf` and all files under `/etc/logrotate.d/`. Detects two distinct attack vectors:
+  - **Writable config** (`CRITICAL`): Current user can directly inject `postrotate` commands that execute as root on the next log rotation.
+  - **Writable postrotate script** (`HIGH`): Config is not writable but references an external script that is — modifying the script achieves the same root execution. This case was **completely invisible** before this change.
+  - Parser extracts only simple absolute-path references from `postrotate`/`prerotate`/`firstaction`/`lastaction` blocks. Inline shell snippets (e.g. `kill -HUP $(pidof nginx)`) are intentionally skipped — they are not writable files and would only cause FP.
+- **E1 — Logrotate→Root Chain (`core/intelligence.go`):** New Chain 17 registered in the intelligence engine. Cross-references `report.Logrotate` data to surface a `100% CONFIRMED` root code-execution finding with ready-to-paste exploit commands. No additional I/O — purely operates on the in-memory report.
+
+**Files changed:** `scanners/logrotate.go` *(new)*, `models/report.go`, `core/intelligence.go`, `main.go`
+
+---
+
+### #23 — Tier 2 Improvements: C1, D3, C4, E4, A1
+**Impact:** 📉 Less noisy output, ⚡ GC pressure reduction, 🎯 new SUID and crontab vectors, 🧠 cleaner intelligence output.
+
+- **C1 — Writable Temp Exclusions (`scanners/writeable.go`):** `ScanWriteable()` now skips files in `/tmp`, `/var/tmp`, `/dev/shm` that are owned by the current user — they are not privilege escalation vectors. Root-owned or other-user-owned writable files in temp dirs are still reported (race conditions, symlink attacks).
+- **D3 — sync.Pool Buffers (`scanners/secrets.go`):** Replaced `make([]byte, 512)` with a package-level `sync.Pool` in `analyzeFileContent()`. This hot path runs for every scanned file — pooling the buffer eliminates repeated heap allocations and reduces GC pressure significantly on large filesystems.
+- **C4 — Attack Path Dedup (`core/intelligence.go`):** Added a `seen` map (keyed on `Name + TargetPath`) before the intelligence engine's result print loop. Duplicate chain results — which could appear when the same path is discovered by both a chain and the DFS graph — are now suppressed.
+- **E4 — SUID + Writable Library Path Chain (`core/intelligence.go`):** New Chain 16. Iterates `report.SUID` and for any binary with non-empty `WritableLibraryPaths` (detected via ELF RPATH/RUNPATH), produces a `100% CONFIRMED` finding with a `gcc -shared` exploit payload. Closes the gap between the SUID scanner's library data and the intelligence output.
+- **A1 — Crontab Env Injection (`scanners/cronjobs.go`):** Previously, `parseFile()` silently skipped all lines containing `=`, making environment variable definitions invisible. Now parses `LD_PRELOAD`, `LD_LIBRARY_PATH`, `PATH`, and `SHELL` overrides. If the crontab file is writable by the current user, flags the env injection as a `CRITICAL` finding.
+
+**Files changed:** `scanners/writeable.go`, `scanners/secrets.go`, `core/intelligence.go`, `scanners/cronjobs.go`
+
+---
+
 ### #22 — Tier 1 Performance & Intelligence Hardening
 **Impact:** ⚡ Significant speed boost, 📉 lower FP rate, 🎯 new critical vectors.
 - **Performance Optimizations:** 
