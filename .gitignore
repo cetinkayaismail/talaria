@@ -46,3 +46,6 @@ talaria.sh
 # Internal research notes — not for public repo
 internal/
 
+# Agent configuration and architecture reference (local workspace only)
+.agents/
+ARCHITECTURE.md
