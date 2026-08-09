@@ -1,13 +1,15 @@
 package scanners
 
 import (
+	"context"
 	"debug/elf"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"talaria/internal/walkpool"
 )
 
 type SUIDResult struct {
@@ -55,21 +57,15 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 		"doas": true, "ssh-keysign": true, "fusermount": true, "fusermount3": true,
 	}
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		if d.IsDir() {
-			if ShouldIgnore(path) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	// walkpool.Walk handles ShouldIgnore at the dispatcher level (SkipDir semantics).
+	// Entries are delivered one at a time; appends to results are single-threaded.
+	for entry := range walkpool.Walk(context.Background(), root, poolWorkers(), ShouldIgnore) {
+		path := entry.Path
+		d := entry.Entry
 
 		info, err := d.Info()
 		if err != nil {
-			return nil
+			continue
 		}
 
 		// Check for SUID bit
@@ -78,18 +74,18 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 			// 1. Skip sandboxed apps (Snap/Flatpak) ONLY if their AppArmor profiles are active/loaded
 			if strings.HasPrefix(path, "/snap/") {
 				if hasAppArmorProfile("snap.") {
-					return nil
+					continue
 				}
 			} else if strings.Contains(path, "/flatpak/") || strings.HasPrefix(path, "/var/lib/flatpak/") {
 				if hasAppArmorProfile("flatpak") {
-					return nil
+					continue
 				}
 			}
 
 			// 2. Extract stat and check ownership
 			stat, ok := info.Sys().(*syscall.Stat_t)
 			if !ok {
-				return nil
+				continue
 			}
 			isRootOwned := (stat.Uid == 0)
 
@@ -98,7 +94,7 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 
 			// Skip standard system SUID binaries to prevent noise
 			if _, isSystemBinary := systemSUIDBinaries[fileNameLower]; isSystemBinary {
-				return nil
+				continue
 			}
 
 			// GTFOBins JSON lookup — covers 380+ binaries vs the old 30-entry map.
@@ -185,10 +181,9 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 				ExploitHint:          exploitHint,
 			})
 		}
-		return nil
-	})
+	}
 
-	return results, err
+	return results, nil
 }
 
 // checkRPATH extracts RPATH and RUNPATH from ELF and checks if they are writable.
@@ -217,20 +212,15 @@ func checkRPATH(path string) []string {
 func ScanSGID(root string) ([]SGIDResult, error) {
 	var results []SGIDResult
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if ShouldIgnore(path) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	// walkpool.Walk handles ShouldIgnore at the dispatcher level (SkipDir semantics).
+	// Entries are delivered one at a time; appends to results are single-threaded.
+	for entry := range walkpool.Walk(context.Background(), root, poolWorkers(), ShouldIgnore) {
+		path := entry.Path
+		d := entry.Entry
 
 		info, err := d.Info()
 		if err != nil {
-			return nil
+			continue
 		}
 
 		// Check for SGID bit
@@ -268,7 +258,7 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				"dotlock.mailutils": true, "mail": true, "mailx": true,
 			}
 			if skipSystemSGID[fileName] && !isDangerous {
-				return nil
+				continue
 			}
 
 			exploitHint := ""
@@ -284,10 +274,9 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				ExploitHint: exploitHint,
 			})
 		}
-		return nil
-	})
+	}
 
-	return results, err
+	return results, nil
 }
 
 // checkWritableDirs checks if any of the provided directories exist and are
