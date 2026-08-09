@@ -1,6 +1,7 @@
 package scanners
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/user"
@@ -8,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"talaria/internal/walkpool"
 )
 
 // SessionHijackResult represents a discovered tmux/screen session hijack vector
@@ -39,23 +42,25 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 	// Check /tmp/tmux-* directories (tmux sockets)
 	tmuxDirs, _ := filepath.Glob("/tmp/tmux-*")
 	for _, dir := range tmuxDirs {
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil // skip inaccessible
-			}
-			if info.IsDir() {
-				return nil
-			}
+		for entry := range walkpool.Walk(context.Background(), dir, poolWorkers(), nil) {
+			path := entry.Path
+			d := entry.Entry
+
 			// Extract target user from dir name: /tmp/tmux-1000/default
 			parts := strings.Split(dir, "-")
 			if len(parts) < 2 {
-				return nil
+				continue
 			}
 			targetUID := parts[len(parts)-1]
 
+			info, err := d.Info()
+			if err != nil {
+				continue
+			}
+
 			stat, ok := info.Sys().(*syscall.Stat_t)
 			if !ok {
-				return nil
+				continue
 			}
 
 			isWritable := false
@@ -80,10 +85,6 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 					Reason:      fmt.Sprintf("Tmux socket writable — can hijack session of user %s", targetUsername),
 				})
 			}
-			return nil
-		})
-		if err != nil {
-			continue
 		}
 	}
 

@@ -1,13 +1,15 @@
 package scanners
 
 import (
-	"io/fs"
+	"context"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+
+	"talaria/internal/walkpool"
 )
 
 type SocketResult struct {
@@ -64,20 +66,19 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 	searchPaths := []string{"/var/run", "/run", "/tmp", "/var/tmp", "/var/lib", "/home"}
 
 	for _, basePath := range searchPaths {
-		filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil // Stealth: ignore permission errors quietly
-			}
+		for entry := range walkpool.Walk(context.Background(), basePath, poolWorkers(), nil) {
+			path := entry.Path
+			d := entry.Entry
 
 			// 2. Only check Socket files
 			info, err := d.Info()
 			if err != nil || (info.Mode()&os.ModeSocket) == 0 {
-				return nil
+				continue
 			}
 
 			stat, ok := info.Sys().(*syscall.Stat_t)
 			if !ok {
-				return nil
+				continue
 			}
 
 			// 3. Permission Check using Syscall Constants
@@ -94,7 +95,7 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 
 			// We only report sockets we can actually interact with
 			if !isWritable {
-				return nil
+				continue
 			}
 
 			// 4. Identify Service and Danger Level
@@ -113,7 +114,7 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 					IsDangerous: false,
 					Service:     "system",
 				})
-				return nil
+				continue
 			}
 
 			for _, pattern := range dangerousSockets {
@@ -136,9 +137,7 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 				IsDangerous: isDangerous,
 				Service:     service,
 			})
-
-			return nil
-		})
+		}
 	}
 
 	return results, nil

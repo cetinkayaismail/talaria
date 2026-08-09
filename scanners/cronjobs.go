@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/user"
@@ -9,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"talaria/internal/walkpool"
 )
 
 // CronJobResult matches your main.go expectations
@@ -291,13 +294,12 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 			continue
 		}
 
-		filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
+		for entry := range walkpool.Walk(context.Background(), path, poolWorkers(), nil) {
+			p := entry.Path
+			d := entry.Entry
 
 			// We care about .timer and .service files
-			if !d.IsDir() && (strings.HasSuffix(d.Name(), ".timer") || strings.HasSuffix(d.Name(), ".service")) {
+			if strings.HasSuffix(d.Name(), ".timer") || strings.HasSuffix(d.Name(), ".service") {
 
 				// Helper to check if a REAL file (not symlink) is writable by us
 				checkWriteable := func(fpath string) (bool, string) {
@@ -323,7 +325,7 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 
 				info, err := d.Info()
 				if err != nil {
-					return nil
+					continue
 				}
 
 				isSymlink := (info.Mode() & os.ModeSymlink) != 0
@@ -387,8 +389,7 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 					}
 				}
 			}
-			return nil
-		})
+		}
 	}
 
 	return results, nil
