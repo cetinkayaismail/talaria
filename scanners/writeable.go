@@ -1,13 +1,15 @@
 package scanners
 
 import (
-	"io/fs"
+	"context"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+
+	"talaria/internal/walkpool"
 )
 
 type WriteableResult struct {
@@ -41,31 +43,22 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 	// 2. Define Dangerous Targets
 	dangerousBinaries := []string{"bash", "python", "perl", "vim", "find", "cp", "mv"}
 
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		// Noise Reduction using global exclusion list
-		if d.IsDir() {
-			if ShouldIgnore(path) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	for entry := range walkpool.Walk(context.Background(), root, poolWorkers(), ShouldIgnore) {
+		path := entry.Path
+		d := entry.Entry
 
 		// Skip Symlinks
 		if d.Type()&os.ModeSymlink != 0 {
-			return nil
+			continue
 		}
 
 		info, err := d.Info()
 		if err != nil {
-			return nil
+			continue
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
 		if !ok {
-			return nil
+			continue
 		}
 
 		// 3. Check Write Permission
@@ -85,10 +78,15 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 			// Root-owned or other-user-owned writable files in /tmp are kept — they can be
 			// real vectors (race conditions, symlink attacks).
 			if uid == int(stat.Uid) {
+				inTemp := false
 				for _, tempDir := range []string{"/tmp", "/var/tmp", "/dev/shm"} {
 					if strings.HasPrefix(path, tempDir+"/") {
-						return nil
+						inTemp = true
+						break
 					}
+				}
+				if inTemp {
+					continue
 				}
 			}
 
@@ -201,9 +199,8 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 				}
 			}
 		}
-		return nil
-	})
-	return results, err
+	}
+	return results, nil
 }
 
 // ScanSystemdGenerators checks for writeable directories in systemd generator paths.
@@ -294,30 +291,25 @@ func ScanWritableServices() ([]WriteableResult, error) {
 	}
 
 	checkDir := func(root string) {
-		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				return nil
-			}
+		for entry := range walkpool.Walk(context.Background(), root, poolWorkers(), nil) {
+			path := entry.Path
+			d := entry.Entry
+
 			// Only check .service files
 			if !strings.HasSuffix(path, ".service") {
-				return nil
+				continue
 			}
-			// Skip symlinks — most entries in /etc/systemd/system/ are symlinks
-			// to /usr/lib/systemd/system/ created by 'systemctl enable'.
-			// Symlinks always show as lrwxrwxrwx which causes false positives.
+			// Skip symlinks
 			if d.Type()&os.ModeSymlink != 0 {
-				return nil
+				continue
 			}
 			info, err := d.Info()
 			if err != nil {
-				return nil
+				continue
 			}
 			stat, ok := info.Sys().(*syscall.Stat_t)
 			if !ok {
-				return nil
+				continue
 			}
 			canWrite := false
 			if uid == int(stat.Uid) && (stat.Mode&syscall.S_IWUSR != 0) {
@@ -339,8 +331,7 @@ func ScanWritableServices() ([]WriteableResult, error) {
 					Reason:          "Systemd service unit file is writable. Modify ExecStart to execute code as root on restart.",
 				})
 			}
-			return nil
-		})
+		}
 	}
 
 	// Check /etc/systemd/system for writable service files
@@ -379,59 +370,60 @@ func ScanUdevRules() ([]WriteableResult, error) {
 		userGids[id] = true
 	}
 
+	checkPath := func(path string, isDir bool) {
+		info, err := os.Stat(path)
+		if err != nil {
+			return
+		}
+
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return
+		}
+
+		mode := stat.Mode
+		canWrite := false
+
+		if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
+			canWrite = true
+		} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
+			canWrite = true
+		} else if mode&syscall.S_IWOTH != 0 {
+			canWrite = true
+		}
+
+		if canWrite {
+			typeName := "Udev Rule Writable"
+			reason := "Udev rule file is writable. Attackers can inject a RUN command to execute code as root when a device is plugged in."
+			if isDir {
+				typeName = "Udev Rules Directory Writable"
+				reason = "Udev rules directory is writable. Attackers can create a new rule file to execute code as root."
+			}
+
+			results = append(results, WriteableResult{
+				Path:            path,
+				OwnerUID:        int(stat.Uid),
+				CurrentUserOwns: (uid == int(stat.Uid)),
+				IsExecutable:    false,
+				IsDangerous:     true,
+				Type:            typeName,
+				RiskLevel:       "CRITICAL",
+				Reason:          reason,
+			})
+		}
+	}
+
 	for _, rootPath := range udevPaths {
 		if _, err := os.Stat(rootPath); err != nil {
 			continue
 		}
 
-		filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
+		// Check the directory itself first
+		checkPath(rootPath, true)
 
-			info, err := d.Info()
-			if err != nil {
-				return nil
-			}
-
-			stat, ok := info.Sys().(*syscall.Stat_t)
-			if !ok {
-				return nil
-			}
-
-			// Check Write Permission
-			mode := stat.Mode
-			canWrite := false
-
-			if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
-				canWrite = true
-			} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
-				canWrite = true
-			} else if mode&syscall.S_IWOTH != 0 {
-				canWrite = true
-			}
-
-			if canWrite {
-				typeName := "Udev Rule Writable"
-				reason := "Udev rule file is writable. Attackers can inject a RUN command to execute code as root when a device is plugged in."
-				if d.IsDir() {
-					typeName = "Udev Rules Directory Writable"
-					reason = "Udev rules directory is writable. Attackers can create a new rule file to execute code as root."
-				}
-
-				results = append(results, WriteableResult{
-					Path:            path,
-					OwnerUID:        int(stat.Uid),
-					CurrentUserOwns: (uid == int(stat.Uid)),
-					IsExecutable:    false,
-					IsDangerous:     true,
-					Type:            typeName,
-					RiskLevel:       "CRITICAL",
-					Reason:          reason,
-				})
-			}
-			return nil
-		})
+		for entry := range walkpool.Walk(context.Background(), rootPath, poolWorkers(), nil) {
+			checkPath(entry.Path, false)
+		}
 	}
 
 	return results, nil
@@ -475,64 +467,70 @@ func ScanMotdProfiledHijack() ([]WriteableResult, error) {
 		userGids[id] = true
 	}
 
+	checkTarget := func(path string, isDir bool, target struct {
+		path        string
+		dirType     string
+		fileType    string
+		dirReason   string
+		fileReason  string
+	}) {
+		info, err := os.Stat(path)
+		if err != nil {
+			return
+		}
+
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return
+		}
+
+		mode := stat.Mode
+		canWrite := false
+
+		if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
+			canWrite = true
+		} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
+			canWrite = true
+		} else if mode&syscall.S_IWOTH != 0 {
+			canWrite = true
+		}
+
+		if canWrite {
+			typeName := target.fileType
+			reason := target.fileReason
+			if isDir {
+				typeName = target.dirType
+				reason = target.dirReason
+			}
+
+			results = append(results, WriteableResult{
+				Path:            path,
+				OwnerUID:        int(stat.Uid),
+				CurrentUserOwns: (uid == int(stat.Uid)),
+				IsExecutable:    !isDir && (info.Mode()&0111 != 0),
+				IsDangerous:     true,
+				Type:            typeName,
+				RiskLevel:       "CRITICAL",
+				Reason:          reason,
+			})
+		}
+	}
+
 	for _, target := range targets {
 		if _, err := os.Stat(target.path); err != nil {
 			continue
 		}
 
-		filepath.WalkDir(target.path, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
+		// Check the directory itself
+		checkTarget(target.path, true, target)
+
+		for entry := range walkpool.Walk(context.Background(), target.path, poolWorkers(), nil) {
+			// Skip Symlinks
+			if entry.Entry.Type()&os.ModeSymlink != 0 {
+				continue
 			}
-
-			// Skip Symlinks to prevent false positives
-			if d.Type()&os.ModeSymlink != 0 {
-				return nil
-			}
-
-			info, err := d.Info()
-			if err != nil {
-				return nil
-			}
-
-			stat, ok := info.Sys().(*syscall.Stat_t)
-			if !ok {
-				return nil
-			}
-
-			// Check Write Permission
-			mode := stat.Mode
-			canWrite := false
-
-			if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
-				canWrite = true
-			} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
-				canWrite = true
-			} else if mode&syscall.S_IWOTH != 0 {
-				canWrite = true
-			}
-
-			if canWrite {
-				typeName := target.fileType
-				reason := target.fileReason
-				if d.IsDir() {
-					typeName = target.dirType
-					reason = target.dirReason
-				}
-
-				results = append(results, WriteableResult{
-					Path:            path,
-					OwnerUID:        int(stat.Uid),
-					CurrentUserOwns: (uid == int(stat.Uid)),
-					IsExecutable:    !d.IsDir() && (info.Mode()&0111 != 0),
-					IsDangerous:     true,
-					Type:            typeName,
-					RiskLevel:       "CRITICAL",
-					Reason:          reason,
-				})
-			}
-			return nil
-		})
+			checkTarget(entry.Path, false, target)
+		}
 	}
 
 	// Also check /etc/profile itself
