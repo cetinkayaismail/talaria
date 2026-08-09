@@ -7,6 +7,17 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #28 — A6+E2 Systemd EnvironmentFile Scanner + Root Chain (`scanners/env_file.go`, `core/intelligence.go`)
+**Impact:** 🎯 Critical new LD_PRELOAD/PATH injection vector via writable systemd EnvironmentFile — completely absent from Talaria before this change.
+
+- **A6 — Systemd EnvironmentFile Scanner (`scanners/env_file.go`):** New dedicated scanner that parses all `.service` unit files across `/etc/systemd/system/`, `/lib/systemd/system/`, and `/usr/lib/systemd/system/`. For every `EnvironmentFile=` directive found, it resolves the referenced file path (stripping the dash-prefix `-` correctly per systemd semantics), skips unresolvable specifiers (`%i`, `%n`, `%u`) rather than resolving them incorrectly, and checks if the file is writable via the shared `CanWrite()` helper. Injection type is classified as `LD_PRELOAD`, `PATH`, or `GENERIC` by scanning the existing file content. Files under `/etc/default/` are capped at `HIGH` with an explicit FP annotation (these paths are sometimes intentionally user-writable override configs); all other writable env files are `CRITICAL`. (Service,EnvFile) pairs are deduplicated across symlinked directories.
+- **E2 — EnvironmentFile→Root Chain (`core/intelligence.go`):** New Chain 18 registered in the intelligence engine. Cross-references `report.EnvFileResults` to generate confirmed root code-execution findings: `100% CONFIRMED` for CRITICAL-level findings, `POTENTIAL` for HIGH-level ones. Exploit hints are injection-type-aware: for `LD_PRELOAD` findings the exploit compiles an `__attribute__((constructor))` shared library; for `PATH` findings it prepends `/tmp` via `sed`; for `GENERIC` findings it appends a generic `LD_PRELOAD` injection. No additional I/O — purely in-memory cross-reference.
+- **Model + Summary:** `EnvFileResults` field added to `ScanReport`; `PrintSummary()` now counts env file findings in the critical/high totals.
+
+**Files changed:** `scanners/env_file.go` *(new)*, `models/report.go`, `core/intelligence.go`, `core/reporting.go`, `main.go`, `improvement_analysis.md`
+
+---
+
 ### #27 — 2024–2026 Kernel LPE Signatures Added (`scanners/vulnerabilities.go`)
 **Impact:** 🎯 Expanded kernel LPE vulnerability detection across `io_uring`, `netfilter`, `bluetooth`, and `eBPF`.
 
