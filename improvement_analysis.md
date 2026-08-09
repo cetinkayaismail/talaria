@@ -10,7 +10,7 @@ This file now tracks only the remaining **Tier 3** strategic improvements.
 | # | Item | Difficulty | Speed | FP Δ | New Vectors | Status |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | **B1** | Embedded GTFOBins JSON | 3/5 | 5/5 | ↑ slightly | 🟢 +350 binaries | ✅ DONE |
-| **A6+E2** | Systemd EnvironmentFile + Chain | 3/5 | 4/5 | ↓ low FP | 🟢 Critical new vector | ⏳ Pending |
+| **A6+E2** | Systemd EnvironmentFile + Chain | 3/5 | 4/5 | ↓ low FP | 🟢 Critical new vector | ✅ DONE |
 | **D1** | Parallel Walker Pool | 2/5 | 5/5 | — | — | ⏳ Pending |
 | **B2** | ELF String Analysis | 2/5 | 3/5 | ↑ moderate | 🟢 Custom SUID vectors | ⏳ Pending (flag-gated) |
 | **B6** | Distro Patch Awareness | 2/5 | 5/5 | ↓ highest | — | ⚠️ High-risk data |
@@ -45,7 +45,8 @@ git clone https://github.com/GTFOBins/GTFOBins.github.io.git /tmp/gtfobins
 
 ---
 
-### ⏳ A6 — Systemd EnvironmentFile + E2 Chain
+### ✅ A6 — Systemd EnvironmentFile + E2 Chain
+**Status: DONE** (see latest commit)
 
 **Recommendation: ✅ DO IT NEXT — same pattern as A3/E1, no disruption.**
 

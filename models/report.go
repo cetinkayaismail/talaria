@@ -37,4 +37,5 @@ type ScanReport struct {
 	HistorySecrets     []scanners.HistorySecretResult     `json:"history_secrets,omitempty"`
 	XAuthority         []scanners.XAuthorityResult        `json:"xauthority,omitempty"`
 	Logrotate          []scanners.LogrotateResult         `json:"logrotate,omitempty"`
+	EnvFileResults     []scanners.EnvFileResult           `json:"env_file_results,omitempty"`
 }

@@ -128,6 +128,8 @@ func PrintSummary(report *models.ScanReport, duration string) {
 	for _, s := range report.DBusPolicy { if s.IsDangerous { critical++ } }
 	for _, s := range report.KernelConfig { if s.RiskLevel == "CRITICAL" { critical++ } else if s.RiskLevel == "HIGH" { high++ } else if s.RiskLevel == "MEDIUM" { medium++ } }
 	for _, s := range report.HistorySecrets { countRisk(s.RiskLevel) }
+	for _, s := range report.Logrotate { countRisk(s.RiskLevel) }
+	for _, s := range report.EnvFileResults { countRisk(s.RiskLevel) }
 
 	// Logic for lateral counts would need RunIntelligenceEngine results or similar
 	// For now, let's keep it simple

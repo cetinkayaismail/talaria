@@ -67,7 +67,8 @@ func main() {
 			"    packages        - Package manager audits (doas, snap, flatpak)\n"+
 			"    sessions        - Tmux/Screen session hijacking vectors\n"+
 			"    kernelconfig    - Kernel config leak (CONFIG_STRICT_DEVMEM, etc.)\n"+
-			"    polkit          - Custom PolicyKit JavaScript rules logic auditing")
+			"    polkit          - Custom PolicyKit JavaScript rules logic auditing\n"+
+			"    environmentfile - Systemd EnvironmentFile= writability (LD_PRELOAD/PATH injection)")
 	searchPath   := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
 	outputFile   := flag.String("o", "", "Save report to file (combine with --format)")
 	outputFormat := flag.String("format", "text", "Report format: text or json")
@@ -761,6 +762,27 @@ func main() {
 						"Path":   r.ConfigPath,
 						"Reason": r.Reason,
 					}, "")
+				}
+			}
+
+			// ── Systemd EnvironmentFile Scanner (A6) ─────────────────────────
+			envFileResults, err := scanners.ScanSystemdEnvFiles()
+			if err == nil && len(envFileResults) > 0 {
+				mu.Lock()
+				report.EnvFileResults = envFileResults
+				mu.Unlock()
+				core.PrintSectionHeader("Systemd EnvironmentFile")
+				for _, r := range envFileResults {
+					hint := ""
+					if !isProfessional {
+						hint = fmt.Sprintf("echo 'LD_PRELOAD=/tmp/evil.so' >> %s && systemctl restart %s", r.EnvFilePath, r.ServiceName)
+					}
+					core.PrintFinding(r.RiskLevel, "Writable Systemd EnvironmentFile", map[string]string{
+						"ServiceFile": r.ServiceFile,
+						"EnvFile":     r.EnvFilePath,
+						"Injection":   r.InjectionType,
+						"Reason":      r.Reason,
+					}, hint)
 				}
 			}
 		}()

