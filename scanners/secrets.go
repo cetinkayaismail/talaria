@@ -3,7 +3,7 @@ package scanners
 import (
 	"bufio"
 	"bytes"
-	"io/fs"
+	"context"
 	"math"
 	"os"
 	"path/filepath"
@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"talaria/internal/walkpool"
 )
 
 // D3: sync.Pool for header buffers to reduce GC pressure during large scans
@@ -88,26 +90,21 @@ var (
 
 // ScanSecrets walks the given root path searching for credentials and sensitive files.
 // It uses tiered detection: critical filenames → known config filenames → content analysis.
+// Directory traversal is performed by walkpool.Walk (D1) for parallel I/O.
 func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResult) {
 	var fileResults []SensitiveFileResult
 	var contentResults []SensitiveContentResult
 
-	filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		// Skip noise directories
-		if d.IsDir() {
-			if ShouldIgnore(path) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	// walkpool.Walk handles ShouldIgnore at the dispatcher level (SkipDir semantics).
+	// Entries are delivered one at a time on the channel; we consume them
+	// single-threaded, so no mutex is needed on fileResults / contentResults.
+	for entry := range walkpool.Walk(context.Background(), rootPath, poolWorkers(), ShouldIgnore) {
+		path := entry.Path
+		d := entry.Entry
 
 		// Don't follow symlinks
 		if d.Type()&os.ModeSymlink != 0 {
-			return nil
+			continue
 		}
 
 		fileName := strings.ToLower(d.Name())
@@ -138,7 +135,7 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 						RiskLevel: "INFO",
 					})
 				}
-				return nil
+				goto nextEntry
 			}
 		}
 
@@ -156,32 +153,34 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 		}
 
 		// --- TIER 3: Content scan ---
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		// Skip large files and binaries
-		if info.Size() > 500000 || isBinary(fileName) {
-			return nil
-		}
+		{
+			info, err := d.Info()
+			if err != nil {
+				goto nextEntry
+			}
+			// Skip large files and binaries
+			if info.Size() > 500000 || isBinary(fileName) {
+				goto nextEntry
+			}
 
-		snippet := analyzeFileContent(path, fileName)
-		if snippet != "" {
-			contentResults = append(contentResults, SensitiveContentResult{
-				Path:    path,
-				Snippet: snippet,
-			})
-			if !isInteresting {
-				fileResults = append(fileResults, SensitiveFileResult{
-					Path:      path,
-					Type:      "Content Match",
-					RiskLevel: "HIGH",
+			snippet := analyzeFileContent(path, fileName)
+			if snippet != "" {
+				contentResults = append(contentResults, SensitiveContentResult{
+					Path:    path,
+					Snippet: snippet,
 				})
+				if !isInteresting {
+					fileResults = append(fileResults, SensitiveFileResult{
+						Path:      path,
+						Type:      "Content Match",
+						RiskLevel: "HIGH",
+					})
+				}
 			}
 		}
 
-		return nil
-	})
+	nextEntry:
+	}
 
 	return fileResults, contentResults
 }

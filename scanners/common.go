@@ -1,6 +1,24 @@
 package scanners
 
-import "strings"
+import (
+	"runtime"
+	"strings"
+)
+
+// poolWorkers returns the number of goroutines to use for the walkpool.
+// Capped at 16 to avoid FD exhaustion on systems with tight RLIMIT_NOFILE.
+// Minimum of 2 so there is always a worker and the dispatcher has room.
+func poolWorkers() int {
+	n := runtime.NumCPU() * 2
+	if n > 16 {
+		n = 16
+	}
+	if n < 2 {
+		n = 2
+	}
+	return n
+}
+
 
 // GlobalIgnoreDirs is a comprehensive list of directories that should be skipped 
 // by all scanners to maintain performance and reduce noise.
