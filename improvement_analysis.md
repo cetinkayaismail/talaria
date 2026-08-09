@@ -11,7 +11,7 @@ This file now tracks only the remaining **Tier 3** strategic improvements.
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | **B1** | Embedded GTFOBins JSON | 3/5 | 5/5 | ↑ slightly | 🟢 +350 binaries | ✅ DONE |
 | **A6+E2** | Systemd EnvironmentFile + Chain | 3/5 | 4/5 | ↓ low FP | 🟢 Critical new vector | ✅ DONE |
-| **D1** | Parallel Walker Pool | 2/5 | 5/5 | — | — | ⏳ Pending |
+| **D1** | Parallel Walker Pool | 2/5 | 5/5 | — | — | ✅ DONE |
 | **B2** | ELF String Analysis | 2/5 | 3/5 | ↑ moderate | 🟢 Custom SUID vectors | ⏳ Pending (flag-gated) |
 | **B6** | Distro Patch Awareness | 2/5 | 5/5 | ↓ highest | — | ⚠️ High-risk data |
 | **F1** | Syscall Rate Limiter | 2/5 | 1/5 (intentional) | — | — | ❌ Block on D1 first |
@@ -77,9 +77,10 @@ flag as `HIGH` not `CRITICAL`, annotate with "verify this is unintentionally wri
 
 ---
 
-### ⏳ D1 — Parallel Walker Pool
+### ✅ D1 — Parallel Walker Pool
+**Status: DONE** (see commit `bd27671`, `67484ca`, `6e52924`, `7a2d65f`, `cf4d0f6`)
 
-**Recommendation: ✅ DO IT — biggest speed win available, but implement one scanner at a time.**
+**Recommendation: ✅ DO IT FIRST — biggest single speed win.**
 
 **What it does:**
 Converts the 10 `filepath.WalkDir` callsites across 7 scanner files into a shared
