@@ -44,7 +44,8 @@ talaria.sh
 *.sh
 
 # Internal research notes — not for public repo
-internal/
+# (internal/walkpool is production code and IS tracked)
+internal/*.md
 codebase_analysis.md
 scan_results
 
