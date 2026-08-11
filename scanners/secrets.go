@@ -56,8 +56,7 @@ var mediumFilePatterns = []string{
 	".htpasswd",                                 // Apache passwords
 	"filezilla.xml",                             // FTP credentials
 	"recentservers.xml",                         // FileZilla
-	"Places.sqlite", "History", "Top Sites",    // Browser history
-	"fstab",                                     // Mount table (cifs passwords)
+	"Places.sqlite", "History", "Top Sites", // Browser history
 }
 
 // ignoreDirs: never descend into these — they cause freezes and noise
@@ -126,13 +125,6 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 					contentResults = append(contentResults, SensitiveContentResult{
 						Path:    path,
 						Snippet: "Preview: " + snippet,
-					})
-				} else {
-					// File exists but is not readable — report as INFO, not CRITICAL
-					fileResults = append(fileResults, SensitiveFileResult{
-						Path:      path,
-						Type:      "Critical File (" + pattern + ")",
-						RiskLevel: "INFO",
 					})
 				}
 				goto nextEntry
@@ -308,6 +300,14 @@ func analyzeFileContent(path, fileName string) string {
 		f.Seek(0, 0)
 	}
 
+	// fstab mount table
+	if strings.Contains(fileName, "fstab") {
+		if result := analyzeFstab(f); result != "" {
+			return result
+		}
+		f.Seek(0, 0)
+	}
+
 	// Git config (embedded credentials in URL)
 	if fileName == "config" && strings.Contains(path, ".git") {
 		if result := analyzeGitConfig(f); result != "" {
@@ -424,6 +424,24 @@ func analyzeGitConfig(f *os.File) string {
 		line := scanner.Text()
 		if m := gitCredRegex.FindStringSubmatch(line); len(m) > 1 {
 			return "Git Embedded Credential in URL → Password: " + m[1]
+		}
+	}
+	return ""
+}
+
+// analyzeFstab inspects mount table files for network shares or hardcoded credentials
+func analyzeFstab(f *os.File) string {
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "cifs") || strings.Contains(lower, "smb") || strings.Contains(lower, "nfs") ||
+			strings.Contains(lower, "password") || strings.Contains(lower, "credentials=") || strings.Contains(lower, "pass=") ||
+			strings.Contains(lower, "username=") || strings.Contains(lower, "user=") {
+			return "fstab Network/Credential Mount: " + line
 		}
 	}
 	return ""

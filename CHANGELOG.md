@@ -7,6 +7,16 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #37 — Smart Secrets Filtering: Unreadable Critical Suppression & Content-Aware `fstab` (`scanners/secrets.go`)
+**Impact:** 📉 100% suppression of unreadable system file noise (`shadow`, `gshadow`, `sudoers` reported as `INFO`) and plain `/etc/fstab` files containing no network mounts or credentials.
+
+- **Unreadable Critical File Suppression:** Tier 1 critical file scanner no longer emits `INFO` findings when a file exists but cannot be read by the scanning user (e.g. unreadable `/etc/shadow`, `/etc/sudoers`). Only readable files trigger `CRITICAL`.
+- **Content-Aware `fstab` Parser (`analyzeFstab`):** Removed `fstab` from blanket `mediumFilePatterns`. Added a targeted parser that inspects `/etc/fstab` for CIFS, SMB, NFS, or credential parameters (`password=`, `credentials=`, `user=`). Standard local mount tables (`ext4`, `xfs`, `swap`) are cleanly suppressed.
+
+**Files changed:** `scanners/secrets.go`
+
+---
+
 ### #36 — Dual-Signal Comment Credential Detection (`scanners/secrets.go`)
 **Impact:** 🎯 Catches plaintext credentials embedded in config file comments (e.g. `#mysql credential user:root & pass:root`) — previously invisible because all comment lines were skipped unconditionally.
 
