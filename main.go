@@ -572,7 +572,9 @@ func main() {
 					for _, r := range results {
 						if r.State == "LISTEN" {
 							severity := "INFO"
-							if r.IsDangerous {
+							if r.RiskLevel != "" {
+								severity = r.RiskLevel
+							} else if r.IsDangerous {
 								severity = "CRITICAL"
 							}
 							

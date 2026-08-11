@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// NetworkConnectionResult stores details about local network listeners this can be used to find open ports and services running on the target system.that cannot be seen on a nmap scan
+// NetworkConnectionResult stores details about local network listeners
 type NetworkConnectionResult struct {
 	Protocol    string
 	LocalAddr   string
@@ -22,6 +22,7 @@ type NetworkConnectionResult struct {
 	PID         int
 	ProcessName string
 	IsDangerous bool
+	RiskLevel   string // CRITICAL / HIGH / MEDIUM / INFO
 	Reason      string
 }
 
@@ -57,7 +58,7 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 
 	for scanner.Scan() {
 		if isFirstLine {
-			isFirstLine = false // Skip header
+			isFirstLine = false
 			continue
 		}
 
@@ -66,26 +67,21 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 			continue
 		}
 
-		// Parse Addresses and State
 		localIP, localPort := parseAddr(fields[1], protocol)
 		remoteIP, remotePort := parseAddr(fields[2], protocol)
 		state := getConnectionState(fields[3])
-		uid, _ := strconv.Atoi(fields[7]) // Column 7 is UID in /proc/net/tcp
+		uid, _ := strconv.Atoi(fields[7])
 
-		// CRITICAL FILTER: Ignore noise like TIME_WAIT, CLOSE_WAIT, etc.
-		// We only care about active listeners (LISTEN) or established sessions (ESTABLISHED)
 		if state != "LISTEN" && state != "ESTABLISHED" {
 			continue
 		}
 
-		// Ephemeral port noise filter (C3): skip outbound ESTABLISHED connections
-		// on ephemeral ports (32768+) — these are short-lived client connections, not LPE vectors.
-		// LISTEN on ephemeral ports is kept (backdoors can listen there).
+		// Skip outbound ephemeral client connections
 		if state == "ESTABLISHED" && localPort >= 32768 {
 			continue
 		}
 
-		// 0. EXCLUSION FILTER: Skip common noisy ports that provide little value for privesc
+		// Skip common benign ports
 		if localPort == 22 || localPort == 80 || localPort == 443 {
 			continue
 		}
@@ -99,65 +95,117 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 			}
 		}
 
-		// 2. LPE Gold Mine Ports (MySQL, Redis, Docker, etc.)
-		isLPEVector := false
-		lpePorts := map[int]string{
-			3306:  "MySQL",
-			6379:  "Redis",
-			27017: "MongoDB",
-			2375:  "Docker API",
-			2376:  "Docker API (TLS)",
-			5432:  "PostgreSQL",
-			11211: "Memcached",
-			9000:  "PHP-FPM",
+		// 2. Port-to-Service map: used when process name is unknown
+		//    Format: port → {likely service name, base risk level}
+		//    Base risk: "CRITICAL", "HIGH", "MEDIUM", "LOW"
+		type portInfo struct {
+			name     string
+			baseRisk string
+		}
+		portMap := map[int]portInfo{
+			// LPE Gold Mine — always CRITICAL regardless of scope
+			3306:  {"MySQL", "CRITICAL"},
+			5432:  {"PostgreSQL", "CRITICAL"},
+			6379:  {"Redis", "CRITICAL"},
+			27017: {"MongoDB", "CRITICAL"},
+			2375:  {"Docker API (unauthenticated)", "CRITICAL"},
+			2376:  {"Docker API (TLS)", "CRITICAL"},
+			11211: {"Memcached", "CRITICAL"},
+			9000:  {"PHP-FPM", "CRITICAL"},
+			// HIGH base risk
+			2049: {"NFS", "HIGH"},
+			21:   {"FTP", "HIGH"},
+			23:   {"Telnet", "HIGH"},
+			512:  {"rexec", "HIGH"},
+			513:  {"rlogin", "HIGH"},
+			514:  {"rsh", "HIGH"},
+			// MEDIUM base risk
+			631:  {"CUPS (printing)", "MEDIUM"},
+			139:  {"Samba/NetBIOS", "MEDIUM"},
+			445:  {"SMB/Samba", "MEDIUM"},
+			111:  {"RPC/portmapper", "MEDIUM"},
+			25:   {"SMTP", "MEDIUM"},
+			110:  {"POP3", "MEDIUM"},
+			143:  {"IMAP", "MEDIUM"},
+			389:  {"LDAP", "MEDIUM"},
+			8080: {"HTTP Proxy/App", "MEDIUM"},
+			8443: {"HTTPS App", "MEDIUM"},
+			9090: {"Web App", "MEDIUM"},
+			5900: {"VNC", "MEDIUM"},
+			3389: {"RDP", "MEDIUM"},
 		}
 
-		if name, ok := lpePorts[localPort]; ok && (isLocal(localIP) || localIP == "0.0.0.0" || localIP == "::") {
-			isLPEVector = true
-			if procName == "unknown" {
-				procName = name
-			}
+		svc, known := portMap[localPort]
+		if known && procName == "unknown" {
+			procName = fmt.Sprintf("unknown (likely: %s)", svc.name)
 		}
 
-		// 3. DANGEROUS FILTERS:
-		isDangerous := false
+		// 3. Three-layer risk grading
+		//    Layer 1 — Base risk from service type
+		//    Layer 2 — Scope modifier: 0.0.0.0/:: bumps risk up one level
+		//    Layer 3 — Context: localhost root listener is always at least HIGH
+
+		baseRisk := "INFO"
+		if known {
+			baseRisk = svc.baseRisk
+		} else if uid == 0 {
+			baseRisk = "MEDIUM" // Unknown root service — default medium
+		}
+
+		// Layer 2: scope modifier
+		isExposedAll := (localIP == "0.0.0.0" || localIP == "::") && state == "LISTEN"
+		isLocalhost := (localIP == "127.0.0.1" || localIP == "::1") && state == "LISTEN"
+
+		// Ephemeral high ports on 0.0.0.0 → skip (dynamic RPC/NFS helper ports)
+		if isExposedAll && localPort >= 32768 {
+			continue
+		}
+
+		// Non-root, non-known-service, not exposed → skip (noise)
+		if !known && uid != 0 && !isExposedAll && !isLocalhost {
+			continue
+		}
+
+		finalRisk := baseRisk
 		reason := ""
 
-		if state == "LISTEN" {
-			if isLPEVector {
-				isDangerous = true
-				if localIP == "127.0.0.1" || localIP == "::1" {
-					reason = "LPE Gold Mine: Local service (localhost only) contains credentials or exploitable logic."
-				} else {
-					reason = "EXPOSED LPE Gold Mine: Service exposed on public/any interface contains credentials or exploitable logic."
-				}
-			} else if (localIP == "0.0.0.0" || localIP == "::") {
-				// Ephemeral high ports (32768+) listening on 0.0.0.0 / :: are dynamic RPC/NFS helper ports — skip to avoid FP noise
-				if localPort >= 32768 {
-					continue
-				}
-				// Exposed on ALL interfaces: only report if ROOT (per user request to reduce noise)
-				if uid == 0 {
-					isDangerous = true
-					reason = "Exposed Root Service: Privileged service exposed on all interfaces to network is a high-risk target."
-				} else {
-					// Skip non-root exposed services to keep report clean
-					continue 
-				}
-			} else if uid == 0 && localPort > 1024 && (localIP != "127.0.0.1" && localIP != "::1") {
-				// Exposed on a specific IP (not localhost) and root
-				isDangerous = true
-				reason = "Exposed Root Listener: High port root process on external/public network interface."
-			} else if (localIP == "127.0.0.1" || localIP == "::1") && uid == 0 {
-				// Localhost root listener (all ports)
-				isDangerous = true
-				reason = "Local Root Service: Service running as root listening on localhost. Highly exploitable for local privilege escalation."
+		switch baseRisk {
+		case "CRITICAL":
+			if isLocalhost {
+				reason = fmt.Sprintf("LPE Gold Mine: %s on localhost contains credentials or exploitable logic.", svc.name)
+			} else {
+				reason = fmt.Sprintf("EXPOSED LPE Gold Mine: %s exposed on all interfaces — credentials or exploitable logic accessible from network.", svc.name)
+			}
+		case "HIGH":
+			if isExposedAll {
+				finalRisk = "CRITICAL" // HIGH service on all interfaces → promote to CRITICAL
+				reason = fmt.Sprintf("High-risk service (%s) exposed on all interfaces — direct attack surface from network.", svc.name)
+			} else {
+				reason = fmt.Sprintf("High-risk service (%s) listening locally.", svc.name)
+			}
+		case "MEDIUM":
+			if isExposedAll && uid == 0 {
+				finalRisk = "HIGH" // MEDIUM root service on all interfaces → promote to HIGH
+				reason = fmt.Sprintf("Root-owned service (%s) exposed on all interfaces — misconfig may enable lateral movement.", svc.name)
+			} else if isLocalhost && uid == 0 {
+				reason = fmt.Sprintf("Root-owned %s on localhost — check for local exploitation or credential exposure.", svc.name)
+			} else {
+				reason = fmt.Sprintf("Service (%s) listening — review configuration.", svc.name)
+			}
+		default: // INFO / unknown
+			if isExposedAll && uid == 0 {
+				finalRisk = "MEDIUM"
+				reason = "Unknown root service exposed on all interfaces — review manually."
+			} else if isLocalhost && uid == 0 {
+				finalRisk = "MEDIUM"
+				reason = "Unknown root service on localhost — review manually."
+			} else {
+				// Not interesting enough — skip
+				continue
 			}
 		}
 
-		// If it's not dangerous and not an LPE vector, we only show it if it's not a common system port
-		// However, per user request, we've already skipped 22, 80, 443. 
-		// For established connections or other listeners, we keep them as INFO.
+		isDangerous := finalRisk == "CRITICAL" || finalRisk == "HIGH"
 
 		results = append(results, NetworkConnectionResult{
 			Protocol:    protocol,
@@ -169,11 +217,13 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 			PID:         0,
 			ProcessName: procName,
 			IsDangerous: isDangerous,
+			RiskLevel:   finalRisk,
 			Reason:      reason,
 		})
 	}
 	return results
 }
+
 
 // buildInodeMap scans /proc to map socket inodes to process names
 func buildInodeMap() map[string]string {

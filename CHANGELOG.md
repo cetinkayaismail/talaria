@@ -7,6 +7,20 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #34 — Network Scanner: 3-Layer Risk Grading + Port-to-Service Map (`scanners/network.go`, `main.go`)
+**Impact:** 📉 Eliminates blanket CRITICAL labeling on benign exposed services (SMB, RPC, CUPS) — replaces with calibrated CRITICAL/HIGH/MEDIUM grading; 🧠 Process names now show "unknown (likely: Samba/NetBIOS)" when PID cannot be resolved.
+
+- **Port-to-Service Map:** 30+ well-known ports mapped to service names and base risk levels. When `/proc` PID resolution fails, process shown as `unknown (likely: <ServiceName>)`.
+- **3-Layer Risk Grading:**
+  - Layer 1 — Base risk per service (MySQL/Redis/Docker → CRITICAL, NFS/FTP/Telnet → HIGH, SMB/RPC/CUPS → MEDIUM)
+  - Layer 2 — Scope modifier: `0.0.0.0`/`::` exposure promotes risk one level up (MEDIUM root → HIGH, HIGH → CRITICAL)
+  - Layer 3 — Context: localhost root listener always gets proper severity label
+- **`RiskLevel` field** added to `NetworkConnectionResult` struct; `main.go` uses `r.RiskLevel` for accurate severity display.
+
+**Files changed:** `scanners/network.go`, `main.go`
+
+---
+
 ### #33 — Expanded Default Secret Scan Targets (`main.go`, `scanners/secrets.go`)
 **Impact:** 🎯 3 yeni yüksek değerli dizin eklendi; sıfır FP artışı — mevcut entropi/pattern filtreleri devrede.
 
