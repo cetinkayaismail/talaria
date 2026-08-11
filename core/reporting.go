@@ -113,7 +113,7 @@ func PrintSummary(report *models.ScanReport, duration string) {
 	for _, s := range report.Secrets { countRisk(s.RiskLevel) }
 	for _, s := range report.SUID { if s.IsDangerous { critical++ } }
 	for _, s := range report.SGID { if s.IsDangerous { critical++ } }
-	for _, s := range report.SudoPrivileges { 
+	for _, s := range report.SudoPrivileges {
 		if s.HasLDPreload || s.IsDangerous { critical++ } else if s.NoPassword { high++ }
 	}
 	for _, s := range report.CronJobs { if s.IsDangerous { critical++ } }
@@ -130,6 +130,9 @@ func PrintSummary(report *models.ScanReport, duration string) {
 	for _, s := range report.HistorySecrets { countRisk(s.RiskLevel) }
 	for _, s := range report.Logrotate { countRisk(s.RiskLevel) }
 	for _, s := range report.EnvFileResults { countRisk(s.RiskLevel) }
+	for _, s := range report.NetworkConnections { countRisk(s.RiskLevel) }
+	for _, s := range report.FilePermissions { if s.IsDangerous { critical++ } else if s.CanWrite { high++ } }
+	for _, s := range report.FilePermsExploit { if s.IsDangerous { critical++ } }
 
 	// Logic for lateral counts would need RunIntelligenceEngine results or similar
 	// For now, let's keep it simple

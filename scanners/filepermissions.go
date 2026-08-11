@@ -50,6 +50,9 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 	for _, cf := range CriticalFiles {
 		res := checkSingleFile(cf.Path, cf.ExpectedPerms, ctx)
 		if res != nil {
+			if res.Issue == "" {
+				res.Issue = fmt.Sprintf("%s — permissions match expected (%04o), no immediate write access detected", cf.Description, cf.ExpectedPerms)
+			}
 			results = append(results, *res)
 		}
 	}

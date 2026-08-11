@@ -7,6 +7,17 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #35 — Output Quality: 3 UI Fixes (`core/intelligence.go`, `core/reporting.go`, `scanners/filepermissions.go`)
+**Impact:** 🧠 Cleaner, more accurate output — no duplicate attack paths, correct summary counts, no blank Reason fields.
+
+- **Attack Graph deduplication (`core/intelligence.go`):** When only one attack path exists, `Attack Graph` entry is suppressed and only `Best Attack Graph` is printed. Multiple distinct paths still each get their own `Attack Graph` entry.
+- **SCAN SUMMARY counters (`core/reporting.go`):** Added `NetworkConnections` (using `RiskLevel`), `FilePermissions` and `FilePermsExploit` to summary counters — HIGH/MEDIUM network findings now correctly reflected in the dashboard.
+- **Empty Reason fix (`scanners/filepermissions.go`):** `CriticalFiles` entries (e.g. `/etc/passwd`, `/etc/fstab`) now show a descriptive reason instead of blank when permissions are standard: *"Filesystem mount table — permissions match expected (0644), no immediate write access detected"*.
+
+**Files changed:** `core/intelligence.go`, `core/reporting.go`, `scanners/filepermissions.go`
+
+---
+
 ### #34 — Network Scanner: 3-Layer Risk Grading + Port-to-Service Map (`scanners/network.go`, `main.go`)
 **Impact:** 📉 Eliminates blanket CRITICAL labeling on benign exposed services (SMB, RPC, CUPS) — replaces with calibrated CRITICAL/HIGH/MEDIUM grading; 🧠 Process names now show "unknown (likely: Samba/NetBIOS)" when PID cannot be resolved.
 

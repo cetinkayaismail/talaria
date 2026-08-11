@@ -108,8 +108,26 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 	for _, goal := range goals {
 		paths := graph.FindPaths(startNode, goal, 5)
 
+		// FindBestPath first — used to deduplicate identical single-path cases
+		bestPath := graph.FindBestPath(startNode, goal, 5)
+		bestPathKey := ""
+		if bestPath != nil {
+			for _, e := range bestPath {
+				bestPathKey += e.From.ID + e.To.ID
+			}
+		}
+
 		for _, path := range paths {
 			if len(path) == 0 {
+				continue
+			}
+
+			// Skip if this path is identical to bestPath — it will be shown as Best Attack Graph
+			pathKey := ""
+			for _, e := range path {
+				pathKey += e.From.ID + e.To.ID
+			}
+			if pathKey == bestPathKey {
 				continue
 			}
 
@@ -127,23 +145,21 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 				desc += "\n  [!] Tactical Advice: Once you have gained access as this user, run Talaria again to explore further paths."
 			}
 
-			// Check ALL files in the path for defenses
 			blocked, blockMsg := isAnyPathBlocked(targetPaths)
 			if blocked {
 				riskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
 				desc += blockMsg
 			}
 
-		allResults = append(allResults, ChainResult{
-			Name:        fmt.Sprintf("Attack Graph: %s (%d steps) → %s", goalName, len(path), goalName),
-			Description: desc,
-			RiskLevel:   riskLevel,
-			TargetPath:  strings.Join(targetPaths, ","),
-		})
+			allResults = append(allResults, ChainResult{
+				Name:        fmt.Sprintf("Attack Graph: %s (%d steps) → %s", goalName, len(path), goalName),
+				Description: desc,
+				RiskLevel:   riskLevel,
+				TargetPath:  strings.Join(targetPaths, ","),
+			})
 		}
 
-		// Also try FindBestPath for highest-weighted path
-		bestPath := graph.FindBestPath(startNode, goal, 5)
+		// Best path entry — always shown if a path exists
 		if bestPath != nil {
 			totalWeight := 0
 			desc := "Best Attack Path:\n"
@@ -167,12 +183,12 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 				desc += blockMsg
 			}
 
-		allResults = append(allResults, ChainResult{
-			Name:        fmt.Sprintf("Best Attack Graph: %s (%d steps, score=%d) → %s", goalName, len(bestPath), totalWeight, goalName),
-			Description: desc,
-			RiskLevel:   riskLevel,
-			TargetPath:  strings.Join(targetPaths, ","),
-		})
+			allResults = append(allResults, ChainResult{
+				Name:        fmt.Sprintf("Best Attack Graph: %s (%d steps, score=%d) → %s", goalName, len(bestPath), totalWeight, goalName),
+				Description: desc,
+				RiskLevel:   riskLevel,
+				TargetPath:  strings.Join(targetPaths, ","),
+			})
 		}
 	}
 
