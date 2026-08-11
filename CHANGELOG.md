@@ -7,6 +7,17 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #36 — Dual-Signal Comment Credential Detection (`scanners/secrets.go`)
+**Impact:** 🎯 Catches plaintext credentials embedded in config file comments (e.g. `#mysql credential user:root & pass:root`) — previously invisible because all comment lines were skipped unconditionally.
+
+- **Root Cause:** `genericContentScan()` skipped all `#`/`;`//`//` prefixed lines, missing real creds written as documentation/notes in config files.
+- **Fix:** Before skipping, check for **dual signal**: line must contain BOTH a user indicator (`user:`, `username:`, `credential`, `login:`) AND a password indicator (`pass:`, `password:`, `pwd:`, `passwd:`). Single-signal comments (e.g. `# set a password here`) are still skipped — FP risk remains zero.
+- **Output:** Reports as `Credential in comment: mysql credential user:root & pass:root`
+
+**Files changed:** `scanners/secrets.go`
+
+---
+
 ### #35 — Output Quality: 3 UI Fixes (`core/intelligence.go`, `core/reporting.go`, `scanners/filepermissions.go`)
 **Impact:** 🧠 Cleaner, more accurate output — no duplicate attack paths, correct summary counts, no blank Reason fields.
 

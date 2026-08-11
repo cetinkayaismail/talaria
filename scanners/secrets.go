@@ -442,8 +442,33 @@ func genericContentScan(f *os.File, path string) string {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		// 1. Skip comments and empty lines
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") || strings.HasPrefix(trimmed, "//") {
+		// 1. Comment / empty line handling
+		if trimmed == "" {
+			continue
+		}
+		isComment := strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") || strings.HasPrefix(trimmed, "//")
+		if isComment {
+			// Dual-signal check: only parse comment if it contains BOTH a user indicator
+			// AND a password indicator — this catches plaintext creds in comments
+			// (e.g. "#mysql credential user:root & pass:root") with near-zero FP risk.
+			lower := strings.ToLower(trimmed)
+			hasUserSignal := strings.Contains(lower, "user:") || strings.Contains(lower, "username:") ||
+				strings.Contains(lower, "login:") || strings.Contains(lower, "credential")
+			hasPassSignal := strings.Contains(lower, "pass:") || strings.Contains(lower, "password:") ||
+				strings.Contains(lower, "pwd:") || strings.Contains(lower, "passwd:")
+			if hasUserSignal && hasPassSignal {
+				// Strip comment marker and try to extract the value
+				stripped := strings.TrimLeft(trimmed, "#;/")
+				if m := assignmentRegex.FindStringSubmatch(stripped); len(m) > 1 {
+					for _, v := range m[1:] {
+						if v != "" && !isFalsePositive(v) {
+							return "Credential in comment: " + strings.TrimSpace(stripped)
+						}
+					}
+				}
+				// Even without regex match, report the whole stripped line — it has 2 signals
+				return "Credential in comment: " + strings.TrimSpace(stripped)
+			}
 			continue
 		}
 
