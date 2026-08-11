@@ -267,6 +267,8 @@ func main() {
 					"/home", "/var/www", "/opt", "/srv", "/etc",
 					"/etc/openvpn", "/etc/vpn", "/etc/irssi",
 					"/var/www/html", "/opt/app", "/srv/app", // Deeper .env scanning paths (B3)
+					"/var/backups",                          // Backup copies of shadow/passwd (high value)
+					"/tmp", "/dev/shm",                     // Temp credential files, ansible vaults, copied configs
 				}
 				if _, err := os.Stat("/root"); err == nil {
 					ctfPaths = append(ctfPaths, "/root")

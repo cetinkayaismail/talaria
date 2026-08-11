@@ -7,6 +7,16 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #33 — Expanded Default Secret Scan Targets (`main.go`, `scanners/secrets.go`)
+**Impact:** 🎯 3 yeni yüksek değerli dizin eklendi; sıfır FP artışı — mevcut entropi/pattern filtreleri devrede.
+
+- **`main.go`:** `ctfPaths` listesine `/var/backups` (shadow.bak, passwd.bak gibi yedek dosyalar), `/tmp` ve `/dev/shm` (geçici kimlik bilgisi dosyaları, Ansible vault kopyaları) eklendi.
+- **`scanners/secrets.go`:** `ScanRootSecrets()` hedef listesine `/root/.ssh`, `/root/.aws`, `/root/.kube`, `/root/.docker`, `/root/.local`, `/root/.config` eklendi — root kullanıcısına ait uygulama token'ları ve depolanan kimlik bilgilerini yakalar.
+
+**Files changed:** `main.go`, `scanners/secrets.go`
+
+---
+
 ### #32 — FILE PERMISSIONS EXPLOIT: Remove No-Vector SUID Entries (`scanners/fileperms_exploit.go`)
 **Impact:** 📉 Eliminates false-positive CRITICAL entries for system SUID binaries (`arping`, `traceroute6`, `ntfs-3g`, etc.) that have no confirmed GTFOBins or PATH hijack vector — they remain visible in `SUID BINARIES` section as INFO.
 

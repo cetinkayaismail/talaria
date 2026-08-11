@@ -191,7 +191,12 @@ func ScanRootSecrets() ([]SensitiveFileResult, []SensitiveContentResult) {
 	var fileResults []SensitiveFileResult
 	var contentResults []SensitiveContentResult
 
-	targetDirs := []string{"/.ssh", "/.aws", "/.kube", "/.docker", "/.backup", "/.backups", "/.config", "/.secret", "/.secrets"}
+	targetDirs := []string{
+		"/.ssh", "/.aws", "/.kube", "/.docker",
+		"/.backup", "/.backups", "/.config", "/.secret", "/.secrets",
+		"/root/.ssh", "/root/.aws", "/root/.kube", "/root/.docker",
+		"/root/.local", "/root/.config", // App tokens, stored credentials
+	}
 
 	for _, dir := range targetDirs {
 		entries, err := os.ReadDir(dir)
