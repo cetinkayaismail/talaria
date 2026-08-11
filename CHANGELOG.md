@@ -7,6 +7,16 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #32 — FILE PERMISSIONS EXPLOIT: Remove No-Vector SUID Entries (`scanners/fileperms_exploit.go`)
+**Impact:** 📉 Eliminates false-positive CRITICAL entries for system SUID binaries (`arping`, `traceroute6`, `ntfs-3g`, etc.) that have no confirmed GTFOBins or PATH hijack vector — they remain visible in `SUID BINARIES` section as INFO.
+
+- **Root Cause:** The blanket `Standard SUID Root Analysis` block (lines 124-129) added every root-owned SUID binary to `FILE PERMISSIONS EXPLOIT` as `CRITICAL` even when `PotentialAttackVector` was empty.
+- **Fix:** Replaced with a path-based filter. Standard system paths (`/bin`, `/usr/bin`, `/sbin`, `/usr/sbin`, `/usr/lib`, `/lib`) without a confirmed vector are no longer promoted to `CRITICAL` exploit findings. Only non-standard path SUID binaries (e.g. `/home/user5/script`) or those with confirmed PATH hijack/GTFOBins vectors are flagged.
+
+**Files changed:** `scanners/fileperms_exploit.go`
+
+---
+
 ### #31 — Group Permission Audit (`scanners/filepermissions.go`) & `ld.so.conf.d` Intelligence Downgrade (`core/intelligence.go`)
 **Impact:** 📉 100% elimination of false positive `ld.so.conf.d` / `logrotate.d` / `sudoers.d` findings on group-writable root-owned files (`-rw-rw-r-- root:root`) where the scanning user is not in GID 0; 🧠 Refined Intelligence Engine risk level for `ld.so.conf.d` findings based on `ldconfig` automation state.
 
