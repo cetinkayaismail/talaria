@@ -18,6 +18,7 @@ type FilePermissionResult struct {
 	IsWorldWritable bool
 	IsGroupWritable bool
 	IsWorldReadable bool
+	CanWrite        bool
 	IsDangerous     bool
 	Issue           string
 }
@@ -43,12 +44,11 @@ var CriticalFiles = []struct {
 // This is a very important step in Privilege Escalation as it can lead to direct root access
 func ScanFilePermissions() ([]FilePermissionResult, error) {
 	var results []FilePermissionResult
-	currUser, _ := user.Current()
-	uid, _ := strconv.Atoi(currUser.Uid)
+	ctx := GetUserContext()
 
 	// 1. Check Specific Critical System Files for standard permissions
 	for _, cf := range CriticalFiles {
-		res := checkSingleFile(cf.Path, cf.ExpectedPerms, uid)
+		res := checkSingleFile(cf.Path, cf.ExpectedPerms, ctx)
 		if res != nil {
 			results = append(results, *res)
 		}
@@ -57,7 +57,7 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 	// 2. Check World Writable Directories (useful for privescalation running scripts etc)
 	wwPaths := []string{"/tmp", "/var/tmp", "/dev/shm", "/var/run", "/opt"}
 	for _, p := range wwPaths {
-		res := checkSingleFile(p, 0, uid)
+		res := checkSingleFile(p, 0, ctx)
 		if res != nil && res.IsWorldWritable {
 			res.Issue = "World-writable directory detected"
 			results = append(results, *res)
@@ -81,7 +81,7 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 	if entries, err := os.ReadDir("/etc/ld.so.conf.d"); err == nil {
 		for _, e := range entries {
 			p := "/etc/ld.so.conf.d/" + e.Name()
-			if res := checkSingleFile(p, 0644, uid); res != nil && (res.IsWorldWritable || res.IsGroupWritable) {
+			if res := checkSingleFile(p, 0644, ctx); res != nil && res.CanWrite {
 				res.IsDangerous = true
 				res.Issue = "Writable ld.so.conf.d entry: inject a malicious shared library path to hijack privileged binary loads"
 				results = append(results, *res)
@@ -93,7 +93,7 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 	if entries, err := os.ReadDir("/etc/logrotate.d"); err == nil {
 		for _, e := range entries {
 			p := "/etc/logrotate.d/" + e.Name()
-			if res := checkSingleFile(p, 0644, uid); res != nil && (res.IsWorldWritable || res.IsGroupWritable) {
+			if res := checkSingleFile(p, 0644, ctx); res != nil && res.CanWrite {
 				res.IsDangerous = true
 				res.Issue = fmt.Sprintf("Writable logrotate config: %s — inject 'postrotate' commands to execute as root during log rotation", p)
 				results = append(results, *res)
@@ -105,7 +105,7 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 	if entries, err := os.ReadDir("/etc/sudoers.d"); err == nil {
 		for _, e := range entries {
 			p := "/etc/sudoers.d/" + e.Name()
-			if res := checkSingleFile(p, 0440, uid); res != nil && (res.IsWorldWritable || res.IsGroupWritable) {
+			if res := checkSingleFile(p, 0440, ctx); res != nil && res.CanWrite {
 				res.IsDangerous = true
 				res.Issue = fmt.Sprintf("Writable sudoers drop-in: %s — add 'ALL=(ALL) NOPASSWD: ALL' to gain instant root", p)
 				results = append(results, *res)
@@ -116,7 +116,7 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 	return results, nil
 }
 
-func checkSingleFile(path string, expected os.FileMode, currentUID int) *FilePermissionResult {
+func checkSingleFile(path string, expected os.FileMode, ctx *UserContext) *FilePermissionResult {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil
@@ -131,12 +131,14 @@ func checkSingleFile(path string, expected os.FileMode, currentUID int) *FilePer
 	perms := mode.Perm()
 	isSticky := (mode & os.ModeSticky) != 0
 
-	// Use bitwise and native way of perm checking . this will give more accurate and faster results than normal scanning
-	// World-writable directories with sticky bit (e.g., /tmp with 1777) are safe — users can only
-	// delete their own files. Only flag as world-writable if sticky bit is NOT set.
 	isWorldWritable := (perms & 0o002) != 0 && !isSticky
 	isGroupWritable := (perms & 0o020) != 0
 	isWorldReadable := (perms & 0o004) != 0
+
+	canWrite := false
+	if ctx != nil {
+		canWrite = ctx.CanWrite(int(stat.Uid), int(stat.Gid), uint32(mode))
+	}
 
 	isDangerous := false
 	issue := ""
@@ -153,7 +155,7 @@ func checkSingleFile(path string, expected os.FileMode, currentUID int) *FilePer
 		issue = "Sensitive file is world-readable!"
 	}
 
-	if isDangerous || isWorldWritable || isGroupWritable {
+	if isDangerous || canWrite || isWorldWritable || isGroupWritable {
 		ownerName := "unknown"
 		if u, err := user.LookupId(strconv.Itoa(int(stat.Uid))); err == nil {
 			ownerName = u.Username
@@ -167,6 +169,7 @@ func checkSingleFile(path string, expected os.FileMode, currentUID int) *FilePer
 			IsWorldWritable: isWorldWritable,
 			IsGroupWritable: isGroupWritable,
 			IsWorldReadable: isWorldReadable,
+			CanWrite:        canWrite,
 			IsDangerous:     isDangerous,
 			Issue:           issue,
 		}

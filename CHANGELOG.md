@@ -7,6 +7,16 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #31 — Group Permission Audit (`scanners/filepermissions.go`) & `ld.so.conf.d` Intelligence Downgrade (`core/intelligence.go`)
+**Impact:** 📉 100% elimination of false positive `ld.so.conf.d` / `logrotate.d` / `sudoers.d` findings on group-writable root-owned files (`-rw-rw-r-- root:root`) where the scanning user is not in GID 0; 🧠 Refined Intelligence Engine risk level for `ld.so.conf.d` findings based on `ldconfig` automation state.
+
+- **Group Permission Verification (`scanners/filepermissions.go`):** Replaced static `isGroupWritable` flag check with `GetUserContext().CanWrite()` in `checkSingleFile()`. Group-writable files (`-rw-rw-r--`) owned by `root:root` are now strictly checked against the scanning user's primary/supplementary GID list (`ctx.GIDs[fileGID]`).
+- **`ld.so.conf.d` Chain Risk Level (`core/intelligence.go`):** Introduced `isLdconfigAutomated()` helper. If `ldconfig` is not automatically triggered in `CronJobs` or `SystemdTimers`, the Intelligence Engine classifies `ld.so.conf.d` findings as `POTENTIAL (Dormant Vector)` rather than `100% CONFIRMED`, preventing over-confidence while preserving the persistence vector.
+
+**Files changed:** `scanners/filepermissions.go`, `core/intelligence.go`
+
+---
+
 ### #30 — False Positive (FP) Reductions & Scanner Output Hardening (`scanners/`, `main.go`)
 **Impact:** 📉 Drastic noise reduction across report outputs — zero false positives on zero-byte lockfiles, Linux ephemeral TCP listeners, desktop greeters, and symlinked socket duplicates.
 

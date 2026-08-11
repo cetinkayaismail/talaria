@@ -385,11 +385,17 @@ func (c *LdSoPreloadChain) Evaluate(report *models.ScanReport) []ChainResult {
 	// Also check /etc/ld.so.conf.d/ for writable config files
 	for _, w := range report.Writeable {
 		if strings.HasPrefix(w.Path, "/etc/ld.so.conf.d/") && w.IsDangerous {
+			risk := "POTENTIAL (Dormant Vector)"
+			desc := "Add a malicious library path to ldconfig. Requires ldconfig execution (e.g. system update or admin maintenance) to update cache."
+			if isLdconfigAutomated(report) {
+				risk = "100% CONFIRMED"
+				desc = "Add a malicious library path to ldconfig. Automated ldconfig execution detected — loads on next cycle."
+			}
 			return []ChainResult{{
 				Name:        fmt.Sprintf("Writable ld.so.conf.d entry: %s", w.Path),
-				RiskLevel:   "100% CONFIRMED",
-				Description: "Add a malicious library path to ldconfig. Next ldconfig run or SUID binary execution loads it.",
-				Exploit:     "Add '/tmp/malicious_libs' to the config and place a .so with a standard name override. Run ldconfig or wait for cron.",
+				RiskLevel:   risk,
+				Description: desc,
+				Exploit:     "Add '/tmp' to the config. Will execute as root when ldconfig is triggered during next system update or maintenance.",
 				TargetPath:  w.Path,
 			}}
 		}
@@ -564,6 +570,24 @@ func (c *WritablePATHSUIDChain) Evaluate(report *models.ScanReport) []ChainResul
 	}
 
 	return results
+}
+
+// isLdconfigAutomated checks if ldconfig is executed automatically by system cron or systemd timers.
+func isLdconfigAutomated(report *models.ScanReport) bool {
+	if report == nil {
+		return false
+	}
+	for _, c := range report.CronJobs {
+		if strings.Contains(c.Command, "ldconfig") {
+			return true
+		}
+	}
+	for _, s := range report.SystemdTimers {
+		if strings.Contains(s.Path, "ldconfig") || strings.Contains(s.Reason, "ldconfig") {
+			return true
+		}
+	}
+	return false
 }
 
 // ── CHAIN 10: Session hijack (tmux/screen) to root (#4) ──────────────
