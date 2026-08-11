@@ -132,6 +132,10 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 					reason = "EXPOSED LPE Gold Mine: Service exposed on public/any interface contains credentials or exploitable logic."
 				}
 			} else if (localIP == "0.0.0.0" || localIP == "::") {
+				// Ephemeral high ports (32768+) listening on 0.0.0.0 / :: are dynamic RPC/NFS helper ports — skip to avoid FP noise
+				if localPort >= 32768 {
+					continue
+				}
 				// Exposed on ALL interfaces: only report if ROOT (per user request to reduce noise)
 				if uid == 0 {
 					isDangerous = true

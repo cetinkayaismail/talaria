@@ -7,6 +7,19 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #30 — False Positive (FP) Reductions & Scanner Output Hardening (`scanners/`, `main.go`)
+**Impact:** 📉 Drastic noise reduction across report outputs — zero false positives on zero-byte lockfiles, Linux ephemeral TCP listeners, desktop greeters, and symlinked socket duplicates.
+
+- **Lockfile & Non-Executable Guard (`scanners/writeable.go`):** Added `hasShebang()` script check and size/extension filter (`.lock`, `.pid`, `.sock`, `.log`, `.tmp`) to prevent 0-byte lockfiles (e.g. `/var/crash/.lock`) from being falsely flagged as `CRITICAL Writable Executable`.
+- **Ephemeral Port Listener Filter (`scanners/network.go`):** Suppressed generic `0.0.0.0` / `::` listeners on Linux ephemeral ports (`>= 32768`) unless matched against known LPE service database (MySQL, Redis, MongoDB, Docker API).
+- **Display Manager Greeter Exclusion (`scanners/processes.go`):** Excluded standard desktop display manager session helper binaries (`lightdm-greeter-session`, `gdm-session-worker`, `sddm-helper`) from being falsely flagged as dangerous non-login shell executions.
+- **Socket Symlink Deduplication (`scanners/sockets.go`):** Evaluated real paths via `filepath.EvalSymlinks` to eliminate duplicate findings between `/var/run/` and `/run/`.
+- **Exploit Hint Formatting (`main.go`):** Restricted *"Prepend a malicious binary to your PATH"* hint to findings with verified relative command calls, serving GTFOBins hints for standard SUID binaries.
+
+**Files changed:** `scanners/writeable.go`, `scanners/network.go`, `scanners/processes.go`, `scanners/sockets.go`, `main.go`
+
+---
+
 ### #29 — D1 Parallel Walker Pool Infrastructure & Scanner Migration (`internal/walkpool`, `scanners/`)
 **Impact:** ⚡ Significant speed improvement (2–4× faster traversal on SSD, 5–10× on NFS) across all filesystem scans; 🧠 100% thread-safe bounded worker pool with zero data races.
 

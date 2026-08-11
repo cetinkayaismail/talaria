@@ -92,7 +92,17 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 
 			fileName := filepath.Base(path)
 			isSUID := (info.Mode()&os.ModeSetuid != 0)
+			
+			// Executable classification guard: zero-byte files, lock/pid/log/sock extensions are not code executables
 			isExecutable := (info.Mode()&0111 != 0)
+			if isExecutable && !isSUID {
+				ext := strings.ToLower(filepath.Ext(fileName))
+				if info.Size() == 0 || ext == ".lock" || ext == ".pid" || ext == ".sock" || ext == ".socket" || ext == ".log" || ext == ".tmp" || strings.HasPrefix(fileName, ".") {
+					// Verify if it has a shebang before assuming it's executable code
+					isExecutable = hasShebang(path)
+				}
+			}
+
 			isRootOwned := (stat.Uid == 0)
 			currentUserOwns := (uid == int(stat.Uid))
 			isOtherUserOwned := !currentUserOwns && !isRootOwned && stat.Uid != 0
@@ -562,4 +572,20 @@ func ScanMotdProfiledHijack() ([]WriteableResult, error) {
 	}
 
 	return results, nil
+}
+
+// hasShebang checks if a file starts with '#!' (script execution header)
+func hasShebang(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 2)
+	n, err := f.Read(buf)
+	if err != nil || n < 2 {
+		return false
+	}
+	return buf[0] == '#' && buf[1] == '!'
 }

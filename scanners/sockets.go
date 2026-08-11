@@ -64,6 +64,7 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 	}
 
 	searchPaths := []string{"/var/run", "/run", "/tmp", "/var/tmp", "/var/lib", "/home"}
+	seenRealPaths := make(map[string]bool)
 
 	for _, basePath := range searchPaths {
 		for entry := range walkpool.Walk(context.Background(), basePath, poolWorkers(), nil) {
@@ -74,6 +75,20 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 			info, err := d.Info()
 			if err != nil || (info.Mode()&os.ModeSocket) == 0 {
 				continue
+			}
+
+			// Deduplicate sockets across symlinked directories (e.g. /var/run -> /run)
+			realPath, err := filepath.EvalSymlinks(path)
+			if err == nil {
+				if seenRealPaths[realPath] {
+					continue
+				}
+				seenRealPaths[realPath] = true
+			} else {
+				if seenRealPaths[path] {
+					continue
+				}
+				seenRealPaths[path] = true
 			}
 
 			stat, ok := info.Sys().(*syscall.Stat_t)

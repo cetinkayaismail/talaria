@@ -870,7 +870,14 @@ func main() {
 						if r.IsDangerous {
 							hint := ""
 							if !isProfessional {
-								hint = "Prepend a malicious binary to your PATH and run the target."
+								if strings.Contains(r.ExploitMethod, "PATH Hijacking") {
+									hint = "Prepend a malicious binary to your PATH and run the target."
+								} else {
+									gtfoHint := scanners.GetExploitHint(r.Path, "suid")
+									if gtfoHint != "" {
+										hint = gtfoHint
+									}
+								}
 							}
 							core.PrintFinding("CRITICAL", "File Permissions Exploit", map[string]string{
 								"Path":   r.Path,

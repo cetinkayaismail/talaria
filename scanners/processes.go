@@ -202,6 +202,10 @@ func checkProcessDanger(cmdline string, uid int, userShells map[int]string) bool
 		if shell, ok := userShells[uid]; ok {
 			if strings.Contains(shell, "nologin") || strings.Contains(shell, "false") {
 				if strings.EqualFold(cmdBase, "bash") || strings.EqualFold(cmdBase, "sh") || strings.EqualFold(cmdBase, "dash") || strings.EqualFold(cmdBase, "zsh") {
+					// Ignore standard display manager session launchers (e.g. LightDM greeter sessions)
+					if strings.Contains(lowerCmd, "lightdm-greeter-session") || strings.Contains(lowerCmd, "gdm-session-worker") || strings.Contains(lowerCmd, "sddm-helper") {
+						return false
+					}
 					return true
 				}
 			}
