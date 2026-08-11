@@ -118,17 +118,8 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 			service := "Unknown"
 			isCriticalSocket := false
 
-			// Check if this is a known safe system socket first
+			// Skip standard systemd logging/notification sockets entirely to eliminate noise
 			if safeSystemSockets[fileName] {
-				// Safe system socket — still report as INFO but not dangerous
-				results = append(results, SocketResult{
-					Path:        path,
-					OwnerUID:    int(stat.Uid),
-					Permissions: info.Mode().Perm().String(),
-					IsWritable:  isWritable,
-					IsDangerous: false,
-					Service:     "system",
-				})
 				continue
 			}
 

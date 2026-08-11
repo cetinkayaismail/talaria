@@ -7,6 +7,16 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #38 — Suppress Standard Systemd Socket Noise (`scanners/sockets.go`)
+**Impact:** 📉 100% suppression of 10+ benign systemd logging/notification socket lines (`dev-log`, `notify`, `stdout`, `system_bus_socket`, `syslog`, `request`).
+
+- **Noise Elimination:** Sockets matching `safeSystemSockets` are now skipped completely instead of listing as `[INFO] Writable Socket`.
+- **Focus:** Application-specific IPC sockets (e.g. `cups.sock`, `avahi-daemon`, `rpcbind.sock`) remain visible as `[INFO]`, and high-risk sockets (`mysqld.sock`, `docker.sock`) remain `[CRITICAL]`.
+
+**Files changed:** `scanners/sockets.go`
+
+---
+
 ### #37 — Smart Secrets Filtering: Unreadable Critical Suppression & Content-Aware `fstab` (`scanners/secrets.go`)
 **Impact:** 📉 100% suppression of unreadable system file noise (`shadow`, `gshadow`, `sudoers` reported as `INFO`) and plain `/etc/fstab` files containing no network mounts or credentials.
 
