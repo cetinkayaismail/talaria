@@ -7,6 +7,166 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #53 — Multi-Vector Strategic Architecture & Scanners Expansion (`scanners/ld_nss.go`, `scanners/modprobe.go`, `scanners/cloud_meta.go`, `scanners/venv_wrap.go`, `scanners/sysctl.go`, `scanners/services.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`, `lab/setup_mock_env.sh`)
+**Impact:** 🎯 4 new scanner modules, runtime kernel memory node inspection, passive network inspection by default, 4 new attack chains, and full attack graph integration.
+
+- **Dynamic Linker & NSS Auditor (`scanners/ld_nss.go`):** Evaluates `/etc/ld.so.conf`, `/etc/ld.so.conf.d/*.conf`, and `/etc/nsswitch.conf` for user-writable shared library directories or configuration files. Registered `LDNSSChain` in `core/intelligence.go` and mapped `file:` nodes and weighted edges to `goal:root` in `core/graph.go`.
+- **Modprobe & Kernel Module Loading Auditor (`scanners/modprobe.go`):** Audits `/etc/modprobe.d/` and `/lib/modprobe.d/` for writable rule files or `install <module> <target>` directives pointing to writable executables. Registered `ModprobeChain` in `core/intelligence.go` and mapped to graph.
+- **Cloud & Kubernetes Metadata Harvester (`scanners/cloud_meta.go`):** Harvester for in-cluster Kubernetes ServiceAccount tokens (`/var/run/secrets/kubernetes.io/serviceaccount/token`), admin kubeconfigs, and fail-fast non-blocking IMDS detection (AWS 169.254.169.254, GCP, Azure). Registered `CloudMetaChain` in `core/intelligence.go` and mapped `cloud:` nodes in `core/graph.go`.
+- **Python VirtualEnvs & Script Wrapper Auditor (`scanners/venv_wrap.go`):** Audits `/opt`, `/var/www`, `/usr/local` for writable Python `bin/activate` or `site-packages/` directories and executable wrapper scripts in `/usr/local/bin`. Registered `VenvWrapChain` in `core/intelligence.go` and mapped to graph.
+- **Runtime Kernel Memory Node Consolidation (`scanners/sysctl.go`):** Added direct runtime accessibility checks on `/dev/mem`, `/dev/kmem`, and `/proc/kcore` to detect raw physical/virtual memory access.
+- **Passive Local Service Inspection (`scanners/services.go`):** Converted local service scanning to passive `/proc/net/tcp` listening state inspection to prevent connection timeouts and maintain stealth.
+- **Lab Environment Multi-Vector Testbed (`lab/setup_mock_env.sh`):** Added mock testing vectors for dynamic linker search directories, modprobe hooks, Kubernetes ServiceAccount tokens, and virtualenvs.
+
+**Files changed:** `scanners/ld_nss.go` *(new)*, `scanners/modprobe.go` *(new)*, `scanners/cloud_meta.go` *(new)*, `scanners/venv_wrap.go` *(new)*, `scanners/sysctl.go`, `scanners/services.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`, `lab/setup_mock_env.sh`
+
+---
+
+### #52 — Package Manager Hook & Repository Security Auditor (`scanners/packages.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`, `lab/setup_mock_env.sh`)
+**Impact:** 🎯 Full auditing of cross-distro package manager drop-in directories, execution hooks, trusted GPG keyrings, and repository writability across APT, DNF/YUM, Pacman, and APK.
+
+- **Package Hook & Drop-in Directory Inspection (`scanners/packages.go`):** Evaluates user write permissions across APT hook drop-ins (`/etc/apt/apt.conf.d/`, `/etc/dpkg/dpkg.cfg.d/`), DNF/YUM plugins (`/etc/dnf/plugins/`, `/etc/yum/pluginconf.d/`), Pacman hooks (`/etc/pacman.d/hooks/`), and repository configurations (`sources.list.d`, `yum.repos.d`, `trusted.gpg.d`).
+- **Attack Chain & Timer Correlation (`core/intelligence.go`):** Registered `PackageHookChain` which correlates writable package hooks with automated update timers (`apt-daily.timer`, `unattended-upgrades`, `dnf-makecache`, `yum-cron`) to determine whether root code execution is 100% confirmed automated or requires administrator action.
+- **Intelligence Graph Integration (`core/graph.go`):** Mapped package manager configuration nodes and weighted edges to `goal:root` in the graph analysis engine.
+- **Lab Environment Testbed (`lab/setup_mock_env.sh`):** Added mock vulnerable APT configuration hook drop-in for containerized verification.
+
+**Files changed:** `scanners/packages.go`, `main.go`, `core/intelligence.go`, `core/graph.go`, `lab/setup_mock_env.sh`
+
+---
+
+### #51 — Process Environment Token & Secret Harvester (`scanners/proc_env.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🧠 In-memory harvesting of plaintext tokens, database passwords, and API credentials exposed across accessible `/proc/[pid]/environ` process tables.
+
+- **Process Environ Harvesting (`scanners/proc_env.go`):** Scans null-byte separated environment tables of running processes for sensitive key patterns (`AWS_SECRET_ACCESS_KEY`, `VAULT_TOKEN`, `PGPASSWORD`, `GITHUB_TOKEN`, `BEARER_TOKEN`, `API_KEY`).
+- **Intelligence & Graph Integration:** Registered `ProcEnvTokenChain` in `core/intelligence.go` and mapped `procenv:` credential nodes and weighted edges in `core/graph.go`.
+
+**Files changed:** `scanners/proc_env.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #50 — Cron & Timer Directory Permission Drift Auditor (`scanners/cron_dirs.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🎯 Complete auditing of directory-level write permission drift on system task drop-in directories (`/etc/cron.d/`, `/var/spool/cron/crontabs/`, `/etc/systemd/system/`).
+
+- **Task Directory Perm Inspection (`scanners/cron_dirs.go`):** Evaluates directory permissions against current user context to detect loose ownership or write access enabling unprivileged creation of root crontabs or systemd units.
+- **Intelligence & Graph Integration:** Registered `CronDirRootChain` in `core/intelligence.go` and mapped `file:` nodes and weighted edges in `core/graph.go`.
+
+**Files changed:** `scanners/cron_dirs.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #49 — Udev Rules & Event Execution Auditor (`scanners/udev.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🎯 Audits udev event rule configurations (`/etc/udev/rules.d/`) and execution targets (`RUN+=`, `PROGRAM=`) for unprivileged file writability vulnerabilities.
+
+- **Udev Event Rule Parsing (`scanners/udev.go`):** Inspects udev configuration directories for world/user-writable `.rules` files and parses `RUN+=` or `PROGRAM=` target binaries/scripts for permission flaws.
+- **Intelligence & Graph Integration:** Registered `UdevRootChain` in `core/intelligence.go` and mapped `file:` nodes and weighted edges in `core/graph.go`.
+
+**Files changed:** `scanners/udev.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #48 — Intelligence Engine Clean-Up: Strict Multi-Step Chain Separation (`core/intelligence.go`)
+**Impact:** 🧠 Clean separation of single-node hardening baselines from multi-step attack chains, eliminating duplicate finding output in Intelligence Engine reports.
+
+- **Chain Registration Refinement:** Removed single-node pseudo-chains (`SysctlHardeningChain`, `SubUIDUserNSChain`, `MountFlagsChain`) from `registeredChains` in `core/intelligence.go`.
+- **Preserved Graph Traversal:** Maintained node and weighted edge mappings for `sysctl:`, `subuid:`, and `mount:` in `core/graph.go`, ensuring they continue to participate in multi-step directed path finding while keeping single-node findings confined to their dedicated scanner sections.
+
+**Files changed:** `core/intelligence.go`
+
+---
+
+### #47 — Dynamic ELF RPATH/RUNPATH Analyzer & Auditd Active Detector (`scanners/elf_rpath.go`, `scanners/auditd.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🎯 Deep binary header inspection for SUID shared library hijacking (`DT_RPATH`/`DT_RUNPATH`) and active system audit daemon detection (`auditd`, `rsyslog`).
+
+- **Dynamic ELF RPATH/RUNPATH Analyzer (`scanners/elf_rpath.go`):** Parses ELF binary dynamic headers of SUID binaries using Go's `debug/elf` package. Flags relative paths (`.`), `$ORIGIN` directories, or writable library search paths as `CRITICAL`. Registered `ELFRPathChain` in `core/intelligence.go` and mapped `file:` nodes in `core/graph.go`.
+- **Auditd & Event Logger Active Detector (`scanners/auditd.go`):** Detects active system monitoring daemons (`auditd`, `rsyslogd`, `systemd-journald`) and counts active rules in `/etc/audit/rules.d/`.
+
+**Files changed:** `scanners/elf_rpath.go` *(new)*, `scanners/auditd.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #46 — Shared Memory & Temp Partition Mount Flags Auditor (`scanners/mounts.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🛡️ Zero-latency procfs auditing of mount options on temporary world-writable storage partitions (`/dev/shm`, `/tmp`, `/var/tmp`).
+
+- **Mount Flag Inspection:** Parses `/proc/mounts` for missing `noexec` or `nosuid` flags on shared memory and temporary storage partitions (preventing binary payload execution out of RAM disk).
+- **Intelligence & Graph Integration:** Registered `MountFlagsChain` in `core/intelligence.go` and mapped `mount:` nodes and weighted edges in `core/graph.go`.
+
+**Files changed:** `scanners/mounts.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #45 — Unprivileged Namespace & SubUID Scanner (`scanners/subuid.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🎯 Complete auditing of unprivileged user namespaces (`kernel.unprivileged_userns_clone`) and subuid/subgid range allocations (`/etc/subuid`, `/etc/subgid`).
+
+- **Namespace & SubUID Parsing:** Inspects procfs sysctls for unprivileged namespace cloning and parses `/etc/subuid` and `/etc/subgid` range allocations for rootless container execution privileges.
+- **Intelligence & Graph Integration:** Registered `SubUIDUserNSChain` in `core/intelligence.go` and mapped `subuid:` nodes and weighted edges in `core/graph.go`.
+
+**Files changed:** `scanners/subuid.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #44 — False Positive Reduction: 2026 CVE Kernel Floors & Java Keystore Default Password (`scanners/vulnerabilities.go`, `scanners/secrets.go`)
+**Impact:** 📉 100% elimination of 2026 CVE false matches on Linux 4.x/5.x kernels and suppression of Java default keystore password noise (`changeit`).
+
+- **Kernel CVE Floor Boundary Check:** Updated `MinVersion` bounds for 2026 CVEs (`CVE-2026-31431`, `CVE-2026-43284`, `CVE-2026-46300`, `CVE-2026-43503`, `CVE-2026-46243`, `CVE-2026-43494`, `CVE-2026-46331`, `CVE-2026-31635`, `CVE-2026-31673`) to `6.1.0` in `scanners/vulnerabilities.go`, preventing modern 2026 CVEs from falsely matching legacy Linux 4.x/5.x kernels (e.g. `4.15.0-45`).
+- **Java Keystore Noise Suppression:** Added `changeit` to `exactNoise` in `scanners/secrets.go` to cleanly suppress standard Java Keystore default password false positives (`/etc/ca-certificates/update.d/jks-keystore`).
+
+**Files changed:** `scanners/vulnerabilities.go`, `scanners/secrets.go`
+
+---
+
+### #43 — Comprehensive Multi-Vector Docker Testing Laboratory (`Dockerfile.lab`, `lab/setup_mock_env.sh`, `docker-compose.lab.yml`, `LAB_GUIDE.md`)
+**Impact:** 🧪 Full-spectrum containerized testing lab for validating all 26+ Talaria scanner modules and cross-referencing attack chains in a safe, isolated Debian environment.
+
+- **Multi-Vector Mock Fixtures:** Populated controlled test fixtures in `lab/setup_mock_env.sh` for PAM policies, `pam_exec` scripts, Linux file capabilities (`cap_setuid`), SUID GTFOBins, Systemd EnvironmentFiles & Drop-in Overrides, Logrotate postrotate scripts, Polkit JS rules, PATH hijack directories, shell history credentials, and Sysctl hardening gaps.
+- **Container Validation & Remediation Guide:** Updated `LAB_GUIDE.md` with step-by-step instructions for building, scanning in 175ms, verifying misconfigurations, and validating security hardening remediations.
+
+**Files changed:** `Dockerfile.lab`, `lab/setup_mock_env.sh`, `docker-compose.lab.yml`, `LAB_GUIDE.md` *(new)*
+
+---
+
+### #42 — Systemd Unit Drop-in & Override Auditor (`scanners/systemd_overrides.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🎯 Full auditing of systemd service override directories (`/etc/systemd/system/*.service.d/`, `/lib/systemd/system/*.service.d/`, `/usr/lib/systemd/system/*.service.d/`) for writable `.conf` drop-ins, writable `.d` folders, and `ExecStart` override directives.
+
+- **Drop-in Permission Audit:** Inspects systemd override directories for writable folder modes or writable `.conf` override files (`CRITICAL` persistence / root execution vector).
+- **Directive Directive Parsing:** Parses `.conf` files for `ExecStart=`, `ExecStartPre=`, `ExecStartPost=` overrides and flags targets pointing to writable binaries.
+- **Intelligence & Graph Integration:** Registered `SystemdOverrideChain` in `core/intelligence.go` and constructed `file:` nodes and weighted edges in `core/graph.go`.
+
+**Files changed:** `scanners/systemd_overrides.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #41 — Kernel Sysctl Hardening Auditor (`scanners/sysctl.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`)
+**Impact:** 🛡️ Zero-latency procfs inspection of critical kernel security baselines (symlink TOCTOU, eBPF loading, kernel pointer exposure, ptrace scope).
+
+- **Baseline Procurement:** Direct integer parsing from `/proc/sys/` for `fs.protected_symlinks`, `fs.protected_hardlinks`, `fs.suid_dumpable`, `kernel.unprivileged_bpf_disabled`, `kernel.kptr_restrict`, `kernel.dmesg_restrict`, `kernel.yama.ptrace_scope`, and `kernel.perf_event_paranoid`.
+- **Intelligence & Graph Integration:** Registered `SysctlHardeningChain` in `core/intelligence.go` and mapped `sysctl:` nodes/edges in `core/graph.go`.
+
+**Files changed:** `scanners/sysctl.go` *(new)*, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #40 — Complete Intelligence Engine & Graph Coverage for New Modules (`core/intelligence.go`, `core/graph.go`)
+**Impact:** 🧠 100% module utilization across the Intelligence Engine and weighted Attack Graph. 6 new cross-referencing attack chains registered and graph node/edge mappers expanded for all recent scanners.
+
+- **Registered 6 New Attack Chains:** Added `PAMRootChain`, `XAuthoritySessionChain`, `VulnerabilitiesKernelChain`, `ServiceBlankAuthChain`, `DBusPolicyRootChain`, and `FilePermExploitChain` to `registeredChains` in `core/intelligence.go`.
+- **Attack Graph Edge Mapping:** Expanded `BuildIntelligenceGraph` in `core/graph.go` to construct weighted graph nodes and edges for `PAMResults` and `EnvFileResults`, allowing DFS path-finding algorithms to dynamically compute multi-step root escalation paths through PAM vulnerabilities and EnvironmentFile injections.
+
+**Files changed:** `core/intelligence.go`, `core/graph.go`
+
+---
+
+### #39 — PAM Module & Directive Auditor (`scanners/pam.go`, `models/report.go`, `main.go`)
+**Impact:** 🎯 Complete detection of writable PAM configurations (`/etc/pam.d/*`), writable `pam_exec` script execution targets, writable `pam_env` files, and custom shared library (`.so`) hijacking paths.
+
+- **PAM Config Writability Audit:** Audits all policy files under `/etc/pam.d/`. Flags files writable by the unprivileged user as `CRITICAL` (authentication bypass vector).
+- **`pam_exec.so` Target Script Inspection:** Parses `pam_exec.so` directives and checks execution script permissions. Flags writable scripts as `CRITICAL`.
+- **`pam_env.so` Target File Inspection:** Parses `envfile=` and `user_envfile=` options in `pam_env.so` directives for write access (`HIGH` risk).
+- **Custom PAM `.so` Module Hijacking:** Resolves module paths across `/lib/security/`, `/lib64/security/`, `/usr/lib/security/`, `/lib/x86_64-linux-gnu/security/` and flags writable `.so` binaries (`CRITICAL`).
+
+**Files changed:** `scanners/pam.go` *(new)*, `models/report.go`, `main.go`
+
+---
+
 ### #38 — Suppress Standard Systemd Socket Noise (`scanners/sockets.go`)
 **Impact:** 📉 100% suppression of 10+ benign systemd logging/notification socket lines (`dev-log`, `notify`, `stdout`, `system_bus_socket`, `syslog`, `request`).
 

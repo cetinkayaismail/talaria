@@ -285,6 +285,181 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 		g.AddEdgeWeight(ruleID, "goal:root", fmt.Sprintf("Rule grants passwordless authorization for %s", pk.Action), 10)
 	}
 
+	// 14. Map PAM Misconfigurations & Writable Modules
+	for _, pam := range report.PAMResults {
+		if !pam.IsDangerous {
+			continue
+		}
+		pamID := fmt.Sprintf("file:%s", pam.Path)
+		g.AddNode(pamID, "File")
+		g.AddEdgeWeight(currentUser, pamID, fmt.Sprintf("Can access writable PAM asset %s (%s)", pam.Path, pam.Type), 9)
+		g.AddEdgeWeight(pamID, "goal:root", fmt.Sprintf("PAM %s permits authentication bypass / root code execution", pam.Type), 10)
+	}
+
+	// 15. Map Systemd EnvironmentFile Results
+	for _, ef := range report.EnvFileResults {
+		if !ef.IsWritable {
+			continue
+		}
+		envID := fmt.Sprintf("file:%s", ef.EnvFilePath)
+		g.AddNode(envID, "File")
+		g.AddEdgeWeight(currentUser, envID, fmt.Sprintf("Can write to Systemd EnvironmentFile %s", ef.EnvFilePath), 9)
+		g.AddEdgeWeight(envID, "goal:root", fmt.Sprintf("Service %s executes %s payload as root on restart", ef.ServiceName, ef.InjectionType), 10)
+	}
+
+	// 16. Map Kernel Sysctl Hardening Gaps
+	for _, sys := range report.SysctlResults {
+		if !sys.IsDangerous {
+			continue
+		}
+		sysID := fmt.Sprintf("sysctl:%s", sys.Key)
+		g.AddNode(sysID, "File")
+		g.AddEdgeWeight(currentUser, sysID, fmt.Sprintf("Unprotected sysctl %s = %s", sys.Key, sys.CurrentValue), 7)
+		g.AddEdgeWeight(sysID, "goal:root", sys.Reason, 8)
+	}
+
+	// 17. Map Systemd Unit Overrides
+	for _, ov := range report.SystemdOverrides {
+		if !ov.IsDangerous {
+			continue
+		}
+		ovID := fmt.Sprintf("file:%s", ov.Path)
+		g.AddNode(ovID, "File")
+		g.AddEdgeWeight(currentUser, ovID, fmt.Sprintf("Can access Systemd override %s (%s)", ov.Path, ov.Type), 9)
+		g.AddEdgeWeight(ovID, "goal:root", fmt.Sprintf("Systemd override for service %s grants root code execution", ov.ServiceName), 10)
+	}
+
+	// 18. Map SubUID / Unprivileged User Namespaces
+	for _, sub := range report.SubUIDResults {
+		if !sub.IsDangerous {
+			continue
+		}
+		subID := fmt.Sprintf("subuid:%s", sub.Type)
+		g.AddNode(subID, "File")
+		g.AddEdgeWeight(currentUser, subID, fmt.Sprintf("Has %s (%s)", sub.Type, sub.TargetUser), 6)
+		g.AddEdgeWeight(subID, "goal:root", "User namespace creation enables unprivileged container root mapping", 7)
+	}
+
+	// 19. Map Shared Memory & Temp Mount Flags
+	for _, m := range report.MountResults {
+		if !m.IsDangerous {
+			continue
+		}
+		mntID := fmt.Sprintf("mount:%s", m.MountPoint)
+		g.AddNode(mntID, "File")
+		g.AddEdgeWeight(currentUser, mntID, fmt.Sprintf("Can write to executable temp mount %s (missing %s)", m.MountPoint, m.MissingFlag), 6)
+		g.AddEdgeWeight(mntID, "goal:root", fmt.Sprintf("Executable mount %s permits binary payload execution", m.MountPoint), 7)
+	}
+
+	// 20. Map Dynamic ELF RPATH / RUNPATH Vectors
+	for _, r := range report.ELFRPathResults {
+		if !r.IsDangerous {
+			continue
+		}
+		elfID := fmt.Sprintf("file:%s", r.Path)
+		g.AddNode(elfID, "File")
+		g.AddEdgeWeight(currentUser, elfID, fmt.Sprintf("Can hijack SUID binary %s via %s %s", r.Path, r.TagType, r.Value), 9)
+		g.AddEdgeWeight(elfID, "goal:root", "Shared library hijacking on SUID binary yields root", 10)
+	}
+
+	// 21. Map Udev Event Rules & Execution Targets
+	for _, u := range report.UdevResults {
+		if !u.IsDangerous {
+			continue
+		}
+		udevID := fmt.Sprintf("file:%s", u.Path)
+		g.AddNode(udevID, "File")
+		g.AddEdgeWeight(currentUser, udevID, fmt.Sprintf("Can write to udev rule / target %s (%s)", u.Path, u.Directive), 10)
+		g.AddEdgeWeight(udevID, "goal:root", "Udev event rule execution grants root code execution on device events", 10)
+	}
+
+	// 22. Map Cron & Timer Directory Permission Drift
+	for _, cd := range report.CronDirResults {
+		if !cd.IsDangerous {
+			continue
+		}
+		cdID := fmt.Sprintf("file:%s", cd.Path)
+		g.AddNode(cdID, "File")
+		g.AddEdgeWeight(currentUser, cdID, fmt.Sprintf("Can write to system task directory %s", cd.Path), 10)
+		g.AddEdgeWeight(cdID, "goal:root", "Cron/task directory writability permits arbitrary root payload creation", 10)
+	}
+
+	// 23. Map Exposed Process Environment Secrets
+	for _, pe := range report.ProcEnvResults {
+		if !pe.IsDangerous {
+			continue
+		}
+		peID := fmt.Sprintf("procenv:%d:%s", pe.PID, pe.Key)
+		g.AddNode(peID, "Credential")
+		g.AddEdgeWeight(currentUser, peID, fmt.Sprintf("Exposed environment secret %s in process %s (PID %d)", pe.Key, pe.ProcessName, pe.PID), 8)
+		g.AddEdgeWeight(peID, "goal:root", fmt.Sprintf("Plaintext secret %s in /proc/%d/environ allows authentication / escalation", pe.Key, pe.PID), 9)
+	}
+
+	// 24. Map Package Manager Hooks & Repository Configurations
+	for _, pkg := range report.Packages {
+		if !pkg.IsDangerous {
+			continue
+		}
+		pkgID := fmt.Sprintf("file:%s", pkg.Path)
+		if pkg.Path == "" {
+			pkgID = fmt.Sprintf("pkg:%s", pkg.Name)
+		}
+		g.AddNode(pkgID, "File")
+		weight := 7
+		if pkg.IsHookDir {
+			weight = 10
+		}
+		g.AddEdgeWeight(currentUser, pkgID, fmt.Sprintf("Can write to package manager %s configuration/hook (%s)", pkg.Name, pkg.Path), weight)
+		g.AddEdgeWeight(pkgID, "goal:root", fmt.Sprintf("Package manager %s executes arbitrary root commands on package events", pkg.Name), weight)
+	}
+
+	// 25. Map Dynamic Linker & NSS Configuration Flaws
+	for _, r := range report.LDNSSResults {
+		if !r.IsDangerous {
+			continue
+		}
+		ldID := fmt.Sprintf("file:%s", r.Path)
+		g.AddNode(ldID, "File")
+		g.AddEdgeWeight(currentUser, ldID, fmt.Sprintf("Can write to dynamic linker / NSS path %s", r.Path), 10)
+		g.AddEdgeWeight(ldID, "goal:root", "Shared library injection into dynamic linker yields root execution", 10)
+	}
+
+	// 26. Map Modprobe Kernel Module Execution Hooks
+	for _, m := range report.ModprobeResults {
+		if !m.IsDangerous {
+			continue
+		}
+		modID := fmt.Sprintf("file:%s", m.Path)
+		g.AddNode(modID, "File")
+		g.AddEdgeWeight(currentUser, modID, fmt.Sprintf("Can write to modprobe configuration / target %s", m.Path), 10)
+		g.AddEdgeWeight(modID, "goal:root", "Kernel module loading executes arbitrary root commands", 10)
+	}
+
+	// 27. Map Cloud & Kubernetes Credential Harvester
+	for _, cm := range report.CloudMetaResults {
+		if !cm.IsDangerous {
+			continue
+		}
+		cmID := fmt.Sprintf("cloud:%s", cm.Provider)
+		if cm.Path != "" {
+			cmID = fmt.Sprintf("file:%s", cm.Path)
+		}
+		g.AddNode(cmID, "Credential")
+		g.AddEdgeWeight(currentUser, cmID, fmt.Sprintf("Exposed %s credential token / metadata endpoint", cm.Provider), 9)
+		g.AddEdgeWeight(cmID, "goal:root", fmt.Sprintf("%s credential allows cluster/infrastructure privilege takeover", cm.Provider), 9)
+	}
+
+	// 28. Map VirtualEnv & Wrapper Executables
+	for _, vw := range report.VenvWrapResults {
+		if !vw.IsDangerous {
+			continue
+		}
+		vwID := fmt.Sprintf("file:%s", vw.Path)
+		g.AddNode(vwID, "File")
+		g.AddEdgeWeight(currentUser, vwID, fmt.Sprintf("Can write to %s %s", vw.TargetType, vw.Path), 9)
+		g.AddEdgeWeight(vwID, "goal:root", "Execution of poisoned package or wrapper by root grants root", 10)
+	}
+
 	return g
 }
 

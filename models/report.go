@@ -38,4 +38,18 @@ type ScanReport struct {
 	XAuthority         []scanners.XAuthorityResult        `json:"xauthority,omitempty"`
 	Logrotate          []scanners.LogrotateResult         `json:"logrotate,omitempty"`
 	EnvFileResults     []scanners.EnvFileResult           `json:"env_file_results,omitempty"`
+	PAMResults         []scanners.PAMResult               `json:"pam_results,omitempty"`
+	SysctlResults      []scanners.SysctlResult            `json:"sysctl_results,omitempty"`
+	SystemdOverrides   []scanners.SystemdOverrideResult   `json:"systemd_overrides,omitempty"`
+	SubUIDResults      []scanners.SubUIDResult            `json:"subuid_results,omitempty"`
+	MountResults       []scanners.MountResult             `json:"mount_results,omitempty"`
+	ELFRPathResults    []scanners.ELFRPathResult          `json:"elf_rpath_results,omitempty"`
+	AuditdResults      []scanners.AuditdResult            `json:"auditd_results,omitempty"`
+	UdevResults        []scanners.UdevResult              `json:"udev_results,omitempty"`
+	CronDirResults     []scanners.CronDirResult           `json:"cron_dir_results,omitempty"`
+	ProcEnvResults     []scanners.ProcEnvResult           `json:"proc_env_results,omitempty"`
+	LDNSSResults       []scanners.LDNSSResult             `json:"ld_nss_results,omitempty"`
+	ModprobeResults    []scanners.ModprobeResult          `json:"modprobe_results,omitempty"`
+	CloudMetaResults   []scanners.CloudMetaResult         `json:"cloud_meta_results,omitempty"`
+	VenvWrapResults    []scanners.VenvWrapResult          `json:"venv_wrap_results,omitempty"`
 }

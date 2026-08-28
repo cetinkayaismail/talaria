@@ -43,6 +43,22 @@ func init() {
 		&SuidWritableLibChain{},        // E4: SUID + Writable Library Path chain
 		&LogrotateRootChain{},          // E1: Logrotate → Root chain
 		&EnvFileRootChain{},            // E2: Systemd EnvironmentFile → Root chain
+		&PAMRootChain{},                // PAM Config / pam_exec / pam_env / .so hijack chain
+		&XAuthoritySessionChain{},      // X11 Session Hijack chain
+		&VulnerabilitiesKernelChain{},  // Kernel & Software CVE high reliability chain
+		&ServiceBlankAuthChain{},       // Unauthenticated local network service chain
+		&DBusPolicyRootChain{},         // D-Bus Policy bypass chain
+		&FilePermExploitChain{},        // Binary relative PATH hijack chain
+		&SystemdOverrideChain{},        // Systemd drop-in override chain
+		&ELFRPathChain{},               // SUID dynamic RPATH/RUNPATH hijack chain
+		&UdevRootChain{},               // Udev rule & event execution chain
+		&CronDirRootChain{},            // Cron directory permission drift chain
+		&ProcEnvTokenChain{},           // Process environment secret harvester chain
+		&PackageHookChain{},            // Package manager drop-in & hook execution chain
+		&LDNSSChain{},                  // Dynamic Linker & NSS library search chain
+		&ModprobeChain{},               // Modprobe kernel module execution chain
+		&CloudMetaChain{},              // Cloud IMDS & K8s ServiceAccount token chain
+		&VenvWrapChain{},               // Python virtualenv & wrapper script chain
 	}
 }
 
@@ -983,6 +999,378 @@ func (c *EnvFileRootChain) Evaluate(report *models.ScanReport) []ChainResult {
 			),
 			Exploit:    exploit,
 			TargetPath: ef.EnvFilePath,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 19: PAM Policy / Script / Module Hijack → Root Code Execution ──────
+type PAMRootChain struct{}
+
+func (c *PAMRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, pam := range report.PAMResults {
+		if !pam.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("PAM Vulnerability in '%s' (%s) → authentication bypass / root", pam.Path, pam.Type),
+			RiskLevel:   pam.RiskLevel,
+			Description: pam.Reason,
+			Exploit:     pam.ExploitHint,
+			TargetPath:  pam.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 20: X11 Session Hijack → Desktop Takeover ───────────────────────
+type XAuthoritySessionChain struct{}
+
+func (c *XAuthoritySessionChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, x := range report.XAuthority {
+		if !x.IsDangerous {
+			continue
+		}
+		targetUser := x.TargetUser
+		riskLevel := "LATERAL MOVEMENT CONFIRMED"
+		if strings.Contains(targetUser, "root") || targetUser == "0" {
+			riskLevel = "100% CONFIRMED"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("X11 Session Cookie readable for user '%s' (%s)", targetUser, x.Path),
+			RiskLevel:   riskLevel,
+			Description: fmt.Sprintf("Import .Xauthority cookie to capture keystrokes, take screenshots, or inject input into active X11 desktop session of %s.", targetUser),
+			Exploit:     fmt.Sprintf("XAUTHORITY=%s xdotool key Super || xwd -root -out /tmp/screen.xwd", x.Path),
+			TargetPath:  x.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 21: High Reliability Kernel / Software CVE LPE ──────────────────
+type VulnerabilitiesKernelChain struct{}
+
+func (c *VulnerabilitiesKernelChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, vInfo := range report.Vulnerabilities {
+		if !vInfo.IsDangerous {
+			continue
+		}
+		for _, vul := range vInfo.Vulnerabilities {
+			if vul.IsCritical {
+				riskLevel := "100% CONFIRMED"
+				if vul.PatchStatus == "likely_patched" {
+					riskLevel = "POTENTIAL"
+				}
+				results = append(results, ChainResult{
+					Name:        fmt.Sprintf("High-Reliability LPE Vulnerability: %s (%s)", vul.CVE, vul.Name),
+					RiskLevel:   riskLevel,
+					Description: fmt.Sprintf("%s. Kernel/Software version: %s.", vul.Description, vInfo.Version),
+					Exploit:     vul.ExploitHint,
+				})
+			}
+		}
+	}
+	return results
+}
+
+// ── CHAIN 22: Unauthenticated Local Service Access ────────────────────────
+type ServiceBlankAuthChain struct{}
+
+func (c *ServiceBlankAuthChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, s := range report.Services {
+		if !s.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Unauthenticated Service '%s' exposed on loopback", s.ServiceName),
+			RiskLevel:   "100% CONFIRMED",
+			Description: s.Reason,
+			Exploit:     s.ExploitHint,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 23: D-Bus System Policy Bypass ──────────────────────────────────
+type DBusPolicyRootChain struct{}
+
+func (c *DBusPolicyRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, d := range report.DBusPolicy {
+		if !d.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Overly permissive D-Bus Policy for service '%s'", d.ServiceName),
+			RiskLevel:   "100% CONFIRMED",
+			Description: d.Reason,
+			Exploit:     fmt.Sprintf("dbus-send --system --dest=%s ...", d.ServiceName),
+		})
+	}
+	return results
+}
+
+// ── CHAIN 24: SUID/SGID Relative PATH Binary Execution ───────────────────
+type FilePermExploitChain struct{}
+
+func (c *FilePermExploitChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, f := range report.FilePermsExploit {
+		if !f.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Privileged Binary '%s' uses relative calls → %s", f.Path, f.ExploitMethod),
+			RiskLevel:   "100% CONFIRMED",
+			Description: fmt.Sprintf("Vector: %s. Unprivileged user can manipulate PATH or working directory to execute arbitrary code.", f.PotentialAttackVector),
+			Exploit:     fmt.Sprintf("Prepend payload directory to PATH and execute %s", f.Path),
+			TargetPath:  f.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 25: Kernel Sysctl Hardening Gap ────────────────────────────────
+// ── CHAIN 25: Systemd Drop-in Override → Root Execution ──────────────────
+type SystemdOverrideChain struct{}
+
+func (c *SystemdOverrideChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, ov := range report.SystemdOverrides {
+		if !ov.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Systemd override vulnerability in '%s' (service: %s)", ov.Path, ov.ServiceName),
+			RiskLevel:   ov.RiskLevel,
+			Description: fmt.Sprintf("%s. Allows persistence or privilege escalation to root on service restart / boot.", ov.Reason),
+			Exploit:     ov.ExploitHint,
+			TargetPath:  ov.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 26: SUID Dynamic ELF RPATH / RUNPATH Hijacking ──────────────────
+type ELFRPathChain struct{}
+
+func (c *ELFRPathChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, r := range report.ELFRPathResults {
+		if !r.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("SUID binary '%s' has dangerous %s '%s'", filepath.Base(r.Path), r.TagType, r.Value),
+			RiskLevel:   r.RiskLevel,
+			Description: r.Reason,
+			Exploit:     r.ExploitHint,
+			TargetPath:  r.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 27: Udev Event Rule & Execution Target → Root ───────────────────
+type UdevRootChain struct{}
+
+func (c *UdevRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, u := range report.UdevResults {
+		if !u.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Udev rule vulnerability in '%s' (%s)", u.RuleFile, u.Directive),
+			RiskLevel:   u.RiskLevel,
+			Description: fmt.Sprintf("%s. Allows stealthy root code execution on kernel device events.", u.Reason),
+			Exploit:     u.ExploitHint,
+			TargetPath:  u.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 28: Cron / Task Directory Permission Drift → Root Execution ────
+type CronDirRootChain struct{}
+
+func (c *CronDirRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, cd := range report.CronDirResults {
+		if !cd.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Cron directory permission drift in '%s'", cd.Path),
+			RiskLevel:   cd.RiskLevel,
+			Description: fmt.Sprintf("%s. Allows creation of arbitrary crontabs or systemd units executed by root.", cd.Reason),
+			Exploit:     cd.ExploitHint,
+			TargetPath:  cd.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 29: Exposed Process Environment Tokens / Secrets ───────────────
+type ProcEnvTokenChain struct{}
+
+func (c *ProcEnvTokenChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, pe := range report.ProcEnvResults {
+		if !pe.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Exposed environment secret in process '%s' (PID %d)", pe.ProcessName, pe.PID),
+			RiskLevel:   pe.RiskLevel,
+			Description: pe.Reason,
+			Exploit:     pe.ExploitHint,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 30: Package Manager Hook & Repo Hijack → Root ──────────────────
+type PackageHookChain struct{}
+
+func (c *PackageHookChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+
+	// Check if automated package update timers or crons are running
+	hasAutomatedUpdates := false
+	var updateTrigger string
+
+	for _, timer := range report.SystemdTimers {
+		tLower := strings.ToLower(timer.Path)
+		if strings.Contains(tLower, "apt-daily") || strings.Contains(tLower, "unattended-upgrades") ||
+			strings.Contains(tLower, "dnf-makecache") || strings.Contains(tLower, "yum-cron") {
+			hasAutomatedUpdates = true
+			updateTrigger = fmt.Sprintf("Systemd timer/service '%s'", filepath.Base(timer.Path))
+			break
+		}
+	}
+
+	if !hasAutomatedUpdates {
+		for _, cron := range report.CronJobs {
+			cLower := strings.ToLower(cron.Command)
+			if strings.Contains(cLower, "apt") || strings.Contains(cLower, "yum") || strings.Contains(cLower, "dnf") ||
+				strings.Contains(cLower, "unattended-upgrade") {
+				hasAutomatedUpdates = true
+				updateTrigger = fmt.Sprintf("Cron job '%s'", cron.Command)
+				break
+			}
+		}
+	}
+
+	for _, pkg := range report.Packages {
+		if !pkg.IsDangerous {
+			continue
+		}
+
+		riskLevel := "POTENTIAL"
+		if pkg.IsHookDir && hasAutomatedUpdates {
+			riskLevel = "100% CONFIRMED"
+		} else if pkg.RiskLevel != "" {
+			riskLevel = pkg.RiskLevel
+		}
+
+		desc := pkg.Reason
+		if pkg.IsHookDir && hasAutomatedUpdates {
+			desc = fmt.Sprintf("%s Automated execution is ACTIVE via %s.", pkg.Reason, updateTrigger)
+		}
+
+		targetPath := pkg.Path
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Package manager '%s' misconfiguration in '%s'", pkg.Name, pkg.Path),
+			RiskLevel:   riskLevel,
+			Description: desc,
+			Exploit:     pkg.ExploitHint,
+			TargetPath:  targetPath,
+		})
+	}
+
+	return results
+}
+
+// ── CHAIN 31: Dynamic Linker & NSS Library Path Injection ────────────────
+type LDNSSChain struct{}
+
+func (c *LDNSSChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, r := range report.LDNSSResults {
+		if !r.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Dynamic Linker / NSS vulnerability in '%s'", r.Path),
+			RiskLevel:   r.RiskLevel,
+			Description: r.Reason,
+			Exploit:     r.ExploitHint,
+			TargetPath:  r.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 32: Modprobe Kernel Module Hook & Target Hijack ────────────────
+type ModprobeChain struct{}
+
+func (c *ModprobeChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, m := range report.ModprobeResults {
+		if !m.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Modprobe configuration vulnerability in '%s'", m.Path),
+			RiskLevel:   m.RiskLevel,
+			Description: m.Reason,
+			Exploit:     m.ExploitHint,
+			TargetPath:  m.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 33: Exposed Cloud IMDS & Kubernetes Token Harvester ────────────
+type CloudMetaChain struct{}
+
+func (c *CloudMetaChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, cm := range report.CloudMetaResults {
+		if !cm.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Exposed %s credential token / metadata endpoint", cm.Provider),
+			RiskLevel:   cm.RiskLevel,
+			Description: cm.Reason,
+			Exploit:     cm.ExploitHint,
+			TargetPath:  cm.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 34: Python VirtualEnv & Script Wrapper Injection ───────────────
+type VenvWrapChain struct{}
+
+func (c *VenvWrapChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, vw := range report.VenvWrapResults {
+		if !vw.IsDangerous {
+			continue
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Writable %s '%s'", vw.TargetType, filepath.Base(vw.Path)),
+			RiskLevel:   vw.RiskLevel,
+			Description: vw.Reason,
+			Exploit:     vw.ExploitHint,
+			TargetPath:  vw.Path,
 		})
 	}
 	return results

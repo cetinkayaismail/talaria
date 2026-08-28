@@ -68,7 +68,21 @@ func main() {
 			"    sessions        - Tmux/Screen session hijacking vectors\n"+
 			"    kernelconfig    - Kernel config leak (CONFIG_STRICT_DEVMEM, etc.)\n"+
 			"    polkit          - Custom PolicyKit JavaScript rules logic auditing\n"+
-			"    environmentfile - Systemd EnvironmentFile= writability (LD_PRELOAD/PATH injection)")
+			"    environmentfile - Systemd EnvironmentFile= writability (LD_PRELOAD/PATH injection)\n"+
+			"    pam             - PAM configurations, pam_exec scripts, pam_env, custom .so modules\n"+
+			"    sysctl          - Kernel sysctl hardening baselines (symlinks, eBPF, kptr, ptrace)\n"+
+			"    systemdoverrides- Systemd unit drop-in & override files (*.service.d/*.conf writability)\n"+
+			"    subuid          - Unprivileged user namespaces & subuid/subgid range allocations\n"+
+			"    mounts          - Shared memory & temp mount flags auditing (noexec/nosuid on /dev/shm)\n"+
+			"    elfrpath        - Dynamic ELF RPATH / RUNPATH security header inspection on SUID binaries\n"+
+			"    auditd          - System audit daemons (auditd, rsyslog, journald) & active rule counting\n"+
+			"    udev            - Udev rule files & event execution target binary writability\n"+
+			"    crondirs        - System task drop-in directory permission drift (/etc/cron.d, /var/spool/cron)\n"+
+			"    procenv         - Process environment token & secret harvesting (/proc/[pid]/environ)\n"+
+			"    ldnss           - Dynamic Linker search paths & NSS configuration (/etc/ld.so.conf.d)\n"+
+			"    modprobe        - Modprobe rule files & install hook targets (/etc/modprobe.d)\n"+
+			"    cloudmeta       - Kubernetes ServiceAccounts & Cloud IMDS endpoints\n"+
+			"    venvwrap        - Python VirtualEnvs site-packages & /usr/local/bin wrapper scripts")
 	searchPath   := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
 	outputFile   := flag.String("o", "", "Save report to file (combine with --format)")
 	outputFormat := flag.String("format", "text", "Report format: text or json")
@@ -974,10 +988,18 @@ func main() {
 							if !isProfessional && r.ExploitHint != "" {
 								hint = r.ExploitHint
 							}
-							core.PrintFinding("CRITICAL", "Package Misconfiguration", map[string]string{
+							severity := "CRITICAL"
+							if r.RiskLevel != "" {
+								severity = r.RiskLevel
+							}
+							details := map[string]string{
 								"Tool":   r.Name,
 								"Reason": r.Reason,
-							}, hint)
+							}
+							if r.Path != "" {
+								details["Path"] = r.Path
+							}
+							core.PrintFinding(severity, "Package Misconfiguration", details, hint)
 						}
 					}
 				}
@@ -1259,7 +1281,431 @@ func main() {
 		}()
 	}
 
+	// --- PAM MODULE AUDIT MODULE ---
+	if (runAll || selectedModules["pam"]) && !excludedModules["pam"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanPAM()
+			if err == nil {
+				mu.Lock()
+				report.PAMResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("PAM Security Policies")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "PAM Misconfiguration", map[string]string{
+								"Path":   r.Path,
+								"Type":   r.Type,
+								"Reason": r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- SYSCTL HARDENING MODULE ---
+	if (runAll || selectedModules["sysctl"]) && !excludedModules["sysctl"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanSysctlHardening()
+			if err == nil {
+				mu.Lock()
+				report.SysctlResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Kernel Sysctl Hardening")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "Kernel Hardening Gap", map[string]string{
+								"Sysctl":   r.Key,
+								"Current":  r.CurrentValue,
+								"Expected": r.ExpectedVal,
+								"Reason":   r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- SYSTEMD OVERRIDES MODULE ---
+	if (runAll || selectedModules["systemdoverrides"]) && !excludedModules["systemdoverrides"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanSystemdOverrides()
+			if err == nil {
+				mu.Lock()
+				report.SystemdOverrides = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Systemd Unit Overrides & Drop-ins")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "Systemd Override Vulnerability", map[string]string{
+								"Service": r.ServiceName,
+								"Path":    r.Path,
+								"Type":    r.Type,
+								"Reason":  r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- SUBUID / UNPRIVILEGED USERNS MODULE ---
+	if (runAll || selectedModules["subuid"]) && !excludedModules["subuid"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanSubUIDAuditor()
+			if err == nil {
+				mu.Lock()
+				report.SubUIDResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Unprivileged Namespaces & SubUID Allocations")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "Unprivileged Namespace / SubUID Finding", map[string]string{
+								"Type":   r.Type,
+								"User":   r.TargetUser,
+								"Reason": r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- MOUNT FLAGS AUDITOR MODULE ---
+	if (runAll || selectedModules["mounts"]) && !excludedModules["mounts"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanMountAuditor()
+			if err == nil {
+				mu.Lock()
+				report.MountResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Shared Memory & Temp Mount Flags")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "Mount Flag Hardening Gap", map[string]string{
+								"MountPoint": r.MountPoint,
+								"Missing":    r.MissingFlag,
+								"Options":    r.Options,
+								"Reason":     r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- UDEV RULES & EVENT AUDITOR MODULE ---
+	if (runAll || selectedModules["udev"]) && !excludedModules["udev"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanUdevAuditor()
+			if err == nil {
+				mu.Lock()
+				report.UdevResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Udev Event Rules & Execution Targets")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "Udev Rule Vulnerability", map[string]string{
+								"RuleFile":  r.RuleFile,
+								"Directive": r.Directive,
+								"Target":    r.Path,
+								"Reason":    r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- CRON & TIMER DIRECTORY PERMISSION DRIFT MODULE ---
+	if (runAll || selectedModules["crondirs"]) && !excludedModules["crondirs"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanCronDirsAuditor()
+			if err == nil {
+				mu.Lock()
+				report.CronDirResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Cron & Timer Directory Permissions")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "Cron Directory Writable", map[string]string{
+								"Path":   r.Path,
+								"Reason": r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- DYNAMIC LINKER & NSS CONFIGURATION MODULE ---
+	if (runAll || selectedModules["ldnss"]) && !excludedModules["ldnss"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanLDNSSConfiguration()
+			if err == nil {
+				mu.Lock()
+				report.LDNSSResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Dynamic Linker & NSS Configurations")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "Dynamic Linker / NSS Finding", map[string]string{
+								"Path":   r.Path,
+								"Reason": r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- MODPROBE RULES MODULE ---
+	if (runAll || selectedModules["modprobe"]) && !excludedModules["modprobe"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanModprobeRules()
+			if err == nil {
+				mu.Lock()
+				report.ModprobeResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Modprobe Kernel Module Rules")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							details := map[string]string{
+								"Path":   r.Path,
+								"Reason": r.Reason,
+							}
+							if r.Directive != "" {
+								details["Directive"] = r.Directive
+							}
+							core.PrintFinding(r.RiskLevel, "Modprobe Rule Finding", details, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- CLOUD & KUBERNETES METADATA MODULE ---
+	if (runAll || selectedModules["cloudmeta"]) && !excludedModules["cloudmeta"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanCloudAndContainerMetadata()
+			if err == nil {
+				mu.Lock()
+				report.CloudMetaResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Cloud Metadata & Kubernetes ServiceAccounts")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							details := map[string]string{
+								"Provider": r.Provider,
+								"Reason":   r.Reason,
+							}
+							if r.Path != "" {
+								details["Path"] = r.Path
+							}
+							core.PrintFinding(r.RiskLevel, "Cloud / K8s Metadata Finding", details, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// --- VIRTUALENV & WRAPPER SCRIPTS MODULE ---
+	if (runAll || selectedModules["venvwrap"]) && !excludedModules["venvwrap"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			applyEvasion()
+			results, err := scanners.ScanVirtualEnvsAndWrappers()
+			if err == nil {
+				mu.Lock()
+				report.VenvWrapResults = results
+				mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Python VirtualEnvs & Script Wrappers")
+					for _, r := range results {
+						if r.IsDangerous {
+							hint := ""
+							if !isProfessional {
+								hint = r.ExploitHint
+							}
+							core.PrintFinding(r.RiskLevel, "VirtualEnv / Wrapper Vulnerability", map[string]string{
+								"Type":   r.TargetType,
+								"Path":   r.Path,
+								"Reason": r.Reason,
+							}, hint)
+						}
+					}
+				}
+			}
+		}()
+	}
+
 	wg.Wait()
+
+	// --- DYNAMIC ELF RPATH / RUNPATH MODULE ---
+	if (runAll || selectedModules["elfrpath"]) && !excludedModules["elfrpath"] && len(report.SUID) > 0 {
+		results, err := scanners.ScanELFRPathAuditor(report.SUID)
+		if err == nil {
+			report.ELFRPathResults = results
+			if len(results) > 0 {
+				core.PrintSectionHeader("Dynamic ELF RPATH / RUNPATH Header Inspection")
+				for _, r := range results {
+					if r.IsDangerous {
+						hint := ""
+						if !isProfessional {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "ELF RPATH/RUNPATH Vector", map[string]string{
+							"Binary":  r.Path,
+							"Tag":     r.TagType,
+							"Value":   r.Value,
+							"Reason":  r.Reason,
+						}, hint)
+					}
+				}
+			}
+		}
+	}
+
+	// --- AUDITD & LOGGING DETECTION MODULE ---
+	if (runAll || selectedModules["auditd"]) && !excludedModules["auditd"] {
+		results, err := scanners.ScanAuditdAuditor(report.Processes)
+		if err == nil {
+			report.AuditdResults = results
+			if len(results) > 0 {
+				core.PrintSectionHeader("Active System Audit Daemons & Logging")
+				for _, r := range results {
+					if r.IsDangerous {
+						hint := ""
+						if !isProfessional {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "Audit Daemon Active", map[string]string{
+							"Daemon": r.DaemonName,
+							"Rules":  fmt.Sprintf("%d active rules", r.RuleCount),
+							"Reason": r.Reason,
+						}, hint)
+					}
+				}
+			}
+		}
+	}
+
+	// --- PROCESS ENVIRONMENT SECRET HARVESTER MODULE ---
+	if (runAll || selectedModules["procenv"]) && !excludedModules["procenv"] {
+		results, err := scanners.ScanProcEnvAuditor(report.Processes)
+		if err == nil {
+			report.ProcEnvResults = results
+			if len(results) > 0 {
+				core.PrintSectionHeader("Process Environment Exposed Secrets (/proc)")
+				for _, r := range results {
+					if r.IsDangerous {
+						hint := ""
+						if !isProfessional {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "Exposed Secret in Process Environ", map[string]string{
+							"PID":     strconv.Itoa(r.PID),
+							"Process": r.ProcessName,
+							"Key":     r.Key,
+							"Preview": r.ValueSample,
+							"Reason":  r.Reason,
+						}, hint)
+					}
+				}
+			}
+		}
+	}
 
 	// --- CROSS-REFERENCING (Analysis Phase) ---
 	core.RunIntelligenceEngine(report)
@@ -1322,8 +1768,108 @@ func saveReport(report *models.ScanReport, path string, format string, encryptKe
 			sb.WriteString("\n")
 		}
 
-		sb.WriteString(fmt.Sprintf("\nSummary Counts:\nSecrets: %d\nCronJobs: %d\nSudo Privs: %d\nCapabilities: %d\n",
-			len(report.Secrets), len(report.CronJobs), len(report.SudoPrivileges), len(report.Capabilities)))
+		if len(report.PAMResults) > 0 {
+			sb.WriteString("=== PAM Security Policies ===\n")
+			for _, r := range report.PAMResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s\n  Reason: %s\n", r.RiskLevel, r.Path, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.SysctlResults) > 0 {
+			sb.WriteString("=== Kernel Sysctl Hardening ===\n")
+			for _, r := range report.SysctlResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s = %s (expected %s)\n  Reason: %s\n", r.RiskLevel, r.Key, r.CurrentValue, r.ExpectedVal, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.SystemdOverrides) > 0 {
+			sb.WriteString("=== Systemd Unit Overrides ===\n")
+			for _, r := range report.SystemdOverrides {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s (%s)\n  Reason: %s\n", r.RiskLevel, r.Path, r.ServiceName, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.SubUIDResults) > 0 {
+			sb.WriteString("=== Unprivileged Namespaces & SubUID Allocations ===\n")
+			for _, r := range report.SubUIDResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s (%s)\n  Reason: %s\n", r.RiskLevel, r.Type, r.TargetUser, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.MountResults) > 0 {
+			sb.WriteString("=== Shared Memory & Temp Mount Flags ===\n")
+			for _, r := range report.MountResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s (missing %s)\n  Reason: %s\n", r.RiskLevel, r.MountPoint, r.MissingFlag, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.ELFRPathResults) > 0 {
+			sb.WriteString("=== Dynamic ELF RPATH / RUNPATH Vectors ===\n")
+			for _, r := range report.ELFRPathResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s (%s: %s)\n  Reason: %s\n", r.RiskLevel, r.Path, r.TagType, r.Value, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.AuditdResults) > 0 {
+			sb.WriteString("=== Active System Audit Daemons ===\n")
+			for _, r := range report.AuditdResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s (%d rules)\n  Reason: %s\n", r.RiskLevel, r.DaemonName, r.RuleCount, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.UdevResults) > 0 {
+			sb.WriteString("=== Udev Event Rules & Execution Targets ===\n")
+			for _, r := range report.UdevResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s (%s)\n  Reason: %s\n", r.RiskLevel, r.RuleFile, r.Directive, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.CronDirResults) > 0 {
+			sb.WriteString("=== Cron & Timer Directory Permissions ===\n")
+			for _, r := range report.CronDirResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] %s\n  Reason: %s\n", r.RiskLevel, r.Path, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(report.ProcEnvResults) > 0 {
+			sb.WriteString("=== Exposed Process Environment Secrets ===\n")
+			for _, r := range report.ProcEnvResults {
+				if r.IsDangerous {
+					sb.WriteString(fmt.Sprintf("[%s] PID %d (%s) — Key: %s (Preview: %s)\n  Reason: %s\n", r.RiskLevel, r.PID, r.ProcessName, r.Key, r.ValueSample, r.Reason))
+				}
+			}
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString(fmt.Sprintf("\nSummary Counts:\nSecrets: %d\nCronJobs: %d\nSudo Privs: %d\nCapabilities: %d\nPAM Issues: %d\nSysctl Gaps: %d\nSystemd Overrides: %d\nSubUID Findings: %d\nMount Gaps: %d\nELF RPATH Vectors: %d\nAudit Daemons: %d\nUdev Findings: %d\nCronDir Findings: %d\nProcEnv Secrets: %d\n",
+			len(report.Secrets), len(report.CronJobs), len(report.SudoPrivileges), len(report.Capabilities), len(report.PAMResults), len(report.SysctlResults), len(report.SystemdOverrides), len(report.SubUIDResults), len(report.MountResults), len(report.ELFRPathResults), len(report.AuditdResults), len(report.UdevResults), len(report.CronDirResults), len(report.ProcEnvResults)))
 		data = []byte(sb.String())
 	}
 

@@ -613,7 +613,7 @@ func isFalsePositive(val string) bool {
 		"generic", "nothing", "undefined", "required", "hashes", "binary",
 		"version", "installed", "disabled", "enabled", "checked", "modified",
 		"sha512", "yescrypt", "obscure", "blowfish", "optional", "try_first_pass",
-		"use_authtok",
+		"use_authtok", "changeit",
 	}
 	for _, w := range exactNoise {
 		if valLower == w || valLower == w+"." || valLower == w+"," {
