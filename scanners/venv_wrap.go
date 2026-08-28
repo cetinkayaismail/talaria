@@ -9,12 +9,14 @@ import (
 
 // VenvWrapResult represents a vulnerable virtualenv or wrapper script finding.
 type VenvWrapResult struct {
-	Path        string `json:"path"`
-	TargetType  string `json:"target_type"`
-	RiskLevel   string `json:"risk_level"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint"`
-	IsDangerous bool   `json:"is_dangerous"`
+	Path          string `json:"path"`
+	TargetType    string `json:"target_type"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
 }
 
 var venvSearchDirs = []string{
@@ -50,12 +52,14 @@ func ScanVirtualEnvsAndWrappers() ([]VenvWrapResult, error) {
 			}
 			if isStatWritable(info, userCtx) {
 				results = append(results, VenvWrapResult{
-					Path:        scriptPath,
-					TargetType:  "WrapperScript",
-					RiskLevel:   "CRITICAL",
-					Reason:      fmt.Sprintf("Wrapper executable '%s' is writable by current user — if executed by root or admin users, grants code execution", scriptPath),
-					ExploitHint: fmt.Sprintf("echo 'cp /bin/bash /tmp/rootbash && chmod +s /tmp/rootbash' >> %s", scriptPath),
-					IsDangerous: true,
+					Path:          scriptPath,
+					TargetType:    "WrapperScript",
+					RiskLevel:     "CRITICAL",
+					Reason:        fmt.Sprintf("Wrapper executable '%s' is writable by current user — if executed by root or admin users, grants code execution", scriptPath),
+					ExploitHint:   fmt.Sprintf("echo 'cp /bin/bash /tmp/rootbash && chmod +s /tmp/rootbash' >> %s", scriptPath),
+					Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s", scriptPath, scriptPath),
+					ComplianceTag: "CIS-Linux-5.4.4 / NIST-SI-7",
+					IsDangerous:   true,
 				})
 			}
 		}
@@ -78,12 +82,14 @@ func ScanVirtualEnvsAndWrappers() ([]VenvWrapResult, error) {
 			if actInfo, err := os.Stat(activatePath); err == nil {
 				if isStatWritable(actInfo, userCtx) {
 					results = append(results, VenvWrapResult{
-						Path:        activatePath,
-						TargetType:  "VirtualEnv",
-						RiskLevel:   "CRITICAL",
-						Reason:      fmt.Sprintf("Virtualenv activation script '%s' is writable by current user", activatePath),
-						ExploitHint: fmt.Sprintf("echo '/tmp/payload.sh' >> %s", activatePath),
-						IsDangerous: true,
+						Path:          activatePath,
+						TargetType:    "VirtualEnv",
+						RiskLevel:     "CRITICAL",
+						Reason:        fmt.Sprintf("Virtualenv activation script '%s' is writable by current user", activatePath),
+						ExploitHint:   fmt.Sprintf("echo '/tmp/payload.sh' >> %s", activatePath),
+						Remediation:   fmt.Sprintf("chown root:root %s && chmod 0644 %s", activatePath, activatePath),
+						ComplianceTag: "CIS-Linux-5.4.4 / NIST-SI-7",
+						IsDangerous:   true,
 					})
 				}
 
@@ -95,12 +101,14 @@ func ScanVirtualEnvsAndWrappers() ([]VenvWrapResult, error) {
 							spPath := filepath.Join(libDir, pyDir.Name(), "site-packages")
 							if spInfo, err := os.Stat(spPath); err == nil && isStatWritable(spInfo, userCtx) {
 								results = append(results, VenvWrapResult{
-									Path:        spPath,
-									TargetType:  "SitePackages",
-									RiskLevel:   "CRITICAL",
-									Reason:      fmt.Sprintf("Python site-packages directory '%s' is writable — poisoning packages executed by root services yields root execution", spPath),
-									ExploitHint: fmt.Sprintf("Inject malicious payload into any module under %s", spPath),
-									IsDangerous: true,
+									Path:          spPath,
+									TargetType:    "SitePackages",
+									RiskLevel:     "CRITICAL",
+									Reason:        fmt.Sprintf("Python site-packages directory '%s' is writable — poisoning packages executed by root services yields root execution", spPath),
+									ExploitHint:   fmt.Sprintf("Inject malicious payload into any module under %s", spPath),
+									Remediation:   fmt.Sprintf("chown -R root:root %s && chmod -R 0755 %s", spPath, spPath),
+									ComplianceTag: "CIS-Linux-5.4.4 / NIST-SI-7",
+									IsDangerous:   true,
 								})
 							}
 						}

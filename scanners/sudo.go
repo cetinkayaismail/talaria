@@ -4,7 +4,6 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath" // Added missing import
-	"regexp"
 	"strings"
 	"time"
 )
@@ -29,14 +28,16 @@ var ConditionalSudoCommands = []string{
 }
 
 type SudoPrivilegeResult struct {
-	Command       string
-	RunAs         string
-	NoPassword    bool
-	IsDangerous   bool
-	HasSetEnv     bool
-	HasLDPreload  bool   // env_keep contains LD_PRELOAD or LD_LIBRARY_PATH
-	RiskLevel     string // CRITICAL, HIGH, MEDIUM, LOW
-	Reason        string
+	Command       string `json:"command"`
+	RunAs         string `json:"run_as"`
+	NoPassword    bool   `json:"no_password"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	HasSetEnv     bool   `json:"has_set_env"`
+	HasLDPreload  bool   `json:"has_ld_preload"` // env_keep contains LD_PRELOAD or LD_LIBRARY_PATH
+	RiskLevel     string `json:"risk_level"`     // CRITICAL, HIGH, MEDIUM, LOW
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // LDPreloadEnvVars: If any of these appear in env_keep, a NOPASSWD sudo becomes instant root
@@ -59,19 +60,17 @@ func ScanSudoPrivileges(timeout time.Duration, password string) ([]SudoPrivilege
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return results, nil
+		return nil, err
 	}
 
 	lines := strings.Split(string(output), "\n")
-
-	// First pass: scan for env_keep lines containing dangerous LD_* vars
-	// This is the LD_PRELOAD privesc vector: env_keep += LD_PRELOAD + NOPASSWD = instant root
 	hasLDPreloadInEnvKeep := false
+
+	// Check env_keep for LD_PRELOAD
 	for _, line := range lines {
-		lineLower := strings.ToLower(strings.TrimSpace(line))
-		if strings.Contains(lineLower, "env_keep") {
-			for _, ldVar := range LDPreloadEnvVars {
-				if strings.Contains(line, ldVar) {
+		if strings.Contains(line, "env_keep") {
+			for _, v := range LDPreloadEnvVars {
+				if strings.Contains(line, v) {
 					hasLDPreloadInEnvKeep = true
 					break
 				}
@@ -79,70 +78,64 @@ func ScanSudoPrivileges(timeout time.Duration, password string) ([]SudoPrivilege
 		}
 	}
 
-	// Inject a synthetic result for LD_PRELOAD env_keep if detected
-	if hasLDPreloadInEnvKeep {
-		results = append(results, SudoPrivilegeResult{
-			Command:      "env_keep contains LD_PRELOAD/LD_LIBRARY_PATH",
-			RunAs:        "root",
-			NoPassword:   false,
-			IsDangerous:  true,
-			HasSetEnv:    true,
-			HasLDPreload: true,
-			RiskLevel:    "CRITICAL",
-			Reason:       "sudoers env_keep preserves LD_PRELOAD/LD_LIBRARY_PATH: compile a .so, set LD_PRELOAD, run any NOPASSWD command -> instant root",
-		})
-	}
-
-	// Regex to extract (User) [Flags] Command
-	re := regexp.MustCompile(`\((.*?)\)\s+(?:(.*?):)?\s*(.*)`)
-
+	// Parse command entries
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "(") || strings.Contains(line, "NOPASSWD:") || strings.Contains(line, "ALL") {
+			noPassword := strings.Contains(line, "NOPASSWD:")
+			hasSetEnv := strings.Contains(line, "SETENV:")
+			isDangerous := false
+			runAs := "root"
 
-		if !strings.Contains(line, "(") || !strings.Contains(line, ")") {
-			continue
-		}
-
-		matches := re.FindStringSubmatch(line)
-		if len(matches) < 4 {
-			continue
-		}
-
-		runAs := matches[1]
-		flags := matches[2]
-		cmdPart := matches[3]
-
-		noPassword := strings.Contains(flags, "NOPASSWD")
-		hasSetEnv := strings.Contains(flags, "SETENV")
-
-		commands := strings.Split(cmdPart, ",")
-
-		for _, cmdEntry := range commands {
-			cmdEntry = strings.TrimSpace(cmdEntry)
-			if cmdEntry == "" {
-				continue
+			// Extract (runAs) if present
+			if strings.HasPrefix(line, "(") {
+				endIdx := strings.Index(line, ")")
+				if endIdx != -1 {
+					runAs = line[1:endIdx]
+				}
 			}
 
-			isDangerous := checkSudoDanger(cmdEntry)
+			// Clean the command entry
+			cmdEntry := line
+			if idx := strings.Index(line, ")"); idx != -1 {
+				cmdEntry = strings.TrimSpace(line[idx+1:])
+			}
+			cmdEntry = strings.TrimPrefix(cmdEntry, "NOPASSWD:")
+			cmdEntry = strings.TrimPrefix(cmdEntry, "SETENV:")
+			cmdEntry = strings.TrimSpace(cmdEntry)
+
+			isDangerous = checkSudoDanger(cmdEntry)
+
 			riskLevel := "LOW"
-			reason := ""
-			if isDangerous || hasSetEnv {
+			reason := "Normal sudo privilege"
+			remediation := ""
+			complianceTag := "CIS-Linux-5.3.4 / DISA-STIG-V-230534"
+
+			if hasLDPreloadInEnvKeep {
+				riskLevel = "CRITICAL"
+				reason = "LD_PRELOAD in env_keep allows arbitrary code execution via shared library injection"
+				remediation = "visudo -f /etc/sudoers (remove LD_PRELOAD from env_keep)"
+			} else if isDangerous || hasSetEnv {
 				riskLevel = "CRITICAL"
 				reason = "Direct shell escape or SETENV privilege"
+				remediation = "visudo -f /etc/sudoers (remove NOPASSWD/SETENV and restrict command arguments)"
 			} else if noPassword {
 				riskLevel = "HIGH"
 				reason = "NOPASSWD entry without dangerous command — context-dependent"
+				remediation = "visudo -f /etc/sudoers (require password authentication for privileged commands)"
 			}
 
 			results = append(results, SudoPrivilegeResult{
-				Command:      cmdEntry,
-				RunAs:        runAs,
-				NoPassword:   noPassword,
-				IsDangerous:  isDangerous || hasSetEnv,
-				HasSetEnv:    hasSetEnv,
-				HasLDPreload: hasLDPreloadInEnvKeep,
-				RiskLevel:    riskLevel,
-				Reason:       reason,
+				Command:       cmdEntry,
+				RunAs:         runAs,
+				NoPassword:    noPassword,
+				IsDangerous:   isDangerous || hasSetEnv,
+				HasSetEnv:     hasSetEnv,
+				HasLDPreload:  hasLDPreloadInEnvKeep,
+				RiskLevel:     riskLevel,
+				Reason:        reason,
+				Remediation:   remediation,
+				ComplianceTag: complianceTag,
 			})
 		}
 	}

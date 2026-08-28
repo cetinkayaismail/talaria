@@ -1,6 +1,7 @@
 package scanners
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -9,11 +10,13 @@ import (
 
 // PolkitRuleResult represents a parsed Polkit rule finding
 type PolkitRuleResult struct {
-	FilePath    string `json:"file_path"`
-	Action      string `json:"action"`
-	Authorized  string `json:"authorized"`
-	IsDangerous bool   `json:"is_dangerous"`
-	Reason      string `json:"reason"`
+	FilePath      string `json:"file_path"`
+	Action        string `json:"action"`
+	Authorized    string `json:"authorized"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanPolkitRules audits custom rules in /etc/polkit-1/rules.d/
@@ -221,11 +224,13 @@ func auditRuleBlock(block string, filePath string) *PolkitRuleResult {
 	}
 
 	return &PolkitRuleResult{
-		FilePath:    filePath,
-		Action:      action,
-		Authorized:  authorized,
-		IsDangerous: true,
-		Reason:      reason,
+		FilePath:      filePath,
+		Action:        action,
+		Authorized:    authorized,
+		IsDangerous:   true,
+		Reason:        reason,
+		Remediation:   fmt.Sprintf("chmod 0644 %s && replace polkit.Result.YES with polkit.Result.AUTH_ADMIN", filePath),
+		ComplianceTag: "CIS-Linux-5.3.5 / NIST-AC-6",
 	}
 }
 

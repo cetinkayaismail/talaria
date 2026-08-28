@@ -15,10 +15,12 @@ import (
 
 // SessionHijackResult represents a discovered tmux/screen session hijack vector
 type SessionHijackResult struct {
-	Path        string
-	TargetUser  string
-	IsDangerous bool
-	Reason      string
+	Path          string `json:"path"`
+	TargetUser    string `json:"target_user"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanSessionHijack checks for writable tmux and screen sockets that could allow
@@ -79,10 +81,12 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 					targetUsername = u.Username
 				}
 				results = append(results, SessionHijackResult{
-					Path:        path,
-					TargetUser:  targetUsername,
-					IsDangerous: true,
-					Reason:      fmt.Sprintf("Tmux socket writable — can hijack session of user %s", targetUsername),
+					Path:          path,
+					TargetUser:    targetUsername,
+					IsDangerous:   true,
+					Reason:        fmt.Sprintf("Tmux socket writable — can hijack session of user %s", targetUsername),
+					Remediation:   fmt.Sprintf("chmod 0700 $(dirname %s) && chmod 0600 %s", path, path),
+					ComplianceTag: "CIS-Linux-5.4.1 / NIST-AC-3",
 				})
 			}
 		}
@@ -128,10 +132,12 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 							targetUsername = u.Username
 						}
 						results = append(results, SessionHijackResult{
-							Path:        sockPath,
-							TargetUser:  targetUsername,
-							IsDangerous: true,
-							Reason:      fmt.Sprintf("Screen socket writable — can hijack session of user %s", targetUsername),
+							Path:          sockPath,
+							TargetUser:    targetUsername,
+							IsDangerous:   true,
+							Reason:        fmt.Sprintf("Screen socket writable — can hijack session of user %s", targetUsername),
+							Remediation:   fmt.Sprintf("chmod 0700 $(dirname %s) && chmod 0600 %s", sockPath, sockPath),
+							ComplianceTag: "CIS-Linux-5.4.1 / NIST-AC-3",
 						})
 					}
 				}

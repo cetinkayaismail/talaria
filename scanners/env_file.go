@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,8 @@ type EnvFileResult struct {
 	InjectionType string `json:"injection_type"` // "LD_PRELOAD", "PATH", or "GENERIC"
 	RiskLevel     string `json:"risk_level"`     // "CRITICAL" or "HIGH"
 	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // systemdServiceDirs holds the three canonical locations where systemd searches
@@ -34,22 +37,6 @@ var systemdServiceDirs = []string{
 // ScanSystemdEnvFiles parses all .service unit files found in the standard
 // systemd search directories and reports any EnvironmentFile= references that
 // are writable by the current user (A6).
-//
-// Design decisions to keep FP low and avoid missing vectors:
-//   - Only .service files are read (not socket/timer/path units — they don't
-//     carry EnvironmentFile directives in practice).
-//   - Dash-prefix (EnvironmentFile=-/path) means "ignore if the file is
-//     absent", but a file that IS present AND writable is still dangerous, so
-//     we check it the same way after stripping the leading '-'.
-//   - Paths containing '%' are systemd specifiers (%i, %n, %u …) that we
-//     cannot resolve without the full unit context. We skip them silently
-//     rather than resolving them incorrectly.
-//   - /etc/default/* files are flagged HIGH (not CRITICAL) because these are
-//     sometimes intentionally user-writable override configs. The finding
-//     includes an explicit FP annotation.
-//   - InjectionType is determined by scanning the existing content of the env
-//     file for common high-impact variables. A file that doesn't yet contain
-//     those variables is still dangerous — an attacker can append them.
 func ScanSystemdEnvFiles() ([]EnvFileResult, error) {
 	ctx := GetUserContext()
 	var results []EnvFileResult
@@ -121,6 +108,8 @@ func ScanSystemdEnvFiles() ([]EnvFileResult, error) {
 					InjectionType: injType,
 					RiskLevel:     riskLevel,
 					Reason:        reason,
+					Remediation:   fmt.Sprintf("chown root:root %s && chmod 0640 %s", envPath, envPath),
+					ComplianceTag: "CIS-Linux-5.1.9 / NIST-CM-6",
 				})
 			}
 		}

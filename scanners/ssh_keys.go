@@ -1,6 +1,7 @@
 package scanners
 
 import (
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -11,12 +12,14 @@ import (
 
 // SSHKeyResult holds findings related to SSH key theft and injection vectors
 type SSHKeyResult struct {
-	Path        string
-	Type        string // "private_key", "authorized_keys", ".ssh directory", "host_key"
-	TargetUser  string
-	IsDangerous bool
-	Reason      string
-	Preview     string // First line of private key or authorized key comment
+	Path          string `json:"path"`
+	Type          string `json:"type"` // "private_key", "authorized_keys", ".ssh directory", "host_key"
+	TargetUser    string `json:"target_user"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Preview       string `json:"preview,omitempty"` // First line of private key or authorized key comment
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // privateKeyNames are exact filenames that are always SSH private keys
@@ -78,11 +81,13 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 		// Skip our own dir — owning it is expected
 		if ownerUID != currentUID && isWritableBy(dirInfo, currentUID, userGids) {
 			results = append(results, SSHKeyResult{
-				Path:        sshDir,
-				Type:        ".ssh directory",
-				TargetUser:  targetUser,
-				IsDangerous: true,
-				Reason:      "Writable .ssh/ dir → create authorized_keys with your pubkey → ssh " + targetUser + "@localhost",
+				Path:          sshDir,
+				Type:          ".ssh directory",
+				TargetUser:    targetUser,
+				IsDangerous:   true,
+				Reason:        "Writable .ssh/ dir → create authorized_keys with your pubkey → ssh " + targetUser + "@localhost",
+				Remediation:   fmt.Sprintf("chmod 0700 %s", sshDir),
+				ComplianceTag: "CIS-Linux-6.2.7 / DISA-STIG-V-230400",
 			})
 		}
 
@@ -106,10 +111,8 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 			// --- VECTOR 2: Readable private key (theft) ---
 			for _, keyName := range privateKeyNames {
 				if strings.EqualFold(fileName, keyName) && ownerUID != currentUID {
-					// Try to read via stealthy helper — confirms accessibility
-					// and restores atime if --atime-restore is set.
 					preview := ""
-					if rawData, err := ReadFileStealthy(filePath); err == nil {
+					if rawData, err := os.ReadFile(filePath); err == nil {
 						lines := strings.SplitN(string(rawData), "\n", 2)
 						if len(lines) > 0 && strings.HasPrefix(lines[0], "-----BEGIN") {
 							preview = lines[0]
@@ -128,12 +131,14 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 					}
 
 					results = append(results, SSHKeyResult{
-						Path:        filePath,
-						Type:        "private_key",
-						TargetUser:  targetUser,
-						IsDangerous: isDangerous,
-						Reason:      reason,
-						Preview:     preview,
+						Path:          filePath,
+						Type:          "private_key",
+						TargetUser:    targetUser,
+						IsDangerous:   isDangerous,
+						Reason:        reason,
+						Preview:       preview,
+						Remediation:   fmt.Sprintf("chmod 0600 %s", filePath),
+						ComplianceTag: "CIS-Linux-5.2.20 / DISA-STIG-V-230400",
 					})
 					break
 				}
@@ -142,9 +147,9 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 			// --- VECTOR 3: Writable authorized_keys (injection) ---
 			if fileName == "authorized_keys" && ownerUID != currentUID {
 				if isWritableBy(fileInfo, currentUID, userGids) {
-					// Count existing authorized keys (stealthy read restores atime)
+					// Count existing authorized keys
 					preview := ""
-					if rawData, err := ReadFileStealthy(filePath); err == nil {
+					if rawData, err := os.ReadFile(filePath); err == nil {
 						count := 0
 						for _, line := range strings.Split(string(rawData), "\n") {
 							if strings.HasPrefix(line, "ssh-") || strings.HasPrefix(line, "ecdsa-") {
@@ -156,12 +161,14 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 						}
 					}
 					results = append(results, SSHKeyResult{
-						Path:        filePath,
-						Type:        "authorized_keys",
-						TargetUser:  targetUser,
-						IsDangerous: true,
-						Reason:      "Writable authorized_keys for '" + targetUser + "' → append your pubkey → ssh " + targetUser + "@localhost",
-						Preview:     preview,
+						Path:          filePath,
+						Type:          "authorized_keys",
+						TargetUser:    targetUser,
+						IsDangerous:   true,
+						Reason:        "Writable authorized_keys for '" + targetUser + "' → append your pubkey → ssh " + targetUser + "@localhost",
+						Preview:       preview,
+						Remediation:   fmt.Sprintf("chmod 0600 %s", filePath),
+						ComplianceTag: "CIS-Linux-6.2.8 / DISA-STIG-V-230400",
 					})
 				}
 			}
@@ -191,11 +198,13 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 				// World-readable host key = server impersonation risk
 				if fStat.Mode&syscall.S_IROTH != 0 {
 					results = append(results, SSHKeyResult{
-						Path:        filePath,
-						Type:        "host_key",
-						TargetUser:  "root",
-						IsDangerous: true,
-						Reason:      "SSH host private key is world-readable → attacker can impersonate this server (MITM)",
+						Path:          filePath,
+						Type:          "host_key",
+						TargetUser:    "root",
+						IsDangerous:   true,
+						Reason:        "SSH host private key is world-readable → attacker can impersonate this server (MITM)",
+						Remediation:   fmt.Sprintf("chmod 0600 %s && chown root:root %s", filePath, filePath),
+						ComplianceTag: "CIS-Linux-5.2.3 / DISA-STIG-V-230400",
 					})
 				}
 			}
@@ -209,11 +218,13 @@ func ScanSSHKeys() ([]SSHKeyResult, error) {
 			// Check if we can write to the socket (needed for hijacking)
 			if isWritableBy(info, currentUID, userGids) {
 				results = append(results, SSHKeyResult{
-					Path:        sock,
-					Type:        "ssh_agent_socket",
-					TargetUser:  "active_session",
-					IsDangerous: true,
-					Reason:      "Active SSH Agent socket found and writable → hijack via: ssh-add -l",
+					Path:          sock,
+					Type:          "ssh_agent_socket",
+					TargetUser:    "active_session",
+					IsDangerous:   true,
+					Reason:        "Active SSH Agent socket found and writable → hijack via: ssh-add -l",
+					Remediation:   fmt.Sprintf("chmod 0700 $(dirname %s)", sock),
+					ComplianceTag: "CIS-Linux-5.2.20 / NIST-AC-17",
 				})
 			}
 		}

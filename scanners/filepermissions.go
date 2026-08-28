@@ -11,16 +11,18 @@ import (
 
 // FilePermissionResult must be a match for report headers this important for json reports
 type FilePermissionResult struct {
-	Path            string
-	Permissions     string
-	Owner           string
-	OwnerUID        int
-	IsWorldWritable bool
-	IsGroupWritable bool
-	IsWorldReadable bool
-	CanWrite        bool
-	IsDangerous     bool
-	Issue           string
+	Path            string `json:"path"`
+	Permissions     string `json:"permissions"`
+	Owner           string `json:"owner,omitempty"`
+	OwnerUID        int    `json:"owner_uid,omitempty"`
+	IsWorldWritable bool   `json:"is_world_writable"`
+	IsGroupWritable bool   `json:"is_group_writable"`
+	IsWorldReadable bool   `json:"is_world_readable"`
+	CanWrite        bool   `json:"can_write"`
+	IsDangerous     bool   `json:"is_dangerous"`
+	Issue           string `json:"issue"`
+	Remediation     string `json:"remediation,omitempty"`
+	ComplianceTag   string `json:"compliance_tag,omitempty"`
 }
 
 // CriticalFiles defines standard system files and their safe permission configuratiosn 
@@ -41,7 +43,6 @@ var CriticalFiles = []struct {
 }
 
 // ScanFilePermissions checks for misconfigurations in system files and common writable areas 
-// This is a very important step in Privilege Escalation as it can lead to direct root access
 func ScanFilePermissions() ([]FilePermissionResult, error) {
 	var results []FilePermissionResult
 	ctx := GetUserContext()
@@ -63,12 +64,13 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 		res := checkSingleFile(p, 0, ctx)
 		if res != nil && res.IsWorldWritable {
 			res.Issue = "World-writable directory detected"
+			res.Remediation = "chmod 1777 " + p
+			res.ComplianceTag = "CIS-Linux-1.1.2 / NIST-CM-6"
 			results = append(results, *res)
 		}
 	}
 
 	// 3. Direct /etc/shadow readability confirmation
-	// Groups check infers access; this actually tries to open the file to ensure its readable.
 	if f, err := os.Open("/etc/shadow"); err == nil {
 		f.Close()
 		results = append(results, FilePermissionResult{
@@ -77,6 +79,8 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 			IsWorldReadable: true,
 			IsDangerous:     true,
 			Issue:           "CONFIRMED: /etc/shadow is readable by current user — extract and crack hashes offline",
+			Remediation:     "chmod 0640 /etc/shadow && chown root:shadow /etc/shadow",
+			ComplianceTag:   "CIS-Linux-6.2.2 / DISA-STIG-V-230280",
 		})
 	}
 
@@ -87,6 +91,8 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 			if res := checkSingleFile(p, 0644, ctx); res != nil && res.CanWrite {
 				res.IsDangerous = true
 				res.Issue = "Writable ld.so.conf.d entry: inject a malicious shared library path to hijack privileged binary loads"
+				res.Remediation = "chown root:root " + p + " && chmod 0644 " + p
+				res.ComplianceTag = "CIS-Linux-5.4.2 / NIST-SI-7"
 				results = append(results, *res)
 			}
 		}
@@ -99,6 +105,8 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 			if res := checkSingleFile(p, 0644, ctx); res != nil && res.CanWrite {
 				res.IsDangerous = true
 				res.Issue = fmt.Sprintf("Writable logrotate config: %s — inject 'postrotate' commands to execute as root during log rotation", p)
+				res.Remediation = "chown root:root " + p + " && chmod 0644 " + p
+				res.ComplianceTag = "CIS-Linux-4.2.1 / NIST-AU-9"
 				results = append(results, *res)
 			}
 		}
@@ -111,6 +119,8 @@ func ScanFilePermissions() ([]FilePermissionResult, error) {
 			if res := checkSingleFile(p, 0440, ctx); res != nil && res.CanWrite {
 				res.IsDangerous = true
 				res.Issue = fmt.Sprintf("Writable sudoers drop-in: %s — add 'ALL=(ALL) NOPASSWD: ALL' to gain instant root", p)
+				res.Remediation = "chown root:root " + p + " && chmod 0440 " + p
+				res.ComplianceTag = "CIS-Linux-5.3.4 / DISA-STIG-V-230534"
 				results = append(results, *res)
 			}
 		}
@@ -145,23 +155,37 @@ func checkSingleFile(path string, expected os.FileMode, ctx *UserContext) *FileP
 
 	isDangerous := false
 	issue := ""
+	remediation := ""
+	complianceTag := "CIS-Linux-6.2.1 / NIST-CM-6"
 
 	// Logic: If it's a critical /etc file and it's world-writable, it's a critical finding
 	if strings.HasPrefix(path, "/etc") && isWorldWritable {
 		isDangerous = true
 		issue = "Critical system file is world-writable!"
+		remediation = fmt.Sprintf("chmod o-w %s && chown root:root %s", path, path)
 	}
 
 	// Logic: If shadow or sudoers is world-readable
 	if (strings.Contains(path, "shadow") || strings.Contains(path, "sudoers")) && isWorldReadable {
 		isDangerous = true
 		issue = "Sensitive file is world-readable!"
+		if strings.Contains(path, "shadow") {
+			remediation = "chmod 0640 /etc/shadow && chown root:shadow /etc/shadow"
+			complianceTag = "CIS-Linux-6.2.2 / DISA-STIG-V-230280"
+		} else {
+			remediation = "chmod 0440 /etc/sudoers && chown root:root /etc/sudoers"
+			complianceTag = "CIS-Linux-5.3.4 / DISA-STIG-V-230534"
+		}
 	}
 
 	if isDangerous || canWrite || isWorldWritable || isGroupWritable {
 		ownerName := "unknown"
 		if u, err := user.LookupId(strconv.Itoa(int(stat.Uid))); err == nil {
 			ownerName = u.Username
+		}
+
+		if remediation == "" && expected > 0 {
+			remediation = fmt.Sprintf("chmod %04o %s && chown root:root %s", expected, path, path)
 		}
 
 		return &FilePermissionResult{
@@ -175,6 +199,8 @@ func checkSingleFile(path string, expected os.FileMode, ctx *UserContext) *FileP
 			CanWrite:        canWrite,
 			IsDangerous:     isDangerous,
 			Issue:           issue,
+			Remediation:     remediation,
+			ComplianceTag:   complianceTag,
 		}
 	}
 

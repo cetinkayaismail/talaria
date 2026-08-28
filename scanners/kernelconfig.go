@@ -11,11 +11,13 @@ import (
 
 // KernelConfigResult represents a dangerous kernel configuration finding
 type KernelConfigResult struct {
-	ConfigKey  string
-	Value      string
-	RiskLevel  string // CRITICAL, HIGH, MEDIUM
-	IsDangerous bool
-	Reason     string
+	ConfigKey     string `json:"config_key"`
+	Value         string `json:"value"`
+	RiskLevel     string `json:"risk_level"` // CRITICAL, HIGH, MEDIUM
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // dangerousKernelConfigs maps kernel config keys to their descriptions
@@ -72,11 +74,13 @@ func ScanKernelConfig() ([]KernelConfigResult, error) {
 
 			if isDangerous {
 				results = append(results, KernelConfigResult{
-					ConfigKey:   key,
-					Value:       value,
-					RiskLevel:   cfg.RiskLevel,
-					IsDangerous: true,
-					Reason:      fmt.Sprintf("%s = %s — %s", key, value, cfg.Desc),
+					ConfigKey:     key,
+					Value:         value,
+					RiskLevel:     cfg.RiskLevel,
+					IsDangerous:   true,
+					Reason:        fmt.Sprintf("%s = %s — %s", key, value, cfg.Desc),
+					Remediation:   fmt.Sprintf("Ensure %s is set to secure default in kernel build/boot configuration", key),
+					ComplianceTag: "CIS-Linux-1.5.1 / NIST-SI-16",
 				})
 			}
 		}

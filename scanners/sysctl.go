@@ -8,13 +8,15 @@ import (
 
 // SysctlResult represents a kernel hardening setting that deviates from security baselines.
 type SysctlResult struct {
-	Key          string `json:"key"`
-	CurrentValue string `json:"current_value"`
-	ExpectedVal  string `json:"expected_val"`
-	RiskLevel    string `json:"risk_level"`
-	Reason       string `json:"reason"`
-	ExploitHint  string `json:"exploit_hint"`
-	IsDangerous  bool   `json:"is_dangerous"`
+	Key           string `json:"key"`
+	CurrentValue  string `json:"current_value"`
+	ExpectedVal   string `json:"expected_val"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
 }
 
 type sysctlCheck struct {
@@ -116,13 +118,15 @@ func ScanSysctlHardening() ([]SysctlResult, error) {
 		if !isCompliant {
 			expectedStr := strings.Join(check.Expected, " or ")
 			results = append(results, SysctlResult{
-				Key:          check.KeyName,
-				CurrentValue: val,
-				ExpectedVal:  expectedStr,
-				RiskLevel:    check.RiskLevel,
-				Reason:       check.Reason,
-				ExploitHint:  fmt.Sprintf("Recommended baseline: %s (current: %s). Fix: %s", expectedStr, val, check.ExploitHint),
-				IsDangerous:  true,
+				Key:           check.KeyName,
+				CurrentValue:  val,
+				ExpectedVal:   expectedStr,
+				RiskLevel:     check.RiskLevel,
+				Reason:        check.Reason,
+				ExploitHint:   fmt.Sprintf("Recommended baseline: %s (current: %s). Fix: %s", expectedStr, val, check.ExploitHint),
+				Remediation:   fmt.Sprintf("sysctl -w %s=%s", check.KeyName, check.Expected[0]),
+				ComplianceTag: "CIS-Linux-1.5.2 / NIST-SI-16",
+				IsDangerous:   true,
 			})
 		}
 	}
@@ -154,13 +158,15 @@ func ScanSysctlHardening() ([]SysctlResult, error) {
 					accessType = "writable"
 				}
 				results = append(results, SysctlResult{
-					Key:          node.path,
-					CurrentValue: accessType,
-					ExpectedVal:  "no-access",
-					RiskLevel:    node.riskLevel,
-					Reason:       fmt.Sprintf("%s '%s' is %s by current user — permits direct raw kernel/physical memory manipulation", node.desc, node.path, accessType),
-					ExploitHint:  fmt.Sprintf("Direct %s access allows arbitrary kernel memory inspection/modification", node.path),
-					IsDangerous:  true,
+					Key:           node.path,
+					CurrentValue:  accessType,
+					ExpectedVal:   "no-access",
+					RiskLevel:     node.riskLevel,
+					Reason:        fmt.Sprintf("%s '%s' is %s by current user — permits direct raw kernel/physical memory manipulation", node.desc, node.path, accessType),
+					ExploitHint:   fmt.Sprintf("Direct %s access allows arbitrary kernel memory inspection/modification", node.path),
+					Remediation:   fmt.Sprintf("chmod 0600 %s && chown root:root %s", node.path, node.path),
+					ComplianceTag: "CIS-Linux-1.5.3 / DISA-STIG-V-230375",
+					IsDangerous:   true,
 				})
 			}
 		}

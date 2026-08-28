@@ -10,11 +10,13 @@ import (
 
 // LDNSSResult represents a Dynamic Linker or NSS configuration security finding.
 type LDNSSResult struct {
-	Path        string `json:"path"`
-	RiskLevel   string `json:"risk_level"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint"`
-	IsDangerous bool   `json:"is_dangerous"`
+	Path          string `json:"path"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
 }
 
 // ScanLDNSSConfiguration audits dynamic linker search paths and NSS configuration.
@@ -29,11 +31,13 @@ func ScanLDNSSConfiguration() ([]LDNSSResult, error) {
 	if info, err := os.Stat("/etc/ld.so.conf.d"); err == nil {
 		if isStatWritable(info, userCtx) {
 			results = append(results, LDNSSResult{
-				Path:        "/etc/ld.so.conf.d",
-				RiskLevel:   "CRITICAL",
-				Reason:      "/etc/ld.so.conf.d directory is writable by current user — dropping a custom .conf file hijacks shared library loading for all system binaries",
-				ExploitHint: "echo '/tmp/evil_libs' > /etc/ld.so.conf.d/00_evil.conf && ldconfig",
-				IsDangerous: true,
+				Path:          "/etc/ld.so.conf.d",
+				RiskLevel:     "CRITICAL",
+				Reason:        "/etc/ld.so.conf.d directory is writable by current user — dropping a custom .conf file hijacks shared library loading for all system binaries",
+				ExploitHint:   "echo '/tmp/evil_libs' > /etc/ld.so.conf.d/00_evil.conf && ldconfig",
+				Remediation:   "chown root:root /etc/ld.so.conf.d && chmod 0755 /etc/ld.so.conf.d",
+				ComplianceTag: "CIS-Linux-5.4.2 / NIST-SI-7",
+				IsDangerous:   true,
 			})
 		}
 	}
@@ -42,11 +46,13 @@ func ScanLDNSSConfiguration() ([]LDNSSResult, error) {
 	if info, err := os.Stat("/etc/ld.so.conf"); err == nil {
 		if isStatWritable(info, userCtx) {
 			results = append(results, LDNSSResult{
-				Path:        "/etc/ld.so.conf",
-				RiskLevel:   "CRITICAL",
-				Reason:      "/etc/ld.so.conf is writable by current user — appending a writable library directory allows global shared library injection",
-				ExploitHint: "echo '/tmp/evil_libs' >> /etc/ld.so.conf && ldconfig",
-				IsDangerous: true,
+				Path:          "/etc/ld.so.conf",
+				RiskLevel:     "CRITICAL",
+				Reason:        "/etc/ld.so.conf is writable by current user — appending a writable library directory allows global shared library injection",
+				ExploitHint:   "echo '/tmp/evil_libs' >> /etc/ld.so.conf && ldconfig",
+				Remediation:   "chown root:root /etc/ld.so.conf && chmod 0644 /etc/ld.so.conf",
+				ComplianceTag: "CIS-Linux-5.4.2 / NIST-SI-7",
+				IsDangerous:   true,
 			})
 		}
 	}
@@ -60,11 +66,13 @@ func ScanLDNSSConfiguration() ([]LDNSSResult, error) {
 		}
 		if isStatWritable(info, userCtx) {
 			results = append(results, LDNSSResult{
-				Path:        dir,
-				RiskLevel:   "CRITICAL",
-				Reason:      fmt.Sprintf("Dynamic linker search directory '%s' is writable by current user — planting a malicious shared library (.so) hijacks privileged binaries", dir),
-				ExploitHint: fmt.Sprintf("Place a malicious compiled shared object (e.g. libc.so.6 or libssl.so) in %s", dir),
-				IsDangerous: true,
+				Path:          dir,
+				RiskLevel:     "CRITICAL",
+				Reason:        fmt.Sprintf("Dynamic linker search directory '%s' is writable by current user — planting a malicious shared library (.so) hijacks privileged binaries", dir),
+				ExploitHint:   fmt.Sprintf("Place a malicious compiled shared object (e.g. libc.so.6 or libssl.so) in %s", dir),
+				Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s && ldconfig", dir, dir),
+				ComplianceTag: "CIS-Linux-5.4.2 / NIST-SI-7",
+				IsDangerous:   true,
 			})
 		}
 	}
@@ -73,11 +81,13 @@ func ScanLDNSSConfiguration() ([]LDNSSResult, error) {
 	if info, err := os.Stat("/etc/nsswitch.conf"); err == nil {
 		if isStatWritable(info, userCtx) {
 			results = append(results, LDNSSResult{
-				Path:        "/etc/nsswitch.conf",
-				RiskLevel:   "CRITICAL",
-				Reason:      "/etc/nsswitch.conf is writable by current user — modifying NSS service mappings allows redirecting password/group lookups to custom libraries",
-				ExploitHint: "Add 'passwd: files evil_nss' in /etc/nsswitch.conf to load custom libnss_evil_nss.so.2",
-				IsDangerous: true,
+				Path:          "/etc/nsswitch.conf",
+				RiskLevel:     "CRITICAL",
+				Reason:        "/etc/nsswitch.conf is writable by current user — modifying NSS service mappings allows redirecting password/group lookups to custom libraries",
+				ExploitHint:   "Add 'passwd: files evil_nss' in /etc/nsswitch.conf to load custom libnss_evil_nss.so.2",
+				Remediation:   "chown root:root /etc/nsswitch.conf && chmod 0644 /etc/nsswitch.conf",
+				ComplianceTag: "CIS-Linux-5.4.2 / NIST-SI-7",
+				IsDangerous:   true,
 			})
 		}
 	}

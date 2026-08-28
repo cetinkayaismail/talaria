@@ -10,10 +10,12 @@ import (
 
 // XAuthorityResult holds findings about readable .Xauthority files belonging to other users (A4).
 type XAuthorityResult struct {
-	Path        string `json:"path"`
-	TargetUser  string `json:"target_user"`
-	IsDangerous bool   `json:"is_dangerous"`
-	Reason      string `json:"reason"`
+	Path          string `json:"path"`
+	TargetUser    string `json:"target_user"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanXAuthority checks for readable .Xauthority files of other users for X11 session hijacking.
@@ -62,10 +64,12 @@ func ScanXAuthority() ([]XAuthorityResult, error) {
 
 		if ctx.CanRead(int(stat.Uid), int(stat.Gid), stat.Mode) {
 			results = append(results, XAuthorityResult{
-				Path:        xauthPath,
-				TargetUser:  username,
-				IsDangerous: true,
-				Reason:      fmt.Sprintf("X11 authority file readable for user '%s'. Enables session hijacking (keylogging, screenshot capture via xwd/xdpyinfo).", username),
+				Path:          xauthPath,
+				TargetUser:    username,
+				IsDangerous:   true,
+				Reason:        fmt.Sprintf("X11 authority file readable for user '%s'. Enables session hijacking (keylogging, screenshot capture via xwd/xdpyinfo).", username),
+				Remediation:   fmt.Sprintf("chmod 0600 %s", xauthPath),
+				ComplianceTag: "NIST-AC-3 / NIST-SC-28",
 			})
 		}
 	}

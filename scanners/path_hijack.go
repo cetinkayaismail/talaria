@@ -9,12 +9,14 @@ import (
 )
 
 type PATHHijackResult struct {
-	Directory   string
-	IsWriteable bool
-	IsEmpty     bool
-	IsDot       bool
-	IsDangerous bool
-	Reason      string
+	Directory     string `json:"directory"`
+	IsWriteable   bool   `json:"is_writeable"`
+	IsEmpty       bool   `json:"is_empty"`
+	IsDot         bool   `json:"is_dot"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanPATH checks the directories in the user's $PATH environment variable
@@ -96,12 +98,14 @@ func ScanPATH() ([]PATHHijackResult, error) {
 
 		if isDangerous || isWriteable {
 			results = append(results, PATHHijackResult{
-				Directory:   dir,
-				IsWriteable: isWriteable,
-				IsEmpty:     isEmpty,
-				IsDot:       isDot,
-				IsDangerous: isDangerous,
-				Reason:      reason,
+				Directory:     dir,
+				IsWriteable:   isWriteable,
+				IsEmpty:       isEmpty,
+				IsDot:         isDot,
+				IsDangerous:   isDangerous,
+				Reason:        reason,
+				Remediation:   "Sanitize PATH variable in /etc/environment, /etc/profile, or user shell dotfiles",
+				ComplianceTag: "CIS-Linux-5.4.4 / DISA-STIG-V-230520",
 			})
 		}
 	}

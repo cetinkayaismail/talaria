@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -13,13 +14,15 @@ import (
 )
 
 type SocketResult struct {
-	Path        string
-	Owner       string
-	OwnerUID    int
-	Permissions string
-	IsWritable  bool
-	IsDangerous bool
-	Service     string
+	Path          string `json:"path"`
+	Owner         string `json:"owner,omitempty"`
+	OwnerUID      int    `json:"owner_uid"`
+	Permissions   string `json:"permissions"`
+	IsWritable    bool   `json:"is_writable"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Service       string `json:"service"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // Optimized list for dangerous socket patterns looking for these in ctf's will give us a big lead most of the time direct path to root
@@ -28,17 +31,17 @@ type SocketResult struct {
 // safeSystemSockets are standard system sockets present on every Linux system.
 // These are not exploitable through normal write access and should not be flagged as dangerous.
 var safeSystemSockets = map[string]bool{
-	"dev-log":                    true, // journald log socket
-	"socket":                     true, // journald socket
-	"stdout":                     true, // journald stdout
-	"syslog":                     true, // syslog compat socket
-	"notify":                     true, // systemd notification
-	"private":                    true, // systemd internal control
-	"io.systemd.Resolve":         true, // DNS resolver
-	"io.systemd.DynamicUser":     true, // userdb
-	"io.system.ManagedOOM":       true, // OOM manager
-	"system_bus_socket":          true, // D-Bus (policy-controlled)
-	"request":                    true, // uuidd
+	"dev-log":                true, // journald log socket
+	"socket":                 true, // journald socket
+	"stdout":                 true, // journald stdout
+	"syslog":                 true, // syslog compat socket
+	"notify":                 true, // systemd notification
+	"private":                true, // systemd internal control
+	"io.systemd.Resolve":     true, // DNS resolver
+	"io.systemd.DynamicUser": true, // userdb
+	"io.system.ManagedOOM":   true, // OOM manager
+	"system_bus_socket":      true, // D-Bus (policy-controlled)
+	"request":                true, // uuidd
 }
 
 var dangerousSockets = []string{
@@ -136,12 +139,14 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 			isDangerous := isCriticalSocket
 
 			results = append(results, SocketResult{
-				Path:        path,
-				OwnerUID:    int(stat.Uid),
-				Permissions: info.Mode().Perm().String(),
-				IsWritable:  isWritable,
-				IsDangerous: isDangerous,
-				Service:     service,
+				Path:          path,
+				OwnerUID:      int(stat.Uid),
+				Permissions:   info.Mode().Perm().String(),
+				IsWritable:    isWritable,
+				IsDangerous:   isDangerous,
+				Service:       service,
+				Remediation:   fmt.Sprintf("chmod 0660 %s", path),
+				ComplianceTag: "CIS-Linux-5.4.1 / NIST-AC-3",
 			})
 		}
 	}

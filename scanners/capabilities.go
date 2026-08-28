@@ -7,10 +7,12 @@ import (
 
 // CapabilityResult is exported for main.go reporting
 type CapabilityResult struct {
-	Path         string
-	Capabilities string
-	IsDangerous  bool
-	ExploitHint  string
+	Path          string `json:"path"`
+	Capabilities  string `json:"capabilities"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // Critical capabilities that often lead to instant privilege escalation
@@ -56,15 +58,21 @@ func ScanCapabilities(root string) ([]CapabilityResult, error) {
 		}
 
 		hint := ""
+		remediation := ""
+		complianceTag := ""
 		if isDangerous {
 			hint = GetExploitHint(path, "capability")
+			remediation = "setcap -r " + path
+			complianceTag = "CIS-Linux-6.1.15 / NIST-AC-6(1)"
 		}
 
 		results = append(results, CapabilityResult{
-			Path:         path,
-			Capabilities: caps,
-			IsDangerous:  isDangerous,
-			ExploitHint:  hint,
+			Path:          path,
+			Capabilities:  caps,
+			IsDangerous:   isDangerous,
+			ExploitHint:   hint,
+			Remediation:   remediation,
+			ComplianceTag: complianceTag,
 		})
 	}
 

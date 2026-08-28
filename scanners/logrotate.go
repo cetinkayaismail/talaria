@@ -10,22 +10,17 @@ import (
 
 // LogrotateResult holds findings from the logrotate configuration scanner (A3).
 type LogrotateResult struct {
-	ConfigPath     string   // e.g. /etc/logrotate.d/nginx
-	IsWritable     bool     // current user can write to the config
-	PostrotatePaths []string // script paths found in postrotate/prerotate blocks
-	RiskLevel      string
-	Reason         string
+	ConfigPath      string   `json:"config_path"`
+	IsWritable      bool     `json:"is_writable"`
+	PostrotatePaths []string `json:"postrotate_paths,omitempty"`
+	RiskLevel       string   `json:"risk_level"`
+	Reason          string   `json:"reason"`
+	Remediation     string   `json:"remediation,omitempty"`
+	ComplianceTag   string   `json:"compliance_tag,omitempty"`
 }
 
 // ScanLogrotate scans /etc/logrotate.d/ for writable configs and dangerous
 // postrotate/prerotate script paths (A3).
-//
-// Design decisions to keep FP low and avoid missing vectors:
-//   - Only flags configs that are writable by the current user OR contain a
-//     postrotate/prerotate script that is writable.
-//   - Both /etc/logrotate.conf and /etc/logrotate.d/* are checked.
-//   - We do NOT blindly walk subdirectories — logrotate.d is always flat.
-//   - Speed: single ReadDir + per-file line scan. Typically <5ms on real systems.
 func ScanLogrotate() ([]LogrotateResult, error) {
 	ctx := GetUserContext()
 	var results []LogrotateResult
@@ -78,6 +73,8 @@ func ScanLogrotate() ([]LogrotateResult, error) {
 				PostrotatePaths: postrotatePaths,
 				RiskLevel:       "CRITICAL",
 				Reason:          reason,
+				Remediation:     fmt.Sprintf("chown root:root %s && chmod 0644 %s", cfgPath, cfgPath),
+				ComplianceTag:   "CIS-Linux-4.2.1 / NIST-AU-9",
 			})
 			continue
 		}
@@ -109,6 +106,8 @@ func ScanLogrotate() ([]LogrotateResult, error) {
 				"Logrotate config '%s' references writable postrotate script(s): %s — modifying them causes code execution as root during log rotation.",
 				cfgPath, strings.Join(writableScripts, ", "),
 			),
+			Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s", strings.Join(writableScripts, " "), strings.Join(writableScripts, " ")),
+			ComplianceTag: "CIS-Linux-4.2.1 / NIST-SI-7",
 		})
 	}
 

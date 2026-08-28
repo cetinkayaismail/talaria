@@ -12,11 +12,13 @@ import (
 
 // ServiceAuditResult holds findings for local service misconfigurations
 type ServiceAuditResult struct {
-	ServiceName string `json:"service_name"`
-	Port        int    `json:"port"`
-	IsDangerous bool   `json:"is_dangerous"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint,omitempty"`
+	ServiceName   string `json:"service_name"`
+	Port          int    `json:"port"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanLocalServices checks for locally running services with weak/no authentication
@@ -42,11 +44,13 @@ func ScanLocalServices() ([]ServiceAuditResult, error) {
 	// 3. Memcached Unauthenticated Check (port 11211)
 	if listeningPorts[11211] {
 		results = append(results, ServiceAuditResult{
-			ServiceName: "Memcached",
-			Port:        11211,
-			IsDangerous: true,
-			Reason:      "Memcached is listening locally — default installations require no authentication",
-			ExploitHint: "nc 127.0.0.1 11211 and run 'stats items' or 'stats cachedump' to dump session secrets",
+			ServiceName:   "Memcached",
+			Port:          11211,
+			IsDangerous:   true,
+			Reason:        "Memcached is listening locally — default installations require no authentication",
+			ExploitHint:   "nc 127.0.0.1 11211 and run 'stats items' or 'stats cachedump' to dump session secrets",
+			Remediation:   "Configure SASL authentication or bind memcached to unix socket",
+			ComplianceTag: "CIS-Linux-2.1.1 / NIST-AC-3",
 		})
 	}
 
@@ -95,11 +99,13 @@ func checkMySQLBlankPassword() *ServiceAuditResult {
 
 	if err == nil && strings.Contains(strings.ToLower(string(output)), "uptime") {
 		return &ServiceAuditResult{
-			ServiceName: "MySQL",
-			Port:        3306,
-			IsDangerous: true,
-			Reason:      "MySQL 'root' account has NO PASSWORD assigned. Accessible from localhost.",
-			ExploitHint: "Use UDF (User Defined Functions) to gain root shell: https://github.com/0xdeadbeef/mysql-udf-payloads",
+			ServiceName:   "MySQL",
+			Port:          3306,
+			IsDangerous:   true,
+			Reason:        "MySQL 'root' account has NO PASSWORD assigned. Accessible from localhost.",
+			ExploitHint:   "Use UDF (User Defined Functions) to gain root shell: https://github.com/0xdeadbeef/mysql-udf-payloads",
+			Remediation:   "Run 'mysql_secure_installation' and set strong root password",
+			ComplianceTag: "CIS-Linux-2.1.1 / NIST-IA-5",
 		}
 	}
 	return nil
@@ -114,11 +120,13 @@ func checkRedisNoAuth() *ServiceAuditResult {
 
 	if err == nil && strings.Contains(string(output), "redis_version") {
 		return &ServiceAuditResult{
-			ServiceName: "Redis",
-			Port:        6379,
-			IsDangerous: true,
-			Reason:      "Redis instance requires NO AUTHENTICATION. Accessible from localhost.",
-			ExploitHint: "Overwrite root's .ssh/authorized_keys or add a root cronjob via Redis: redis-cli config set dir /root/.ssh",
+			ServiceName:   "Redis",
+			Port:          6379,
+			IsDangerous:   true,
+			Reason:        "Redis instance requires NO AUTHENTICATION. Accessible from localhost.",
+			ExploitHint:   "Overwrite root's .ssh/authorized_keys or add a root cronjob via Redis: redis-cli config set dir /root/.ssh",
+			Remediation:   "Set 'requirepass <secret>' in /etc/redis/redis.conf",
+			ComplianceTag: "CIS-Linux-2.1.1 / NIST-IA-5",
 		}
 	}
 	return nil

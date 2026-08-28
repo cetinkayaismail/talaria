@@ -6,7 +6,7 @@ type ScanReport struct {
 	ScanTime           string                             `json:"scan_time"`
 	TargetUser         string                             `json:"target_user"`
 	TargetScanPath     string                             `json:"target_scan_path"`
-	StealthMode        bool                               `json:"stealth_mode"`
+	AuditMode          bool                               `json:"audit_mode"`
 	Secrets            []scanners.SensitiveFileResult     `json:"secrets,omitempty"`
 	SecretContent      []scanners.SensitiveContentResult  `json:"secret_content,omitempty"`
 	Capabilities       []scanners.CapabilityResult        `json:"capabilities,omitempty"`

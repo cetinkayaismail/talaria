@@ -5,10 +5,12 @@ import (
 )
 
 type GroupResult struct {
-	GroupName   string
-	IsDangerous bool
-	Reason      string
-	ExploitHint string
+	GroupName     string `json:"group_name"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // PrivilegedGroups lists groups that often lead to privilege escalation usefull docker privescalation and lateral movement
@@ -37,7 +39,6 @@ var GroupExploits = map[string]string{
 }
 
 // ScanGroups checks if the current user belongs to any high-risk groups 
-// this will show  if we are member of any group that can lead to privilege escalation 
 func ScanGroups() ([]GroupResult, error) {
 	var results []GroupResult
 
@@ -59,21 +60,27 @@ func ScanGroups() ([]GroupResult, error) {
 
 		isDangerous := false
 		reason := ""
-
 		exploitHint := ""
+		remediation := ""
+		complianceTag := ""
+
 		if desc, exists := PrivilegedGroups[group.Name]; exists {
 			isDangerous = true
 			reason = desc
 			if hint, ok := GroupExploits[group.Name]; ok {
 				exploitHint = hint
 			}
+			remediation = "gpasswd -d " + currentUser.Username + " " + group.Name
+			complianceTag = "CIS-Linux-5.4.1 / NIST-AC-6(2)"
 		}
 
 		results = append(results, GroupResult{
-			GroupName:   group.Name,
-			IsDangerous: isDangerous,
-			Reason:      reason,
-			ExploitHint: exploitHint,
+			GroupName:     group.Name,
+			IsDangerous:   isDangerous,
+			Reason:        reason,
+			ExploitHint:   exploitHint,
+			Remediation:   remediation,
+			ComplianceTag: complianceTag,
 		})
 	}
 

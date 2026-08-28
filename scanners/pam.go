@@ -10,12 +10,14 @@ import (
 
 // PAMResult represents a vulnerability or misconfiguration found in PAM policies.
 type PAMResult struct {
-	Path        string `json:"path"`
-	Type        string `json:"type"`
-	RiskLevel   string `json:"risk_level"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint"`
-	IsDangerous bool   `json:"is_dangerous"`
+	Path          string `json:"path"`
+	Type          string `json:"type"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
 }
 
 // Security module search directories on Linux
@@ -54,12 +56,14 @@ func ScanPAM() ([]PAMResult, error) {
 			fileUID, fileGID := getFileOwnership(fileInfo)
 			if userCtx.CanWrite(fileUID, fileGID, mode) {
 				results = append(results, PAMResult{
-					Path:        filePath,
-					Type:        "pam_config_writable",
-					RiskLevel:   "CRITICAL",
-					Reason:      "PAM configuration file is writable by current user (authentication bypass vector)",
-					ExploitHint: "echo 'auth sufficient pam_permit.so' >> " + filePath,
-					IsDangerous: true,
+					Path:          filePath,
+					Type:          "pam_config_writable",
+					RiskLevel:     "CRITICAL",
+					Reason:        "PAM configuration file is writable by current user (authentication bypass vector)",
+					ExploitHint:   "echo 'auth sufficient pam_permit.so' >> " + filePath,
+					Remediation:   "chown root:root " + filePath + " && chmod 0644 " + filePath,
+					ComplianceTag: "CIS-Linux-5.3.3 / DISA-STIG-V-230360",
+					IsDangerous:   true,
 				})
 			}
 		}
@@ -88,12 +92,14 @@ func ScanPAM() ([]PAMResult, error) {
 							mode := uint32(info.Mode().Perm())
 							if userCtx != nil && userCtx.CanWrite(uid, gid, mode) {
 								results = append(results, PAMResult{
-									Path:        scriptPath,
-									Type:        "pam_exec_writable",
-									RiskLevel:   "CRITICAL",
-									Reason:      "Script executed by pam_exec in " + entry.Name() + " is writable",
-									ExploitHint: "echo 'chmod +s /bin/bash' >> " + scriptPath,
-									IsDangerous: true,
+									Path:          scriptPath,
+									Type:          "pam_exec_writable",
+									RiskLevel:     "CRITICAL",
+									Reason:        "Script executed by pam_exec in " + entry.Name() + " is writable",
+									ExploitHint:   "echo 'chmod +s /bin/bash' >> " + scriptPath,
+									Remediation:   "chown root:root " + scriptPath + " && chmod 0700 " + scriptPath,
+									ComplianceTag: "CIS-Linux-5.3.3 / NIST-IA-2",
+									IsDangerous:   true,
 								})
 							}
 						}
@@ -114,12 +120,14 @@ func ScanPAM() ([]PAMResult, error) {
 								mode := uint32(info.Mode().Perm())
 								if userCtx != nil && userCtx.CanWrite(uid, gid, mode) {
 									results = append(results, PAMResult{
-										Path:        envPath,
-										Type:        "pam_env_writable",
-										RiskLevel:   "HIGH",
-										Reason:      "Environment file referenced by pam_env in " + entry.Name() + " is writable",
-										ExploitHint: "echo 'LD_PRELOAD=/tmp/evil.so' >> " + envPath,
-										IsDangerous: true,
+										Path:          envPath,
+										Type:          "pam_env_writable",
+										RiskLevel:     "HIGH",
+										Reason:        "Environment file referenced by pam_env in " + entry.Name() + " is writable",
+										ExploitHint:   "echo 'LD_PRELOAD=/tmp/evil.so' >> " + envPath,
+										Remediation:   "chown root:root " + envPath + " && chmod 0640 " + envPath,
+										ComplianceTag: "CIS-Linux-5.3.3 / NIST-IA-5",
+										IsDangerous:   true,
 									})
 								}
 							}
@@ -142,12 +150,14 @@ func ScanPAM() ([]PAMResult, error) {
 								mode := uint32(info.Mode().Perm())
 								if userCtx != nil && userCtx.CanWrite(uid, gid, mode) {
 									results = append(results, PAMResult{
-										Path:        fullPath,
-										Type:        "pam_module_writable",
-										RiskLevel:   "CRITICAL",
-										Reason:      "PAM module " + modulePath + " referenced in " + entry.Name() + " is writable",
-										ExploitHint: "Overwrite " + fullPath + " with a custom malicious shared library",
-										IsDangerous: true,
+										Path:          fullPath,
+										Type:          "pam_module_writable",
+										RiskLevel:     "CRITICAL",
+										Reason:        "PAM module " + modulePath + " referenced in " + entry.Name() + " is writable",
+										ExploitHint:   "Overwrite " + fullPath + " with a custom malicious shared library",
+										Remediation:   "chown root:root " + fullPath + " && chmod 0755 " + fullPath,
+										ComplianceTag: "CIS-Linux-5.3.3 / NIST-SI-7",
+										IsDangerous:   true,
 									})
 								}
 								break
@@ -159,12 +169,14 @@ func ScanPAM() ([]PAMResult, error) {
 							mode := uint32(info.Mode().Perm())
 							if userCtx != nil && userCtx.CanWrite(uid, gid, mode) {
 								results = append(results, PAMResult{
-									Path:        modulePath,
-									Type:        "pam_module_writable",
-									RiskLevel:   "CRITICAL",
-									Reason:      "PAM module " + modulePath + " is writable by current user",
-									ExploitHint: "Overwrite " + modulePath + " with a malicious shared library",
-									IsDangerous: true,
+									Path:          modulePath,
+									Type:          "pam_module_writable",
+									RiskLevel:     "CRITICAL",
+									Reason:        "PAM module " + modulePath + " is writable by current user",
+									ExploitHint:   "Overwrite " + modulePath + " with a malicious shared library",
+									Remediation:   "chown root:root " + modulePath + " && chmod 0755 " + modulePath,
+									ComplianceTag: "CIS-Linux-5.3.3 / NIST-SI-7",
+									IsDangerous:   true,
 								})
 							}
 						}

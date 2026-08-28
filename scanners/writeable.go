@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -13,15 +14,17 @@ import (
 )
 
 type WriteableResult struct {
-	Path            string
-	Owner           string
-	OwnerUID        int
-	CurrentUserOwns bool
-	IsExecutable    bool
-	IsDangerous     bool
-	Type            string // Writable (Own), Writable (Root), Writable (Other User), SUID Writable
-	RiskLevel       string // CRITICAL, HIGH, MEDIUM, LOW
-	Reason          string
+	Path            string `json:"path"`
+	Owner           string `json:"owner,omitempty"`
+	OwnerUID        int    `json:"owner_uid,omitempty"`
+	CurrentUserOwns bool   `json:"current_user_owns"`
+	IsExecutable    bool   `json:"is_executable"`
+	IsDangerous     bool   `json:"is_dangerous"`
+	Type            string `json:"type,omitempty"` // Writable (Own), Writable (Root), Writable (Other User), SUID Writable
+	RiskLevel       string `json:"risk_level"`     // CRITICAL, HIGH, MEDIUM, LOW
+	Reason          string `json:"reason"`
+	Remediation     string `json:"remediation,omitempty"`
+	ComplianceTag   string `json:"compliance_tag,omitempty"`
 }
 
 func ScanWriteable(root string) ([]WriteableResult, error) {
@@ -118,6 +121,8 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 					Type:            "SUID Writable",
 					RiskLevel:       "CRITICAL",
 					Reason:          "SUID binary is writable. Attackers can overwrite it to gain immediate root access.",
+					Remediation:     fmt.Sprintf("chmod o-w,g-w %s && chmod u-s %s", path, path),
+					ComplianceTag:   "CIS-Linux-6.1.13 / NIST-AC-6(1)",
 				})
 			}
 
@@ -154,6 +159,8 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 					Type:            "Writable (Other User)",
 					RiskLevel:       riskLevel,
 					Reason:          reason,
+					Remediation:     fmt.Sprintf("chmod o-w,g-w %s", path),
+					ComplianceTag:   "CIS-Linux-6.2.11 / NIST-AC-6",
 				})
 			}
 
@@ -205,6 +212,8 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 						Type:            "Writable (Root)",
 						RiskLevel:       riskLevel,
 						Reason:          reason,
+						Remediation:     fmt.Sprintf("chmod o-w,g-w %s && chown root:root %s", path, path),
+						ComplianceTag:   "CIS-Linux-6.2.11 / NIST-CM-6",
 					})
 				}
 			}

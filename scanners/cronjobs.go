@@ -16,14 +16,25 @@ import (
 
 // CronJobResult matches your main.go expectations
 type CronJobResult struct {
-	Owner           string
-	Schedule        string
-	Command         string
-	IsRootJob       bool
-	IsPrivilegedJob bool // Added back to fix main.go errors
-	IsDangerous     bool
-	Reason          string
-	CronFile        string
+	Owner           string `json:"owner"`
+	Schedule        string `json:"schedule"`
+	Command         string `json:"command"`
+	IsRootJob       bool   `json:"is_root_job"`
+	IsPrivilegedJob bool   `json:"is_privileged_job"`
+	IsDangerous     bool   `json:"is_dangerous"`
+	Reason          string `json:"reason,omitempty"`
+	CronFile        string `json:"cron_file,omitempty"`
+	Remediation     string `json:"remediation,omitempty"`
+	ComplianceTag   string `json:"compliance_tag,omitempty"`
+}
+
+type SystemdTimerResult struct {
+	Path          string `json:"path"`
+	ServiceName   string `json:"service_name,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanCronJobs analyzes time-based execution for vulnerabilities
@@ -177,6 +188,11 @@ func analyzeCronLine(line string, filePath string, currentUID int) *CronJobResul
 	}
 
 	if isRoot || isDangerous {
+		remediation := ""
+		complianceTag := "CIS-Linux-5.1.2 / NIST-CM-6"
+		if isDangerous {
+			remediation = fmt.Sprintf("chown root:root %s && chmod 0600 %s", filePath, filePath)
+		}
 		return &CronJobResult{
 			Owner:           jobOwner,
 			Schedule:        strings.Join(fields[0:5], " "),
@@ -186,6 +202,8 @@ func analyzeCronLine(line string, filePath string, currentUID int) *CronJobResul
 			IsDangerous:     isDangerous,
 			Reason:          reason,
 			CronFile:        filePath,
+			Remediation:     remediation,
+			ComplianceTag:   complianceTag,
 		}
 	}
 	return nil
@@ -262,13 +280,6 @@ func ScanAnacronWritability() ([]WriteableResult, error) {
 	return results, nil
 }
 
-// SystemdTimerResult holds findings for systemd unit files
-type SystemdTimerResult struct {
-	Path        string
-	IsDangerous bool
-	Reason      string
-}
-
 // ScanSystemdTimers checks for writeable systemd timer or service files this might lead direct root
 func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 	var results []SystemdTimerResult
@@ -339,9 +350,11 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 					if err == nil && targetPath != p && targetPath != "/dev/null" {
 						if writable, reason := checkWriteable(targetPath); writable {
 							results = append(results, SystemdTimerResult{
-								Path:        p,
-								IsDangerous: true,
-								Reason:      fmt.Sprintf("Systemd symlink target is writable: %s (%s)", targetPath, reason),
+								Path:          p,
+								IsDangerous:   true,
+								Reason:        fmt.Sprintf("Systemd symlink target is writable: %s (%s)", targetPath, reason),
+								Remediation:   fmt.Sprintf("chown root:root %s && chmod 0644 %s", targetPath, targetPath),
+								ComplianceTag: "CIS-Linux-5.1.9 / NIST-CM-6",
 							})
 						}
 					}
@@ -349,9 +362,11 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 					// Real file — check directly
 					if writable, reason := checkWriteable(p); writable {
 						results = append(results, SystemdTimerResult{
-							Path:        p,
-							IsDangerous: true,
-							Reason:      fmt.Sprintf("Writable systemd unit file (%s)", reason),
+							Path:          p,
+							IsDangerous:   true,
+							Reason:        fmt.Sprintf("Writable systemd unit file (%s)", reason),
+							Remediation:   fmt.Sprintf("chown root:root %s && chmod 0644 %s && systemctl daemon-reload", p, p),
+							ComplianceTag: "CIS-Linux-5.1.9 / NIST-CM-6",
 						})
 					}
 				}
@@ -378,9 +393,11 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 								if strings.HasPrefix(execPath, "/") {
 									if writable, reason := checkWriteable(execPath); writable {
 										results = append(results, SystemdTimerResult{
-											Path:        p,
-											IsDangerous: true,
-											Reason:      fmt.Sprintf("Service executes a writable script/binary: %s (%s)", execPath, reason),
+											Path:          p,
+											IsDangerous:   true,
+											Reason:        fmt.Sprintf("Service executes a writable script/binary: %s (%s)", execPath, reason),
+											Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s", execPath, execPath),
+											ComplianceTag: "CIS-Linux-5.1.9 / NIST-SI-7",
 										})
 									}
 								}

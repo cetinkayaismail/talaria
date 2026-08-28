@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,12 +11,14 @@ import (
 
 // HistorySecretResult holds a matched sensitive shell command finding
 type HistorySecretResult struct {
-	User        string `json:"user"`
-	HistoryFile string `json:"history_file"`
-	LineNumber  int    `json:"line_number"`
-	Command     string `json:"command"`
-	RiskLevel   string `json:"risk_level"`
-	Reason      string `json:"reason"`
+	User          string `json:"user"`
+	HistoryFile   string `json:"history_file"`
+	LineNumber    int    `json:"line_number"`
+	Command       string `json:"command"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanHistoryFiles audits all local user shell histories for leaked credentials
@@ -205,19 +208,21 @@ func auditHistoryLine(line string, username string, path string, lineNum int) *H
 		return nil
 	}
 
-	// In professional mode mask the value; in CTF mode keep cleartext for direct use
+	// In professional/audit mode mask the value; in CTF mode keep cleartext for direct use
 	displayCmd := line
-	if StealthCfg.MaskSecrets {
+	if AuditCfg.MaskSecrets {
 		displayCmd = maskCredentials(line, secretVal)
 	}
 
 	return &HistorySecretResult{
-		User:        username,
-		HistoryFile: path,
-		LineNumber:  lineNum,
-		Command:     displayCmd,
-		RiskLevel:   "CRITICAL",
-		Reason:      reason,
+		User:          username,
+		HistoryFile:   path,
+		LineNumber:    lineNum,
+		Command:       displayCmd,
+		RiskLevel:     "CRITICAL",
+		Reason:        reason,
+		Remediation:   fmt.Sprintf("history -d %d (or clear history via 'history -c && rm %s')", lineNum, path),
+		ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5",
 	}
 }
 

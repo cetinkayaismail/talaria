@@ -300,9 +300,9 @@ func parseEnviron(data []byte) []string {
 				continue
 			}
 
-			// Mask only in professional mode; CTF mode shows cleartext for immediate use
+			// Mask only in professional/audit mode; CTF mode shows cleartext for immediate use
 			displayVal := val
-			if StealthCfg.MaskSecrets {
+			if AuditCfg.MaskSecrets {
 				displayVal = maskSecretValue(val)
 			}
 			envSecrets = append(envSecrets, key+"="+displayVal)

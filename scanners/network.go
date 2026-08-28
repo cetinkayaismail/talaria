@@ -13,17 +13,19 @@ import (
 
 // NetworkConnectionResult stores details about local network listeners
 type NetworkConnectionResult struct {
-	Protocol    string
-	LocalAddr   string
-	LocalPort   int
-	RemoteAddr  string
-	RemotePort  int
-	State       string
-	PID         int
-	ProcessName string
-	IsDangerous bool
-	RiskLevel   string // CRITICAL / HIGH / MEDIUM / INFO
-	Reason      string
+	Protocol      string `json:"protocol"`
+	LocalAddr     string `json:"local_addr"`
+	LocalPort     int    `json:"local_port"`
+	RemoteAddr    string `json:"remote_addr"`
+	RemotePort    int    `json:"remote_port"`
+	State         string `json:"state"`
+	PID           int    `json:"pid"`
+	ProcessName   string `json:"process_name"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	RiskLevel     string `json:"risk_level"` // CRITICAL / HIGH / MEDIUM / INFO
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanNetworkConnections reads /proc/net to find internal services
@@ -206,19 +208,25 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 		}
 
 		isDangerous := finalRisk == "CRITICAL" || finalRisk == "HIGH"
+		remediation := ""
+		if isDangerous || isExposedAll {
+			remediation = fmt.Sprintf("Bind service on port %d to 127.0.0.1 or configure host firewall (iptables/nftables)", localPort)
+		}
 
 		results = append(results, NetworkConnectionResult{
-			Protocol:    protocol,
-			LocalAddr:   localIP,
-			LocalPort:   localPort,
-			RemoteAddr:  remoteIP,
-			RemotePort:  remotePort,
-			State:       state,
-			PID:         0,
-			ProcessName: procName,
-			IsDangerous: isDangerous,
-			RiskLevel:   finalRisk,
-			Reason:      reason,
+			Protocol:      protocol,
+			LocalAddr:     localIP,
+			LocalPort:     localPort,
+			RemoteAddr:    remoteIP,
+			RemotePort:    remotePort,
+			State:         state,
+			PID:           0,
+			ProcessName:   procName,
+			IsDangerous:   isDangerous,
+			RiskLevel:     finalRisk,
+			Reason:        reason,
+			Remediation:   remediation,
+			ComplianceTag: "CIS-Linux-2.1.1 / NIST-SC-7",
 		})
 	}
 	return results

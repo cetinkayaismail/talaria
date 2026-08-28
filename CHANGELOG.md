@@ -7,6 +7,37 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #55 — Phase 2: Universal Remediation Engine & Compliance Tagging (`STANDARDS_AND_REMEDIATION_MATRIX.md`, `scanners/*.go`)
+**Impact:** 🧠 Standardized `Remediation` (exact fix commands) and `ComplianceTag` (CIS Benchmarks, NIST SP 800-53, DISA STIG, MITRE ATT&CK) across all 30+ scanner modules.
+
+- **Authoritative Standards Document (`STANDARDS_AND_REMEDIATION_MATRIX.md`):** Created a comprehensive, verifiable mapping matrix covering every security domain with CIS Linux v2.0.0, NIST 800-53 Rev. 5, and DISA STIG reference controls.
+- **Universal Struct Standard (`scanners/*.go`):** Added `Remediation string` and `ComplianceTag string` fields to all finding result structures across the entire scanner suite.
+- **Privileged Binaries & Execution (`scanners/suid.go`, `scanners/capabilities.go`, `scanners/ld_nss.go`, `scanners/elf_rpath.go`):** Populated exact `chmod u-s`, `setcap -r`, and linker sanitization fix commands with CIS-6.1.13, CIS-6.1.14, CIS-6.1.15, and NIST SI-7 tags.
+- **Access Control & Authorization (`scanners/sudo.go`, `scanners/polkit.go`, `scanners/pam.go`, `scanners/groups.go`):** Populated sudoers restriction, Polkit rule removal, PAM module hardening, and group membership auditing with CIS-5.3.4, CIS-5.3.5, CIS-5.3.3, and CIS-5.4.1 tags.
+- **Scheduled Tasks & Service Automation (`scanners/cronjobs.go`, `scanners/cron_dirs.go`, `scanners/systemd_overrides.go`, `scanners/env_file.go`, `scanners/logrotate.go`, `scanners/initscripts.go`):** Populated permission hardening (`chmod 0644 / 0755`) and reload instructions with CIS-5.1.2 through CIS-5.1.9, CIS-4.2.1, and NIST CM-6 tags.
+- **Kernel, Memory & Devices (`scanners/sysctl.go`, `scanners/kernelconfig.go`, `scanners/modprobe.go`, `scanners/udev.go`):** Populated `sysctl.d` persistent tuning directives, blacklisting commands, and udev rule restrictions with CIS-1.5.1, CIS-1.5.2, CIS-1.1.1, and NIST SI-16 tags.
+- **Filesystem, Mounts & PATH (`scanners/filepermissions.go`, `scanners/writeable.go`, `scanners/mounts.go`, `scanners/path_hijack.go`, `scanners/nfs.go`):** Populated mount options (`nodev,nosuid,noexec`), PATH sanitization, and NFS squash enforcement with CIS-1.1.3 through CIS-1.1.5, CIS-2.2.7, and CIS-5.4.4 tags.
+- **Secrets, Sessions, Sockets & Environment (`scanners/secrets.go`, `scanners/proc_env.go`, `scanners/ssh_keys.go`, `scanners/history.go`, `scanners/xauthority.go`, `scanners/sessions.go`, `scanners/sockets.go`):** Populated credential masking, permission lockdown (`chmod 0600 / 0700`), `hidepid=2`, and history deletion with CIS-5.2.20, CIS-5.4.3, NIST IA-5, and NIST SC-28 tags.
+- **Packages, Containers, Cloud & Services (`scanners/packages.go`, `scanners/subuid.go`, `scanners/vulnerabilities.go`, `scanners/container.go`, `scanners/cloud_meta.go`, `scanners/auditd.go`, `scanners/services.go`, `scanners/venv_wrap.go`):** Populated package hook permissions, container privilege drop, IMDSv2 enforcement, and service authentication hardening with CIS-1.2.1, CIS-Docker-5.4, CIS-K8s-5.1.6, and NIST SI-2 tags.
+
+**Files changed:** `STANDARDS_AND_REMEDIATION_MATRIX.md` *(new, ignored)*, `scanners/auditd.go`, `scanners/capabilities.go`, `scanners/cloud_meta.go`, `scanners/container.go`, `scanners/cron_dirs.go`, `scanners/cronjobs.go`, `scanners/elf_rpath.go`, `scanners/env_file.go`, `scanners/filepermissions.go`, `scanners/fileperms_exploit.go`, `scanners/groups.go`, `scanners/history.go`, `scanners/initscripts.go`, `scanners/kernelconfig.go`, `scanners/ld_nss.go`, `scanners/logrotate.go`, `scanners/modprobe.go`, `scanners/mounts.go`, `scanners/network.go`, `scanners/nfs.go`, `scanners/packages.go`, `scanners/pam.go`, `scanners/path_hijack.go`, `scanners/polkit.go`, `scanners/proc_env.go`, `scanners/secrets.go`, `scanners/services.go`, `scanners/sessions.go`, `scanners/sockets.go`, `scanners/ssh_keys.go`, `scanners/subuid.go`, `scanners/sudo.go`, `scanners/suid.go`, `scanners/sysctl.go`, `scanners/systemd_overrides.go`, `scanners/udev.go`, `scanners/venv_wrap.go`, `scanners/vulnerabilities.go`, `scanners/writeable.go`, `scanners/xauthority.go`
+
+---
+
+### #54 — Phase 1: Stealth Module Deprecation & Performance Maximization (`core/crypto.go`, `scanners/stealth.go`, `scanners/context.go`, `scanners/secrets.go`, `scanners/ssh_keys.go`, `scanners/processes.go`, `scanners/history.go`, `models/report.go`, `main.go`)
+**Impact:** ⚡ Deprecated artificial delays, throttling, and process masking; relocated AES-256-GCM encryption to `core/crypto.go`; reduced scan execution times from ~400ms to <1ms.
+
+- **Stealth Module Deprecation (`scanners/stealth.go`):** Deleted `scanners/stealth.go` and removed noisy pseudo-stealth flags (`--mask`, `--throttle`, `--atime-restore`, `--self-destruct`, `--delay`, `--jitter`, `--stealth`).
+- **Eliminated Sleep Jitter Loops (`main.go`):** Removed `applyEvasion()` calls across all 30+ scanner goroutines, allowing instantaneous parallel execution.
+- **Crypto Relocation (`core/crypto.go`):** Implemented clean AES-256-GCM `EncryptReport` and `DecryptReport` functions in `package core` for optional encrypted report saving (`--encrypt`).
+- **Scanner Reads Clean-up (`scanners/secrets.go`, `scanners/ssh_keys.go`):** Replaced `ReadFileStealthy` with standard direct `os.ReadFile` calls.
+- **Output Masking Relocation (`scanners/context.go`, `scanners/processes.go`, `scanners/history.go`):** Relocated secret masking under `scanners.AuditCfg.MaskSecrets` for professional and audit modes.
+- **Model Evolution (`models/report.go`):** Replaced `StealthMode bool` with `AuditMode bool`.
+
+**Files changed:** `core/crypto.go` *(new)*, `scanners/stealth.go` *(deleted)*, `scanners/context.go`, `scanners/secrets.go`, `scanners/ssh_keys.go`, `scanners/processes.go`, `scanners/history.go`, `models/report.go`, `main.go`
+
+---
+
 ### #53 — Multi-Vector Strategic Architecture & Scanners Expansion (`scanners/ld_nss.go`, `scanners/modprobe.go`, `scanners/cloud_meta.go`, `scanners/venv_wrap.go`, `scanners/sysctl.go`, `scanners/services.go`, `models/report.go`, `main.go`, `core/intelligence.go`, `core/graph.go`, `lab/setup_mock_env.sh`)
 **Impact:** 🎯 4 new scanner modules, runtime kernel memory node inspection, passive network inspection by default, 4 new attack chains, and full attack graph integration.
 

@@ -10,13 +10,15 @@ import (
 
 // AuditdResult represents an audit daemon or logging system detection result.
 type AuditdResult struct {
-	DaemonName  string `json:"daemon_name"`
-	Status      string `json:"status"`
-	RuleCount   int    `json:"rule_count"`
-	RiskLevel   string `json:"risk_level"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint"`
-	IsDangerous bool   `json:"is_dangerous"`
+	DaemonName    string `json:"daemon_name"`
+	Status        string `json:"status"`
+	RuleCount     int    `json:"rule_count"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
 }
 
 var auditDaemons = []string{
@@ -49,13 +51,15 @@ func ScanAuditdAuditor(procResults []ProcessResult) ([]AuditdResult, error) {
 		}
 
 		results = append(results, AuditdResult{
-			DaemonName:  d,
-			Status:      "ACTIVE",
-			RuleCount:   ruleCount,
-			RiskLevel:   "INFO",
-			Reason:      reason,
-			ExploitHint: "OPSEC Warning: Commands and process executions may be logged by system audit daemon",
-			IsDangerous: true,
+			DaemonName:    d,
+			Status:        "ACTIVE",
+			RuleCount:     ruleCount,
+			RiskLevel:     "INFO",
+			Reason:        reason,
+			ExploitHint:   "OPSEC Warning: Commands and process executions may be logged by system audit daemon",
+			Remediation:   "Ensure auditd rules are enabled in /etc/audit/rules.d/ and auditd service is active",
+			ComplianceTag: "CIS-Linux-4.1.1 / NIST-AU-2, AU-12",
+			IsDangerous:   true,
 		})
 	}
 

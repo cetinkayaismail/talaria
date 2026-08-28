@@ -15,11 +15,13 @@ import (
 // --- Structs ---
 
 type VersionInfo struct {
-	Software        string
-	Version         string
-	FullOutput      string
-	IsDangerous     bool
-	Vulnerabilities []KernelVulnerability
+	Software        string                `json:"software"`
+	Version         string                `json:"version"`
+	FullOutput      string                `json:"full_output,omitempty"`
+	IsDangerous     bool                  `json:"is_dangerous"`
+	Vulnerabilities []KernelVulnerability `json:"vulnerabilities,omitempty"`
+	Remediation     string                `json:"remediation,omitempty"`
+	ComplianceTag   string                `json:"compliance_tag,omitempty"`
 }
 
 type DistroInfo struct {
@@ -28,15 +30,17 @@ type DistroInfo struct {
 }
 
 type KernelVulnerability struct {
-	CVE         string
-	Name        string
-	Description string
-	MinVersion  [3]int            // [major, minor, patch] — inclusive lower bound
-	MaxVersion  [3]int            // [major, minor, patch] — inclusive upper bound
-	FixedIn     map[string]string // distroID -> fixedVersion (e.g., "ubuntu" -> "5.4.0-101")
-	IsCritical  bool
-	ExploitHint string
-	PatchStatus string // "vulnerable", "likely_patched", or ""
+	CVE           string            `json:"cve"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	MinVersion    [3]int            `json:"min_version"`
+	MaxVersion    [3]int            `json:"max_version"`
+	FixedIn       map[string]string `json:"fixed_in,omitempty"`
+	IsCritical    bool              `json:"is_critical"`
+	ExploitHint   string            `json:"exploit_hint,omitempty"`
+	PatchStatus   string            `json:"patch_status,omitempty"`
+	Remediation   string            `json:"remediation,omitempty"`
+	ComplianceTag string            `json:"compliance_tag,omitempty"`
 }
 
 // kernelVulnerabilities is the CVE database.
@@ -310,12 +314,20 @@ func ScanSystemVersions(_ ...time.Duration) ([]VersionInfo, error) {
 		parsed := parseKernelVersion(kernelVer)
 		vulns := checkKernelRange(parsed, kernelVer, distro)
 
+		remediation := ""
+		complianceTag := "CIS-Linux-1.2.2 / NIST-SI-2"
+		if len(vulns) > 0 {
+			remediation = "Upgrade Linux kernel to patched release (apt-get dist-upgrade / dnf upgrade)"
+		}
+
 		results = append(results, VersionInfo{
 			Software:        "Kernel",
 			Version:         kernelVer,
 			FullOutput:      kernelVer,
 			IsDangerous:     len(vulns) > 0,
 			Vulnerabilities: vulns,
+			Remediation:     remediation,
+			ComplianceTag:   complianceTag,
 		})
 	}
 
@@ -328,10 +340,16 @@ func ScanSystemVersions(_ ...time.Duration) ([]VersionInfo, error) {
 	sudoVer := readBinaryVersion("sudo", "-V", `Sudo version (\d+\.\d+[\.\d]*)`)
 	if sudoVer != "" {
 		isDangerous := compareVersionParsed(sudoVer, "1.9.5") <= 0
+		remediation := ""
+		if isDangerous {
+			remediation = "Upgrade sudo package to >= 1.9.5p2 (apt-get install --only-upgrade sudo)"
+		}
 		results = append(results, VersionInfo{
-			Software:    "Sudo",
-			Version:     sudoVer,
-			IsDangerous: isDangerous,
+			Software:      "Sudo",
+			Version:       sudoVer,
+			IsDangerous:   isDangerous,
+			Remediation:   remediation,
+			ComplianceTag: "CIS-Linux-1.2.2 / NIST-SI-2",
 		})
 	}
 
@@ -339,17 +357,25 @@ func ScanSystemVersions(_ ...time.Duration) ([]VersionInfo, error) {
 	pkexecVer := readBinaryVersion("pkexec", "--version", `pkexec version (\d+\.\d+[\.\d]*)`)
 	if pkexecVer != "" {
 		isDangerous := compareVersionParsed(pkexecVer, "0.120") <= 0
+		remediation := ""
+		if isDangerous {
+			remediation = "Upgrade policykit-1 / polkit package to >= 0.120 (chmod 0755 /usr/bin/pkexec temporary mitigation)"
+		}
 		result := VersionInfo{
-			Software:    "Polkit/pkexec",
-			Version:     pkexecVer,
-			IsDangerous: isDangerous,
+			Software:      "Polkit/pkexec",
+			Version:       pkexecVer,
+			IsDangerous:   isDangerous,
+			Remediation:   remediation,
+			ComplianceTag: "CIS-Linux-1.2.2 / NIST-SI-2",
 		}
 		if isDangerous {
 			result.Vulnerabilities = []KernelVulnerability{{
-				CVE:         "CVE-2021-4034",
-				Name:        "PwnKit",
-				IsCritical:  true,
-				ExploitHint: "github.com/ly4k/PwnKit",
+				CVE:           "CVE-2021-4034",
+				Name:          "PwnKit",
+				IsCritical:    true,
+				ExploitHint:   "github.com/ly4k/PwnKit",
+				Remediation:   "chmod 0755 /usr/bin/pkexec or upgrade policykit-1",
+				ComplianceTag: "CIS-Linux-1.2.2 / NIST-SI-2",
 			}}
 		}
 		results = append(results, result)

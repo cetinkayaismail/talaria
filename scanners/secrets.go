@@ -22,15 +22,19 @@ var headerPool = sync.Pool{
 
 // SensitiveFileResult represents a file that matches sensitive patterns
 type SensitiveFileResult struct {
-	Path      string
-	Type      string
-	RiskLevel string
+	Path          string `json:"path"`
+	Type          string `json:"type"`
+	RiskLevel     string `json:"risk_level"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // SensitiveContentResult represents a specific credential found inside a file
 type SensitiveContentResult struct {
-	Path    string
-	Snippet string // What was found: "Password: p@ssw0rd", "OpenVPN user: admin"
+	Path          string `json:"path"`
+	Snippet       string `json:"snippet"` // What was found: "Password: p@ssw0rd", "OpenVPN user: admin"
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // --- Pattern definitions ---
@@ -118,13 +122,17 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 				snippet := previewFirstLine(path)
 				if snippet != "" {
 					fileResults = append(fileResults, SensitiveFileResult{
-						Path:      path,
-						Type:      "Critical File (" + pattern + ")",
-						RiskLevel: "CRITICAL",
+						Path:          path,
+						Type:          "Critical File (" + pattern + ")",
+						RiskLevel:     "CRITICAL",
+						Remediation:   "chmod 0600 " + path,
+						ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
 					})
 					contentResults = append(contentResults, SensitiveContentResult{
-						Path:    path,
-						Snippet: "Preview: " + snippet,
+						Path:          path,
+						Snippet:       "Preview: " + snippet,
+						Remediation:   "chmod 0600 " + path,
+						ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
 					})
 				}
 				goto nextEntry
@@ -135,9 +143,11 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 		for _, pattern := range mediumFilePatterns {
 			if strings.Contains(fileName, pattern) {
 				fileResults = append(fileResults, SensitiveFileResult{
-					Path:      path,
-					Type:      "Config File (" + pattern + ")",
-					RiskLevel: "MEDIUM",
+					Path:          path,
+					Type:          "Config File (" + pattern + ")",
+					RiskLevel:     "MEDIUM",
+					Remediation:   "chmod 0600 " + path,
+					ComplianceTag: "CIS-Linux-5.4.3 / NIST-SC-28",
 				})
 				isInteresting = true
 				break
@@ -158,14 +168,18 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 			snippet := analyzeFileContent(path, fileName)
 			if snippet != "" {
 				contentResults = append(contentResults, SensitiveContentResult{
-					Path:    path,
-					Snippet: snippet,
+					Path:          path,
+					Snippet:       snippet,
+					Remediation:   "chmod 0600 " + path,
+					ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
 				})
 				if !isInteresting {
 					fileResults = append(fileResults, SensitiveFileResult{
-						Path:      path,
-						Type:      "Content Match",
-						RiskLevel: "HIGH",
+						Path:          path,
+						Type:          "Content Match",
+						RiskLevel:     "HIGH",
+						Remediation:   "chmod 0600 " + path,
+						ComplianceTag: "CIS-Linux-5.4.3 / NIST-SC-28",
 					})
 				}
 			}
@@ -209,9 +223,11 @@ func ScanRootSecrets() ([]SensitiveFileResult, []SensitiveContentResult) {
 			for _, pattern := range criticalFilePatterns {
 				if strings.Contains(fileName, pattern) {
 					fileResults = append(fileResults, SensitiveFileResult{
-						Path:      path,
-						Type:      "Root Hidden Secret (" + pattern + ")",
-						RiskLevel: "CRITICAL",
+						Path:          path,
+						Type:          "Root Hidden Secret (" + pattern + ")",
+						RiskLevel:     "CRITICAL",
+						Remediation:   "chmod 0600 " + path,
+						ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
 					})
 					isCritical = true
 					break
@@ -222,14 +238,18 @@ func ScanRootSecrets() ([]SensitiveFileResult, []SensitiveContentResult) {
 			snippet := analyzeFileContent(path, fileName)
 			if snippet != "" {
 				contentResults = append(contentResults, SensitiveContentResult{
-					Path:    path,
-					Snippet: snippet,
+					Path:          path,
+					Snippet:       snippet,
+					Remediation:   "chmod 0600 " + path,
+					ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
 				})
 				if !isCritical {
 					fileResults = append(fileResults, SensitiveFileResult{
-						Path:      path,
-						Type:      "Root Hidden Content Match",
-						RiskLevel: "HIGH",
+						Path:          path,
+						Type:          "Root Hidden Content Match",
+						RiskLevel:     "HIGH",
+						Remediation:   "chmod 0600 " + path,
+						ComplianceTag: "CIS-Linux-5.4.3 / NIST-SC-28",
 					})
 				}
 			}
@@ -335,8 +355,7 @@ func analyzeOVPN(f *os.File, ovpnPath string) string {
 			if !filepath.IsAbs(credFile) {
 				credFile = filepath.Join(filepath.Dir(ovpnPath), credFile)
 			}
-			// Read credential file stealthily (restores atime if --atime-restore)
-			if creds, err := ReadFileStealthy(credFile); err == nil {
+			if creds, err := os.ReadFile(credFile); err == nil {
 				lines := strings.Split(strings.TrimSpace(string(creds)), "\n")
 				if len(lines) >= 2 {
 					user := strings.TrimSpace(lines[0])
@@ -582,9 +601,8 @@ func extractKeyName(line string) string {
 }
 
 // previewFirstLine returns the first non-empty line of a file (for private key confirmation).
-// Uses ReadFileStealthy so that --atime-restore applies to critical credential reads.
 func previewFirstLine(path string) string {
-	data, err := ReadFileStealthy(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}

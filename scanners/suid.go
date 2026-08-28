@@ -13,20 +13,24 @@ import (
 )
 
 type SUIDResult struct {
-	Path                 string
-	IsDangerous          bool
-	Reason               string
-	WritableLibraryPaths []string
-	ExploitHint          string
+	Path                 string   `json:"path"`
+	IsDangerous          bool     `json:"is_dangerous"`
+	Reason               string   `json:"reason,omitempty"`
+	WritableLibraryPaths []string `json:"writable_library_paths,omitempty"`
+	ExploitHint          string   `json:"exploit_hint,omitempty"`
+	Remediation          string   `json:"remediation,omitempty"`
+	ComplianceTag        string   `json:"compliance_tag,omitempty"`
 }
 
 // SGIDResult holds findings for SGID binaries
 type SGIDResult struct {
-	Path        string
-	OwnerGroup  string
-	IsDangerous bool
-	Reason      string
-	ExploitHint string
+	Path          string `json:"path"`
+	OwnerGroup    string `json:"owner_group,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason,omitempty"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // PrivilegedGroupsForSGID: owning group of an SGID binary makes it dangerous
@@ -173,12 +177,21 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 				}
 			}
 
+			remediation := ""
+			complianceTag := ""
+			if isDangerous {
+				remediation = fmt.Sprintf("chmod u-s %s", path)
+				complianceTag = "CIS-Linux-6.1.13 / NIST-AC-6(1)"
+			}
+
 			results = append(results, SUIDResult{
 				Path:                 path,
 				IsDangerous:          isDangerous,
 				Reason:               reason,
 				WritableLibraryPaths: writableLibs,
 				ExploitHint:          exploitHint,
+				Remediation:          remediation,
+				ComplianceTag:        complianceTag,
 			})
 		}
 	}
@@ -266,12 +279,21 @@ func ScanSGID(root string) ([]SGIDResult, error) {
 				exploitHint = "Binary is owned by privileged group '" + ownerGroup + "'. Exploit to gain group access."
 			}
 
+			remediation := ""
+			complianceTag := ""
+			if isDangerous {
+				remediation = fmt.Sprintf("chmod g-s %s", path)
+				complianceTag = "CIS-Linux-6.1.14 / NIST-AC-6(1)"
+			}
+
 			results = append(results, SGIDResult{
-				Path:        path,
-				OwnerGroup:  ownerGroup,
-				IsDangerous: isDangerous,
-				Reason:      reason,
-				ExploitHint: exploitHint,
+				Path:          path,
+				OwnerGroup:    ownerGroup,
+				IsDangerous:   isDangerous,
+				Reason:        reason,
+				ExploitHint:   exploitHint,
+				Remediation:   remediation,
+				ComplianceTag: complianceTag,
 			})
 		}
 	}

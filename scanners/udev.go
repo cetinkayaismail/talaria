@@ -12,13 +12,15 @@ import (
 
 // UdevResult represents a udev rule or target binary writability finding.
 type UdevResult struct {
-	Path        string `json:"path"`
-	RuleFile    string `json:"rule_file"`
-	Directive   string `json:"directive"`
-	RiskLevel   string `json:"risk_level"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint"`
-	IsDangerous bool   `json:"is_dangerous"`
+	Path          string `json:"path"`
+	RuleFile      string `json:"rule_file"`
+	Directive     string `json:"directive"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
 }
 
 var (
@@ -68,13 +70,15 @@ func ScanUdevAuditor() ([]UdevResult, error) {
 					mode := uint32(info.Mode().Perm())
 					if userCtx.CanWrite(uid, gid, mode) {
 						results = append(results, UdevResult{
-							Path:        rulePath,
-							RuleFile:    rulePath,
-							Directive:   "file_permissions",
-							RiskLevel:   "CRITICAL",
-							Reason:      fmt.Sprintf("Udev rule file '%s' is writable by current user — allows adding arbitrary 'RUN+=\"/path/payload\"' for root code execution on kernel device events", rulePath),
-							ExploitHint: fmt.Sprintf("echo 'ACTION==\"add\", SUBSYSTEM==\"net\", RUN+=\"/tmp/rootshell\"' >> %s", rulePath),
-							IsDangerous: true,
+							Path:          rulePath,
+							RuleFile:      rulePath,
+							Directive:     "file_permissions",
+							RiskLevel:     "CRITICAL",
+							Reason:        fmt.Sprintf("Udev rule file '%s' is writable by current user — allows adding arbitrary 'RUN+=\"/path/payload\"' for root code execution on kernel device events", rulePath),
+							ExploitHint:   fmt.Sprintf("echo 'ACTION==\"add\", SUBSYSTEM==\"net\", RUN+=\"/tmp/rootshell\"' >> %s", rulePath),
+							Remediation:   fmt.Sprintf("chown root:root %s && chmod 0644 %s && udevadm control --reload", rulePath, rulePath),
+							ComplianceTag: "CIS-Linux-1.1.23 / NIST-CM-6",
+							IsDangerous:   true,
 						})
 					}
 				}
@@ -163,13 +167,15 @@ func checkUdevTargetExecutable(rulePath, directive, cmdStr string, userCtx *User
 				mode := uint32(info.Mode().Perm())
 				if userCtx.CanWrite(uid, gid, mode) {
 					*results = append(*results, UdevResult{
-						Path:        target,
-						RuleFile:    rulePath,
-						Directive:   directive,
-						RiskLevel:   "CRITICAL",
-						Reason:      fmt.Sprintf("Executable '%s' referenced in udev rule '%s' (%s) is writable by current user — executes as root on kernel device events", target, rulePath, directive),
-						ExploitHint: fmt.Sprintf("Overwrite '%s' with payload -> root code execution on device add/remove", target),
-						IsDangerous: true,
+						Path:          target,
+						RuleFile:      rulePath,
+						Directive:     directive,
+						RiskLevel:     "CRITICAL",
+						Reason:        fmt.Sprintf("Executable '%s' referenced in udev rule '%s' (%s) is writable by current user — executes as root on kernel device events", target, rulePath, directive),
+						ExploitHint:   fmt.Sprintf("Overwrite '%s' with payload -> root code execution on device add/remove", target),
+						Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s", target, target),
+						ComplianceTag: "CIS-Linux-1.1.23 / NIST-SI-7",
+						IsDangerous:   true,
 					})
 				}
 			}

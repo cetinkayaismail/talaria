@@ -15,6 +15,11 @@ type UserContext struct {
 	GIDs     map[int]bool
 }
 
+// AuditCfg is the package-level configuration for output formatting.
+var AuditCfg struct {
+	MaskSecrets bool // Mask credentials in reports
+}
+
 var (
 	cachedUserCtx *UserContext
 	userCtxOnce   sync.Once

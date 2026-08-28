@@ -11,13 +11,15 @@ import (
 
 // SystemdOverrideResult represents a misconfiguration or writable drop-in in systemd unit overrides.
 type SystemdOverrideResult struct {
-	Path        string `json:"path"`
-	ServiceName string `json:"service_name"`
-	Type        string `json:"type"`
-	RiskLevel   string `json:"risk_level"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint"`
-	IsDangerous bool   `json:"is_dangerous"`
+	Path          string `json:"path"`
+	ServiceName   string `json:"service_name"`
+	Type          string `json:"type"`
+	RiskLevel     string `json:"risk_level"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
 }
 
 var systemdSearchPaths = []string{
@@ -64,13 +66,15 @@ func ScanSystemdOverrides() ([]SystemdOverrideResult, error) {
 				// 1. Check if the .d directory itself is writable by current user
 				if userCtx.CanWrite(uid, gid, mode) {
 					results = append(results, SystemdOverrideResult{
-						Path:        dirPath,
-						ServiceName: serviceName,
-						Type:        "systemd_override_dir_writable",
-						RiskLevel:   "CRITICAL",
-						Reason:      fmt.Sprintf("Systemd override directory '%s' for service '%s' is writable by current user", dirPath, serviceName),
-						ExploitHint: fmt.Sprintf("echo -e '[Service]\\nExecStart=/tmp/rootbash\\n' > %s/evil.conf && systemctl daemon-reload", dirPath),
-						IsDangerous: true,
+						Path:          dirPath,
+						ServiceName:   serviceName,
+						Type:          "systemd_override_dir_writable",
+						RiskLevel:     "CRITICAL",
+						Reason:        fmt.Sprintf("Systemd override directory '%s' for service '%s' is writable by current user", dirPath, serviceName),
+						ExploitHint:   fmt.Sprintf("echo -e '[Service]\\nExecStart=/tmp/rootbash\\n' > %s/evil.conf && systemctl daemon-reload", dirPath),
+						Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s && systemctl daemon-reload", dirPath, dirPath),
+						ComplianceTag: "CIS-Linux-5.1.9 / NIST-CM-6",
+						IsDangerous:   true,
 					})
 				}
 			}
@@ -98,13 +102,15 @@ func ScanSystemdOverrides() ([]SystemdOverrideResult, error) {
 				// Check if the .conf file is writable
 				if userCtx.CanWrite(uid, gid, mode) {
 					results = append(results, SystemdOverrideResult{
-						Path:        confPath,
-						ServiceName: serviceName,
-						Type:        "systemd_override_conf_writable",
-						RiskLevel:   "CRITICAL",
-						Reason:      fmt.Sprintf("Systemd drop-in override file '%s' (service '%s') is writable by current user", confPath, serviceName),
-						ExploitHint: fmt.Sprintf("echo -e '[Service]\\nExecStart=/tmp/rootshell\\n' >> %s && systemctl daemon-reload", confPath),
-						IsDangerous: true,
+						Path:          confPath,
+						ServiceName:   serviceName,
+						Type:          "systemd_override_conf_writable",
+						RiskLevel:     "CRITICAL",
+						Reason:        fmt.Sprintf("Systemd drop-in override file '%s' (service '%s') is writable by current user", confPath, serviceName),
+						ExploitHint:   fmt.Sprintf("echo -e '[Service]\\nExecStart=/tmp/rootshell\\n' >> %s && systemctl daemon-reload", confPath),
+						Remediation:   fmt.Sprintf("chown root:root %s && chmod 0644 %s && systemctl daemon-reload", confPath, confPath),
+						ComplianceTag: "CIS-Linux-5.1.9 / NIST-CM-6",
+						IsDangerous:   true,
 					})
 				}
 
@@ -145,13 +151,15 @@ func parseConfDirectives(confPath string, serviceName string, userCtx *UserConte
 							mode := uint32(binInfo.Mode().Perm())
 							if userCtx.CanWrite(uid, gid, mode) {
 								*results = append(*results, SystemdOverrideResult{
-									Path:        targetBin,
-									ServiceName: serviceName,
-									Type:        "systemd_override_exec_writable",
-									RiskLevel:   "CRITICAL",
-									Reason:      fmt.Sprintf("Executable '%s' referenced in systemd override '%s' is writable by current user", targetBin, confPath),
-									ExploitHint: fmt.Sprintf("Overwrite '%s' with payload -> root execution on service '%s' start", targetBin, serviceName),
-									IsDangerous: true,
+									Path:          targetBin,
+									ServiceName:   serviceName,
+									Type:          "systemd_override_exec_writable",
+									RiskLevel:     "CRITICAL",
+									Reason:        fmt.Sprintf("Executable '%s' referenced in systemd override '%s' is writable by current user", targetBin, confPath),
+									ExploitHint:   fmt.Sprintf("Overwrite '%s' with payload -> root execution on service '%s' start", targetBin, serviceName),
+									Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s", targetBin, targetBin),
+									ComplianceTag: "CIS-Linux-5.1.9 / NIST-SI-7",
+									IsDangerous:   true,
 								})
 							}
 						}

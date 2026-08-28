@@ -11,14 +11,16 @@ import (
 
 // NFSExportResult holds the findings for a specific NFS share
 type NFSExportResult struct {
-	Path            string
-	ExportedTo      string
-	Options         string
-	HasNoRootSquash bool
-	HasNoAllSquash  bool
-	IsWritable      bool
-	IsDangerous     bool
-	RiskSummary     string
+	Path            string `json:"path"`
+	ExportedTo      string `json:"exported_to"`
+	Options         string `json:"options"`
+	HasNoRootSquash bool   `json:"has_no_root_squash"`
+	HasNoAllSquash  bool   `json:"has_no_all_squash"`
+	IsWritable      bool   `json:"is_writable"`
+	IsDangerous     bool   `json:"is_dangerous"`
+	RiskSummary     string `json:"risk_summary"`
+	Remediation     string `json:"remediation,omitempty"`
+	ComplianceTag   string `json:"compliance_tag,omitempty"`
 }
 
 // ScanNFSExports identifies misconfigured NFS shares that could lead to PrivEsc
@@ -64,11 +66,13 @@ func ScanNFSExports(timeout time.Duration) ([]NFSExportResult, error) {
 			parts := strings.Fields(line)
 			if len(parts) >= 2 {
 				results = append(results, NFSExportResult{
-					Path:        parts[0],
-					ExportedTo:  parts[1],
-					Options:     "Active Export",
-					IsDangerous: true,
-					RiskSummary: "NFS share is active - check /etc/exports for squash options",
+					Path:          parts[0],
+					ExportedTo:    parts[1],
+					Options:       "Active Export",
+					IsDangerous:   true,
+					RiskSummary:   "NFS share is active - check /etc/exports for squash options",
+					Remediation:   "Ensure 'root_squash' option is configured in /etc/exports",
+					ComplianceTag: "CIS-Linux-2.2.7 / DISA-STIG-V-230300",
 				})
 			}
 		}
@@ -122,9 +126,15 @@ func parseNFSExportLine(line string) *NFSExportResult {
 
 	// Logic for Critical Vulnerability: RW + no_root_squash = High probability of PrivEsc
 	summary := strings.Join(risks, ", ")
+	remediation := ""
+	complianceTag := "CIS-Linux-2.2.7 / DISA-STIG-V-230300"
+
 	if isWritable && noRootSquash {
 		isDangerous = true
 		summary = "CRITICAL: RW + no_root_squash (Direct PrivEsc via SUID upload)"
+		remediation = "Replace 'no_root_squash' with 'root_squash' in /etc/exports and run 'exportfs -ra'"
+	} else if noRootSquash {
+		remediation = "Replace 'no_root_squash' with 'root_squash' in /etc/exports and run 'exportfs -ra'"
 	}
 
 	return &NFSExportResult{
@@ -136,5 +146,7 @@ func parseNFSExportLine(line string) *NFSExportResult {
 		IsWritable:      isWritable,
 		IsDangerous:     isDangerous,
 		RiskSummary:     summary,
+		Remediation:     remediation,
+		ComplianceTag:   complianceTag,
 	}
 }

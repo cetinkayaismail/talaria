@@ -11,13 +11,15 @@ import (
 
 // PackageAuditResult holds findings for package manager misconfigurations
 type PackageAuditResult struct {
-	Name        string `json:"name"`
-	Path        string `json:"path,omitempty"`
-	RiskLevel   string `json:"risk_level,omitempty"`
-	IsDangerous bool   `json:"is_dangerous"`
-	Reason      string `json:"reason"`
-	ExploitHint string `json:"exploit_hint,omitempty"`
-	IsHookDir   bool   `json:"is_hook_dir,omitempty"`
+	Name          string `json:"name"`
+	Path          string `json:"path,omitempty"`
+	RiskLevel     string `json:"risk_level,omitempty"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	ExploitHint   string `json:"exploit_hint,omitempty"`
+	IsHookDir     bool   `json:"is_hook_dir,omitempty"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 type packageTarget struct {
@@ -167,13 +169,15 @@ func ScanPackages() ([]PackageAuditResult, error) {
 			// Check target path itself
 			if isStatWritable(info, userCtx) {
 				results = append(results, PackageAuditResult{
-					Name:        target.ToolName,
-					Path:        target.Path,
-					RiskLevel:   target.RiskLevel,
-					IsDangerous: true,
-					Reason:      target.Reason,
-					ExploitHint: target.ExploitHint,
-					IsHookDir:   target.IsHookDir,
+					Name:          target.ToolName,
+					Path:          target.Path,
+					RiskLevel:     target.RiskLevel,
+					IsDangerous:   true,
+					Reason:        target.Reason,
+					ExploitHint:   target.ExploitHint,
+					IsHookDir:     target.IsHookDir,
+					Remediation:   fmt.Sprintf("chown root:root %s && chmod 0755 %s", target.Path, target.Path),
+					ComplianceTag: "CIS-Linux-1.2.1 / DISA-STIG-V-230260",
 				})
 			} else if info.IsDir() {
 				// Also check if any existing config file inside the directory is writable
@@ -187,13 +191,15 @@ func ScanPackages() ([]PackageAuditResult, error) {
 						fInfo, fErr := entry.Info()
 						if fErr == nil && isStatWritable(fInfo, userCtx) {
 							results = append(results, PackageAuditResult{
-								Name:        target.ToolName,
-								Path:        filePath,
-								RiskLevel:   target.RiskLevel,
-								IsDangerous: true,
-								Reason:      fmt.Sprintf("Existing package configuration file '%s' is writable by unprivileged user.", filePath),
-								ExploitHint: target.ExploitHint,
-								IsHookDir:   target.IsHookDir,
+								Name:          target.ToolName,
+								Path:          filePath,
+								RiskLevel:     target.RiskLevel,
+								IsDangerous:   true,
+								Reason:        fmt.Sprintf("Existing package configuration file '%s' is writable by unprivileged user.", filePath),
+								ExploitHint:   target.ExploitHint,
+								IsHookDir:     target.IsHookDir,
+								Remediation:   fmt.Sprintf("chown root:root %s && chmod 0644 %s", filePath, filePath),
+								ComplianceTag: "CIS-Linux-1.2.1 / DISA-STIG-V-230260",
 							})
 						}
 					}
@@ -244,24 +250,28 @@ func auditDoas() *PackageAuditResult {
 
 	if isWritable {
 		return &PackageAuditResult{
-			Name:        "doas",
-			Path:        "/etc/doas.conf",
-			RiskLevel:   "CRITICAL",
-			IsDangerous: true,
-			Reason:      "/etc/doas.conf is writable by current user. Arbitrary nopass commands can be injected.",
-			ExploitHint: "echo 'permit nopass :tester as root' >> /etc/doas.conf && doas /bin/bash",
+			Name:          "doas",
+			Path:          "/etc/doas.conf",
+			RiskLevel:     "CRITICAL",
+			IsDangerous:   true,
+			Reason:        "/etc/doas.conf is writable by current user. Arbitrary nopass commands can be injected.",
+			ExploitHint:   "echo 'permit nopass :tester as root' >> /etc/doas.conf && doas /bin/bash",
+			Remediation:   "chown root:root /etc/doas.conf && chmod 0400 /etc/doas.conf",
+			ComplianceTag: "CIS-Linux-5.3.4 / NIST-AC-6",
 		}
 	}
 
 	// Check if it's world-readable (bad practice)
 	if info.Mode()&0004 != 0 {
 		return &PackageAuditResult{
-			Name:        "doas",
-			Path:        "/etc/doas.conf",
-			RiskLevel:   "MEDIUM",
-			IsDangerous: true,
-			Reason:      "/etc/doas.conf is world-readable. May leak privileged command aliases.",
-			ExploitHint: "Read /etc/doas.conf to find commands that don't require a password.",
+			Name:          "doas",
+			Path:          "/etc/doas.conf",
+			RiskLevel:     "MEDIUM",
+			IsDangerous:   true,
+			Reason:        "/etc/doas.conf is world-readable. May leak privileged command aliases.",
+			ExploitHint:   "Read /etc/doas.conf to find commands that don't require a password.",
+			Remediation:   "chmod 0400 /etc/doas.conf",
+			ComplianceTag: "CIS-Linux-5.3.4 / NIST-AC-6",
 		}
 	}
 
@@ -269,12 +279,14 @@ func auditDoas() *PackageAuditResult {
 	data, err := os.ReadFile("/etc/doas.conf")
 	if err == nil && strings.Contains(string(data), "nopass") {
 		return &PackageAuditResult{
-			Name:        "doas",
-			Path:        "/etc/doas.conf",
-			RiskLevel:   "HIGH",
-			IsDangerous: true,
-			Reason:      "/etc/doas.conf contains 'nopass' entries.",
-			ExploitHint: "Execute commands with 'doas' without a password.",
+			Name:          "doas",
+			Path:          "/etc/doas.conf",
+			RiskLevel:     "HIGH",
+			IsDangerous:   true,
+			Reason:        "/etc/doas.conf contains 'nopass' entries.",
+			ExploitHint:   "Execute commands with 'doas' without a password.",
+			Remediation:   "Require password authentication in /etc/doas.conf",
+			ComplianceTag: "CIS-Linux-5.3.4 / NIST-AC-6",
 		}
 	}
 
@@ -291,12 +303,14 @@ func auditSnap() *PackageAuditResult {
 	info, err := os.Stat("/run/snapd.socket")
 	if err == nil && info.Mode()&0002 != 0 {
 		return &PackageAuditResult{
-			Name:        "snap",
-			Path:        "/run/snapd.socket",
-			RiskLevel:   "CRITICAL",
-			IsDangerous: true,
-			Reason:      "snapd.socket is world-writable.",
-			ExploitHint: "Potential for local root via snapd API injection.",
+			Name:          "snap",
+			Path:          "/run/snapd.socket",
+			RiskLevel:     "CRITICAL",
+			IsDangerous:   true,
+			Reason:        "snapd.socket is world-writable.",
+			ExploitHint:   "Potential for local root via snapd API injection.",
+			Remediation:   "chmod 0660 /run/snapd.socket && chown root:root /run/snapd.socket",
+			ComplianceTag: "CIS-Linux-1.2.1 / NIST-CM-6",
 		}
 	}
 
@@ -313,12 +327,14 @@ func auditFlatpak() *PackageAuditResult {
 	info, err := os.Stat("/var/lib/flatpak")
 	if err == nil && info.Mode()&0002 != 0 {
 		return &PackageAuditResult{
-			Name:        "flatpak",
-			Path:        "/var/lib/flatpak",
-			RiskLevel:   "HIGH",
-			IsDangerous: true,
-			Reason:      "/var/lib/flatpak is world-writable.",
-			ExploitHint: "Inject malicious flatpak apps or override existing ones.",
+			Name:          "flatpak",
+			Path:          "/var/lib/flatpak",
+			RiskLevel:     "HIGH",
+			IsDangerous:   true,
+			Reason:        "/var/lib/flatpak is world-writable.",
+			ExploitHint:   "Inject malicious flatpak apps or override existing ones.",
+			Remediation:   "chmod 0755 /var/lib/flatpak && chown root:root /var/lib/flatpak",
+			ComplianceTag: "CIS-Linux-1.2.1 / NIST-CM-6",
 		}
 	}
 

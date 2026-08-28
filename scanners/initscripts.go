@@ -59,6 +59,8 @@ func ScanInitScripts() ([]WriteableResult, error) {
 					Type:            "Writable SysV Init Script",
 					RiskLevel:       "CRITICAL",
 					Reason:          "SysV init script is writable. Modify to execute code as root on service restart or system boot.",
+					Remediation:     fmt.Sprintf("chown root:root %s && chmod 0755 %s", path, path),
+					ComplianceTag:   "CIS-Linux-5.1.9 / NIST-SI-7",
 				})
 			}
 		}

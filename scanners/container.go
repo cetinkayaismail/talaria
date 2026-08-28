@@ -2,6 +2,7 @@ package scanners
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"os/user"
 	"strconv"
@@ -11,9 +12,11 @@ import (
 
 // ContainerEscapeResult holds findings about container environments and escape vectors
 type ContainerEscapeResult struct {
-	Vector      string
-	IsDangerous bool
-	Reason      string
+	Vector        string `json:"vector"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 // ScanContainer detects if we are running inside a container (Docker/LXC/podman)
@@ -93,9 +96,11 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 				if len(fields) >= 2 && strings.ToLower(fields[1]) == "000001ffffffffff" ||
 					strings.ToLower(fields[1]) == "ffffffffffffffff" {
 					results = append(results, ContainerEscapeResult{
-						Vector:      "Privileged Container",
-						IsDangerous: true,
-						Reason:      "Container running with --privileged: all capabilities available. Mount host filesystem and chroot to escape.",
+						Vector:        "Privileged Container",
+						IsDangerous:   true,
+						Reason:        "Container running with --privileged: all capabilities available. Mount host filesystem and chroot to escape.",
+						Remediation:   "Disallow --privileged mode and drop unnecessary capabilities in container runtime spec",
+						ComplianceTag: "CIS-Docker-5.4 / NIST-AC-6",
 					})
 				}
 			}
@@ -107,9 +112,11 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 	for _, dsp := range dockerSockPaths {
 		if info, err := os.Stat(dsp); err == nil && (info.Mode()&os.ModeSocket) != 0 {
 			results = append(results, ContainerEscapeResult{
-				Vector:      "Docker Socket in Container",
-				IsDangerous: true,
-				Reason:      dsp + " is mounted inside the container. Use docker run to spawn a privileged container and mount the host filesystem.",
+				Vector:        "Docker Socket in Container",
+				IsDangerous:   true,
+				Reason:        dsp + " is mounted inside the container. Use docker run to spawn a privileged container and mount the host filesystem.",
+				Remediation:   "Remove " + dsp + " mount from container volume configuration",
+				ComplianceTag: "CIS-Docker-2.1 / NIST-AC-6",
 			})
 		}
 	}
@@ -121,9 +128,11 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 		// On host, PID 1 is systemd or init
 		if strings.Contains(cmd, "systemd") || strings.Contains(cmd, "/sbin/init") {
 			results = append(results, ContainerEscapeResult{
-				Vector:      "Host PID Namespace",
-				IsDangerous: true,
-				Reason:      "Container shares host PID namespace (--pid=host): can signal/ptrace host processes directly.",
+				Vector:        "Host PID Namespace",
+				IsDangerous:   true,
+				Reason:        "Container shares host PID namespace (--pid=host): can signal/ptrace host processes directly.",
+				Remediation:   "Do not configure host PID namespace sharing (--pid=host) for unprivileged containers",
+				ComplianceTag: "CIS-Docker-5.15 / NIST-SC-7",
 			})
 		}
 	}
@@ -132,9 +141,11 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 	if f, err := os.OpenFile("/proc/sysrq-trigger", os.O_WRONLY, 0); err == nil {
 		f.Close()
 		results = append(results, ContainerEscapeResult{
-			Vector:      "Writable /proc/sysrq-trigger",
-			IsDangerous: true,
-			Reason:      "Can write to sysrq-trigger: may indicate privileged access to host kernel interface.",
+			Vector:        "Writable /proc/sysrq-trigger",
+			IsDangerous:   true,
+			Reason:        "Can write to sysrq-trigger: may indicate privileged access to host kernel interface.",
+			Remediation:   "Mount /proc with read-only permissions inside container",
+			ComplianceTag: "CIS-Docker-5.4 / NIST-SI-16",
 		})
 	}
 
@@ -143,9 +154,11 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 	for _, p := range sensitiveMounts {
 		if _, err := os.Stat(p); err == nil {
 			results = append(results, ContainerEscapeResult{
-				Vector:      "Sensitive Host Path Mounted: " + p,
-				IsDangerous: true,
-				Reason:      "Host path " + p + " is accessible inside the container — may be a bind mount of the host filesystem.",
+				Vector:        "Sensitive Host Path Mounted: " + p,
+				IsDangerous:   true,
+				Reason:        "Host path " + p + " is accessible inside the container — may be a bind mount of the host filesystem.",
+				Remediation:   "Remove bind mounts of sensitive host paths from container configuration",
+				ComplianceTag: "CIS-Docker-5.4 / NIST-AC-6",
 			})
 		}
 	}
@@ -156,10 +169,12 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 // ScanDBusPolicy checks /etc/dbus-1/system.d/ for permissive policy rules
 // that allow unprivileged users to call methods on root-owned D-Bus services.
 type DBusPolicyResult struct {
-	ConfigFile  string
-	ServiceName string
-	IsDangerous bool
-	Reason      string
+	ConfigFile    string `json:"config_file"`
+	ServiceName   string `json:"service_name"`
+	IsDangerous   bool   `json:"is_dangerous"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
 func ScanDBusPolicy() ([]DBusPolicyResult, error) {
@@ -192,11 +207,6 @@ func ScanDBusPolicy() ([]DBusPolicyResult, error) {
 
 			filePath := dir + "/" + entry.Name()
 
-			// NOTE: '<allow send_destination="..."/>' without user= is the STANDARD
-			// pattern for EVERY D-Bus service on Linux (avahi, NetworkManager, bluetooth
-			// etc.). It is intentional design — security is enforced by polkit, not D-Bus
-			// allow tags. Scanning for it produces 40+ false positives on any desktop.
-			// The only truly exploitable condition is a *writable* config file.
 			info, err := os.Stat(filePath)
 			if err != nil {
 				continue
@@ -217,10 +227,12 @@ func ScanDBusPolicy() ([]DBusPolicyResult, error) {
 
 			if fileWritable {
 				results = append(results, DBusPolicyResult{
-					ConfigFile:  filePath,
-					ServiceName: strings.TrimSuffix(entry.Name(), ".conf"),
-					IsDangerous: true,
-					Reason:      "D-Bus config file is writable: can modify policy to allow unprivileged access to privileged service methods",
+					ConfigFile:    filePath,
+					ServiceName:   strings.TrimSuffix(entry.Name(), ".conf"),
+					IsDangerous:   true,
+					Reason:        "D-Bus config file is writable: can modify policy to allow unprivileged access to privileged service methods",
+					Remediation:   fmt.Sprintf("chown root:root %s && chmod 0644 %s", filePath, filePath),
+					ComplianceTag: "CIS-Linux-5.3.5 / NIST-CM-6",
 				})
 			}
 		}

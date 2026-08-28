@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -92,33 +91,14 @@ func main() {
 	pMode := flag.Bool("p", false, "Professional reporting mode (shorthand)")
 	ioLimit := flag.Int("io-limit", 0, "Max concurrent I/O scanners (default: auto based on RLIMIT_NOFILE)")
 
-	// ── Delay/jitter (existing stealth tier 1) ────────────────────────────────
-	isStealth   := flag.Bool("stealth", false, "[STEALTH] Enable random delays between module launches")
-	customDelay := flag.Duration("delay", 0, "[STEALTH] Base delay between module launches (e.g. 150ms)")
-	customJitter:= flag.Duration("jitter", 0, "[STEALTH] Max random jitter added on top of base delay")
+	encryptKey   := flag.String("encrypt", "", "Encrypt saved report with AES-256-GCM using this passphrase (requires -o)")
 
-	// ── Advanced stealth flags (inactive by default) ──────────────────────────
-	maskName     := flag.String("mask", "",
-		"[STEALTH] Overwrite process name in ps/top/htop.\n"+
-		"          Example: --mask '[kworker/u2:1]'")
-	selfDestruct := flag.Bool("self-destruct", false,
-		"[STEALTH] Delete the binary from disk after scan completes (report written first)")
-	atimeRestore := flag.Bool("atime-restore", false,
-		"[STEALTH] Restore file access timestamps after reading sensitive files.\n"+
-		"          Prevents atime-based forensic detection.")
-	throttleLoad := flag.Float64("throttle", 0,
-		"[STEALTH] Pause when system load/CPU exceeds this ratio (e.g. 0.8 = 80%).\n"+
-		"          Reduces I/O burst anomaly signatures. 0 = disabled.")
-	encryptKey   := flag.String("encrypt", "",
-		"[STEALTH] Encrypt report with AES-256-GCM using this passphrase.\n"+
-		"          Requires -o to be set. Output is base64-encoded ciphertext.")
-
-	// Custom usage printer — groups core, stealth and reporting flags visually
+	// Custom usage printer — groups core and reporting flags visually
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Talaria - Linux Privilege Escalation Scanner\n")
+		fmt.Fprintf(os.Stderr, "Talaria - Linux Privilege Escalation & Security Audit Scanner\n")
 		fmt.Fprintf(os.Stderr, "Usage: talaria [flags]\n\n")
 		fmt.Fprintf(os.Stderr, "CORE FLAGS:\n")
-		for _, name := range []string{"scan", "exclude", "path", "o", "format", "pass", "io-limit"} {
+		for _, name := range []string{"scan", "exclude", "path", "o", "format", "pass", "io-limit", "encrypt"} {
 			f := flag.Lookup(name)
 			if f != nil {
 				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
@@ -131,95 +111,20 @@ func main() {
 				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
 			}
 		}
-		fmt.Fprintf(os.Stderr, "\nSTEALTH FLAGS (all inactive by default):\n")
-		for _, name := range []string{"stealth", "delay", "jitter", "mask", "atime-restore", "throttle", "encrypt", "self-destruct"} {
-			f := flag.Lookup(name)
-			if f != nil {
-				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
-			}
-		}
-		fmt.Fprintf(os.Stderr, "\nSee USAGE.md for detailed examples and the stealth bundle workflow.\n")
+		fmt.Fprintf(os.Stderr, "\nSee USAGE.md for detailed examples.\n")
 	}
 
 	flag.Parse()
 
 	isProfessional := *professionalMode || *pMode
 
-	rand.Seed(time.Now().UnixNano())
-	baseDelay := *customDelay
-	maxJitter := *customJitter
-	if *isStealth {
-		if baseDelay == 0 {
-			baseDelay = 150 * time.Millisecond
-		}
-		if maxJitter == 0 {
-			maxJitter = 100 * time.Millisecond
-		}
-	}
-
-	// ── Stealth: activate package-level config (no-op when flags not set) ────
-	if *maskName != "" {
-		scanners.MaskProcess(*maskName)
-	}
-	if *atimeRestore {
-		scanners.StealthCfg.AtimeRestore = true
-	}
-	// In professional/pentest report mode, mask discovered credentials in output.
+	// In professional/audit report mode, mask discovered credentials in output.
 	// Default (CTF mode): show credentials in cleartext for immediate usability.
-	scanners.StealthCfg.MaskSecrets = isProfessional
-	
-	if *isStealth && *outputFile != "" {
-		if !strings.HasPrefix(*outputFile, "/dev/shm/") {
-			*outputFile = "/dev/shm/.r" // F2: Default to tmpfs to avoid disk I/O
-		}
-	}
+	scanners.AuditCfg.MaskSecrets = isProfessional
 
 	scanners.InitUserContext() // Initialize shared user context (D2)
 
 	core.PrintBanner()
-	if *maskName != "" {
-		fmt.Printf("%s[stealth] Process masked as: %s%s\n", core.ColorGray, *maskName, core.ColorReset)
-	}
-	if *atimeRestore {
-		fmt.Printf("%s[stealth] atime-restore: enabled%s\n", core.ColorGray, core.ColorReset)
-	}
-	if *isStealth && *outputFile != "" {
-		fmt.Printf("%s[stealth] report output redirected to tmpfs: %s%s\n", core.ColorGray, *outputFile, core.ColorReset)
-	}
-
-	// ── Lazy CPU count for adaptive throttle (computed once) ─────────────────
-	numCPUs := 1
-	if *throttleLoad > 0 {
-		numCPUs = scanners.GetNumCPUs()
-		fmt.Printf("%s[stealth] Adaptive throttle: load/cpu > %.2f → extra pause (cpus=%d)%s\n",
-			core.ColorGray, *throttleLoad, numCPUs, core.ColorReset)
-	}
-
-	applyEvasion := func() {
-		delay := baseDelay
-
-		// Adaptive throttle: if system is already busy, slow down to blend in
-		if *throttleLoad > 0 {
-			load := scanners.GetSystemLoad()
-			loadPerCPU := load / float64(numCPUs)
-			if loadPerCPU > *throttleLoad {
-				// Scale extra pause with how far over threshold we are
-				extra := time.Duration((loadPerCPU-*throttleLoad)*1000) * time.Millisecond
-				if extra > 5*time.Second {
-					extra = 5 * time.Second // cap at 5s so we don't hang forever
-				}
-				delay += extra
-			}
-		}
-
-		if delay > 0 {
-			jitter := 0
-			if maxJitter > 0 {
-				jitter = rand.Intn(int(maxJitter))
-			}
-			time.Sleep(delay + time.Duration(jitter))
-		}
-	}
 
 	selectedModules := make(map[string]bool)
 	for _, m := range strings.Split(*scanInput, ",") {
@@ -237,7 +142,7 @@ func main() {
 		ScanTime:       time.Now().Format(time.RFC1123),
 		TargetUser:     os.Getenv("USER"),
 		TargetScanPath: *searchPath,
-		StealthMode:    *isStealth,
+		AuditMode:      isProfessional,
 	}
 
 	var mu sync.Mutex
@@ -293,7 +198,6 @@ func main() {
 				if _, err := os.Stat(target); os.IsNotExist(err) {
 					continue
 				}
-				applyEvasion()
 				ioSemaphore <- struct{}{}
 				files, content := scanners.ScanSecrets(target)
 				<-ioSemaphore
@@ -343,7 +247,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanSUID(*searchPath)
 			<-ioSemaphore
@@ -380,7 +283,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanSGID(*searchPath)
 			<-ioSemaphore
@@ -412,7 +314,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanProcesses()
 			if err == nil {
 				mu.Lock()
@@ -443,7 +344,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanCronJobs()
 			<-ioSemaphore
@@ -492,7 +392,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanSudoPrivileges(timeout, *sudoPassword)
 			if err == nil {
 				mu.Lock()
@@ -524,7 +423,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanCapabilities(*searchPath)
 			<-ioSemaphore
@@ -552,7 +450,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanNFSExports(timeout)
 			if err == nil {
 				mu.Lock()
@@ -575,7 +472,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanNetworkConnections()
 			if err == nil {
 				mu.Lock()
@@ -612,7 +508,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanSystemVersions()
 			if err == nil {
 				mu.Lock()
@@ -651,7 +546,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanWriteable(*searchPath)
 			<-ioSemaphore
@@ -811,7 +705,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanUnixDomainSockets()
 			<-ioSemaphore
@@ -841,7 +734,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanFilePermissions()
 			<-ioSemaphore
@@ -874,7 +766,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanFilePermissionsExploit(timeout)
 			<-ioSemaphore
@@ -914,7 +805,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanGroups()
 			if err == nil {
 				mu.Lock()
@@ -944,7 +834,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanLocalServices()
 			if err == nil {
 				mu.Lock()
@@ -974,7 +863,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanPackages()
 			if err == nil {
 				mu.Lock()
@@ -1012,7 +900,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanPATH()
 			if err == nil {
 				mu.Lock()
@@ -1038,7 +925,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, _ := scanners.ScanSSHKeys()
 			<-ioSemaphore
@@ -1078,7 +964,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			if result, err := scanners.ScanPtraceScope(); err == nil {
 				mu.Lock()
 				report.PtraceScope = result
@@ -1099,7 +984,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanContainer()
 			<-ioSemaphore
@@ -1129,7 +1013,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanDBusPolicy()
 			<-ioSemaphore
@@ -1157,7 +1040,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanSessionHijack()
 			if err == nil {
 				mu.Lock()
@@ -1203,7 +1085,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			ioSemaphore <- struct{}{}
 			results, err := scanners.ScanKernelConfig()
 			<-ioSemaphore
@@ -1231,7 +1112,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanPolkitRules()
 			if err == nil {
 				mu.Lock()
@@ -1259,7 +1139,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanHistoryFiles()
 			if err == nil {
 				mu.Lock()
@@ -1286,7 +1165,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanPAM()
 			if err == nil {
 				mu.Lock()
@@ -1317,7 +1195,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanSysctlHardening()
 			if err == nil {
 				mu.Lock()
@@ -1349,7 +1226,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanSystemdOverrides()
 			if err == nil {
 				mu.Lock()
@@ -1381,7 +1257,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanSubUIDAuditor()
 			if err == nil {
 				mu.Lock()
@@ -1412,7 +1287,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanMountAuditor()
 			if err == nil {
 				mu.Lock()
@@ -1444,7 +1318,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanUdevAuditor()
 			if err == nil {
 				mu.Lock()
@@ -1476,7 +1349,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanCronDirsAuditor()
 			if err == nil {
 				mu.Lock()
@@ -1506,7 +1378,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanLDNSSConfiguration()
 			if err == nil {
 				mu.Lock()
@@ -1536,7 +1407,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanModprobeRules()
 			if err == nil {
 				mu.Lock()
@@ -1570,7 +1440,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanCloudAndContainerMetadata()
 			if err == nil {
 				mu.Lock()
@@ -1604,7 +1473,6 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			applyEvasion()
 			results, err := scanners.ScanVirtualEnvsAndWrappers()
 			if err == nil {
 				mu.Lock()
@@ -1716,18 +1584,6 @@ func main() {
 
 	duration := time.Since(startTime).String()
 	core.PrintSummary(report, duration)
-
-	// ── Self-Destruct ────────────────────────────────────────────────────────
-	if *selfDestruct {
-		exePath, err := os.Executable()
-		if err == nil {
-			if err := os.Remove(exePath); err == nil {
-				fmt.Printf("\033[1;90m[stealth] Binary removed: %s\033[0m\n", exePath)
-			} else {
-				fmt.Printf("\033[1;31m[stealth] Self-destruct failed: %v\033[0m\n", err)
-			}
-		}
-	}
 }
 
 func saveReport(report *models.ScanReport, path string, format string, encryptKey string) {
@@ -1875,12 +1731,12 @@ func saveReport(report *models.ScanReport, path string, format string, encryptKe
 
 	// ── Optional AES-256-GCM encryption ─────────────────────────────────────
 	if encryptKey != "" {
-		encrypted, err := scanners.EncryptReport(data, encryptKey)
+		encrypted, err := core.EncryptReport(data, encryptKey)
 		if err != nil {
-			fmt.Printf("\033[1;31m[stealth] Encryption failed: %v — saving plaintext\033[0m\n", err)
+			fmt.Printf("\033[1;31m[-] Encryption failed: %v — saving plaintext\033[0m\n", err)
 		} else {
 			data = encrypted
-			fmt.Printf("\033[1;90m[stealth] Report encrypted with AES-256-GCM\033[0m\n")
+			fmt.Printf("\033[1;32m[+] Report encrypted with AES-256-GCM\033[0m\n")
 		}
 	}
 
