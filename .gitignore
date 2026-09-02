@@ -88,8 +88,9 @@ internal/*.md
 codebase_analysis.md
 /ARCHITECTURE.md
 
-# Local agent workspace directory
+# Local agent workspace directory and GitHub configuration
 .agents/
+.github/
 
 # ------------------------------------------------------------------------------
 # 7. Explicit Inclusion Whitelist for Enterprise Documentation

@@ -7,6 +7,16 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #57 — Repository Cleanliness: Untrack `.agents/` and `.github/` from Remote Repository (`.gitignore`, `.agents/*`, `.github/*`)
+**Impact:** 🛡️ Removed internal agent rules and GitHub issue/PR templates from remote repository tracking; preserved files strictly on local workstation; updated `.gitignore` to prevent remote re-tracking.
+
+- **Local-Only Boundary Enforcement (`.gitignore`):** Added `.github/` to local-only exclusions alongside `.agents/` to ensure zero internal agent configurations, workspace metadata, or GitHub management templates leak to public repository remotes.
+- **Git Index Cleanse (`.agents/`, `.github/`):** Cached removal (`git rm --cached -r`) of `.agents/AGENTS.md` and `.github/*` ensuring complete remote removal upon push while keeping local disk copies 100% intact.
+
+**Files changed:** `.gitignore`, `.agents/AGENTS.md` *(untracked)*, `.github/*` *(untracked)*
+
+---
+
 ### #56 — Institutional Banking Standard: Enterprise Documentation Suite, Telemetry & Hardened Architecture (`README.md`, `docs/*`, `.gitignore`, `Makefile`, `USAGE.md`, `core/*`, `internal/*`, `scanners/*`)
 **Impact:** 🛡️ Complete elevation to Tier-1 Financial Institution / Institutional Banking standards (PCI-DSS v4.0, SOC 2 Type II, CIS Benchmarks, SLSA Level 3); zero-write proof; complete telemetry blueprints for Splunk, Elastic, Datadog, Vector; unit test suite with race detector; 100% strict English purity; repository hygiene bloat purge.
 
