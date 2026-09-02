@@ -9,17 +9,64 @@ import (
 
 var printMu sync.Mutex
 
+// EngineMode represents the operational presentation profile
+type EngineMode int
+
+const (
+	// ModeCTF is the offensive root-finder profile: focuses on rapid exploitation,
+	// GTFOBins 1-liners, cleartext credentials, and lowest screen noise (default).
+	ModeCTF EngineMode = iota
+
+	// ModeAudit is the blue-team compliance profile: focuses on remediation fix commands,
+	// CIS/NIST compliance tags, and credential masking.
+	ModeAudit
+)
+
+// ReportingConfig controls output rendering behavior
+type ReportingConfig struct {
+	Mode     EngineMode
+	EnableUI bool
+	NoColor  bool
+}
+
+// Config is the global active reporting configuration
+var Config = ReportingConfig{
+	Mode:     ModeCTF,
+	EnableUI: false,
+	NoColor:  false,
+}
+
 // ANSI Color Codes
 const (
-	ColorReset  = "\033[0m"
-	ColorBold   = "\033[1m"
-	ColorRed    = "\033[1;31m"
-	ColorGreen  = "\033[1;32m"
-	ColorYellow = "\033[1;33m"
-	ColorBlue   = "\033[1;34m"
-	ColorPurple = "\033[1;35m"
-	ColorCyan   = "\033[1;36m"
-	ColorGray   = "\033[1;90m"
+	rawReset  = "\033[0m"
+	rawBold   = "\033[1m"
+	rawRed    = "\033[1;31m"
+	rawGreen  = "\033[1;32m"
+	rawYellow = "\033[1;33m"
+	rawBlue   = "\033[1;34m"
+	rawPurple = "\033[1;35m"
+	rawCyan   = "\033[1;36m"
+	rawGray   = "\033[1;90m"
+)
+
+func c(code string) string {
+	if Config.NoColor || !ShouldUseColor() {
+		return ""
+	}
+	return code
+}
+
+// Exported color helpers for backward compatibility
+var (
+	ColorReset  = rawReset
+	ColorBold   = rawBold
+	ColorRed    = rawRed
+	ColorGreen  = rawGreen
+	ColorYellow = rawYellow
+	ColorBlue   = rawBlue
+	ColorPurple = rawPurple
+	ColorCyan   = rawCyan
+	ColorGray   = rawGray
 )
 
 // PrintBanner displays the Talaria ASCII banner
@@ -31,77 +78,119 @@ func PrintBanner() {
      ██║   ██╔══██║██║     ██╔══██║██╔══██╗██║██╔══██║
      ██║   ██║  ██║███████╗██║  ██║██║  ██║██║██║  ██║
      ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝
-    >> Linux Privilege Escalation & Lateral Intelligence <<
-`
-	fmt.Printf("%s%s%s\n", ColorBlue, banner, ColorReset)
+    >> Linux Privilege Escalation & Lateral Intelligence <<`
+
+	if ShouldUseColor() && !Config.NoColor {
+		fmt.Printf("%s%s%s\n\n", rawBlue, banner, rawReset)
+	} else {
+		fmt.Printf("%s\n\n", banner)
+	}
 }
 
-// PrintSectionHeader prints a clear, bordered section header
+// PrintSectionHeader prints a stream-friendly or UI-bordered section header
 func PrintSectionHeader(title string) {
 	printMu.Lock()
 	defer printMu.Unlock()
 
-	width := 60
-	title = " " + strings.ToUpper(title) + " "
-	sideLen := (width - len(title)) / 2
-	if sideLen < 3 {
-		sideLen = 3
+	upperTitle := strings.ToUpper(strings.TrimSpace(title))
+
+	if Config.EnableUI && IsTerminal() {
+		termWidth, _ := GetTerminalWidth()
+		bracketed := fmt.Sprintf("[ %s ]", upperTitle)
+		sideLen := (termWidth - len(bracketed)) / 2
+		if sideLen < 3 {
+			sideLen = 3
+		}
+		line := strings.Repeat("=", sideLen)
+		fmt.Printf("\n%s%s%s%s%s%s\n", c(rawGray), line, c(rawBold+rawBlue)+bracketed+c(rawReset), c(rawGray), line, c(rawReset))
+	} else {
+		// Clean stream-friendly header: universal across all shells, pipes, and minimal Alpine boxes
+		fmt.Printf("\n=== %s ===\n", upperTitle)
 	}
-	line := strings.Repeat("─", sideLen)
-	fmt.Printf("\n%s%s[%s%s%s]%s%s\n", ColorGray, line, ColorBold+ColorBlue, title, ColorReset+ColorGray, line, ColorReset)
 }
 
-// PrintFinding prints a structured finding block
+// PrintFinding prints a structured finding block adapted to CTF vs Audit mode
 func PrintFinding(severity string, title string, details map[string]string, exploit string) {
 	printMu.Lock()
 	defer printMu.Unlock()
 
-	color := ColorGray
-	label := severity
-
+	sevColor := c(rawGray)
 	switch strings.ToUpper(severity) {
 	case "CRITICAL":
-		color = ColorRed
+		sevColor = c(rawRed)
 	case "HIGH":
-		color = ColorPurple
+		sevColor = c(rawPurple)
 	case "LATERAL MOVEMENT CONFIRMED":
-		color = ColorCyan
+		sevColor = c(rawCyan)
 	case "MEDIUM":
-		color = ColorYellow
+		sevColor = c(rawYellow)
 	case "LOW", "INFO":
-		color = ColorBlue
+		sevColor = c(rawBlue)
 	}
 
-	fmt.Printf("%s[%s] %s%s\n", color, label, title, ColorReset)
+	// Extract mode-specific fields
+	remediation := ""
+	compliance := ""
 
-	// Print details in a tree format
+	cleanDetails := make(map[string]string)
+	for k, v := range details {
+		switch strings.ToLower(k) {
+		case "remediation":
+			remediation = v
+		case "compliance", "compliancetag", "compliance_tag":
+			compliance = v
+		default:
+			cleanDetails[k] = v
+		}
+	}
+
+	termWidth, _ := GetTerminalWidth()
+
+	// 1. Header Line
+	if Config.Mode == ModeAudit && compliance != "" {
+		fmt.Printf("%s[%s] %s%s %s[%s]%s\n", sevColor, severity, title, c(rawReset), c(rawCyan), compliance, c(rawReset))
+	} else {
+		fmt.Printf("%s[%s] %s%s\n", sevColor, severity, title, c(rawReset))
+	}
+
+	// 2. Details in a clean indentation
 	keys := []string{}
-	for k := range details {
+	for k := range cleanDetails {
 		keys = append(keys, k)
 	}
 
-	for i, k := range keys {
-		prefix := " ├─"
-		if i == len(keys)-1 && exploit == "" {
-			prefix = " └─"
+	for _, k := range keys {
+		val := cleanDetails[k]
+		line := fmt.Sprintf("  - %-8s: %s", k, val)
+		if len(line) > termWidth && IsTerminal() {
+			indent := fmt.Sprintf("    %-8s  ", "")
+			line = fmt.Sprintf("  - %-8s: %s", k, WrapText(val, termWidth, indent))
 		}
-		fmt.Printf("%s %-8s: %s\n", prefix, k, details[k])
+		fmt.Println(line)
 	}
 
-	if exploit != "" {
-		fmt.Printf(" └─ %sExploit : %s%s\n", ColorYellow, exploit, ColorReset)
+	// 3. Mode-specific Action Payload
+	if Config.Mode == ModeAudit {
+		if remediation != "" {
+			fmt.Printf("  %s[-] Remediation : %s%s\n", c(rawGreen), remediation, c(rawReset))
+		}
+	} else {
+		// CTF Mode (default): display exploit 1-liner prominently
+		if exploit != "" {
+			fmt.Printf("  %s[!] Exploit     : %s%s\n", c(rawYellow), exploit, c(rawReset))
+		}
 	}
 }
 
-// PrintSummary displays the final dashboard of findings
+// PrintSummary displays the final scan outcome
 func PrintSummary(report *models.ScanReport, duration string) {
-	PrintSectionHeader("SCAN SUMMARY")
+	printMu.Lock()
+	defer printMu.Unlock()
 
 	critical := 0
 	high := 0
 	medium := 0
 
-	// Helper to count by risk level
 	countRisk := func(level string) {
 		switch strings.ToUpper(level) {
 		case "CRITICAL":
@@ -188,13 +277,7 @@ func PrintSummary(report *models.ScanReport, duration string) {
 		}
 	}
 	for _, s := range report.KernelConfig {
-		if s.RiskLevel == "CRITICAL" {
-			critical++
-		} else if s.RiskLevel == "HIGH" {
-			high++
-		} else if s.RiskLevel == "MEDIUM" {
-			medium++
-		}
+		countRisk(s.RiskLevel)
 	}
 	for _, s := range report.HistorySecrets {
 		countRisk(s.RiskLevel)
@@ -221,13 +304,39 @@ func PrintSummary(report *models.ScanReport, duration string) {
 		}
 	}
 
-	// Logic for lateral counts would need RunIntelligenceEngine results or similar
-	// For now, let's keep it simple
+	modeStr := "CTF / OFFENSIVE"
+	if Config.Mode == ModeAudit {
+		modeStr = "ENTERPRISE AUDIT"
+	}
 
-	fmt.Printf("  %s%-20s: %d%s\n", ColorRed, "CRITICAL FINDINGS", critical, ColorReset)
-	fmt.Printf("  %s%-20s: %d%s\n", ColorPurple, "HIGH RISK", high, ColorReset)
-	fmt.Printf("  %s%-20s: %d%s\n", ColorYellow, "MEDIUM RISK", medium, ColorReset)
-
-	fmt.Printf("\n%s[*] Report saved to: %s%s\n", ColorGreen, "models/ScanReport", ColorReset)
-	fmt.Printf("%s[*] Total execution time: %s%s\n", ColorGray, duration, ColorReset)
+	if Config.EnableUI && IsTerminal() {
+		termWidth, _ := GetTerminalWidth()
+		border := strings.Repeat("-", termWidth-2)
+		fmt.Printf("\n+%s+\n", border)
+		fmt.Printf("| TALARIA SCAN SUMMARY // Mode: %-36s |\n", modeStr)
+		fmt.Printf("+%s+\n", border)
+		fmt.Printf("|   CRITICAL FINDINGS : %-39d |\n", critical)
+		fmt.Printf("|   HIGH RISK         : %-39d |\n", high)
+		fmt.Printf("|   MEDIUM RISK       : %-39d |\n", medium)
+		fmt.Printf("|   Execution Time    : %-39s |\n", duration)
+		fmt.Printf("+%s+\n\n", border)
+	} else {
+		// Clean stream summary
+		fmt.Printf("\n=== SCAN SUMMARY [%s] ===\n", modeStr)
+		fmt.Printf("[✓] Scan completed in %s\n", duration)
+		fmt.Printf("    Findings: %d Critical, %d High, %d Medium\n", critical, high, medium)
+		if Config.Mode == ModeAudit {
+			if critical+high > 0 {
+				fmt.Printf("    Audit Status: Non-compliant (%d high-priority policy violations require remediation)\n\n", critical+high)
+			} else {
+				fmt.Printf("    Audit Status: Passed (zero critical or high findings)\n\n")
+			}
+		} else {
+			if critical > 0 {
+				fmt.Printf("    Target Status: Root privilege escalation vector identified above.\n\n")
+			} else {
+				fmt.Printf("    Target Status: No trivial root vector identified.\n\n")
+			}
+		}
+	}
 }

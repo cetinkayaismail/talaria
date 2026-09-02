@@ -87,13 +87,17 @@ func main() {
 	outputFormat := flag.String("format", "text", "Report format: text or json")
 	sudoPassword := flag.String("pass", "", "Sudo password for sudo -l checks (optional)")
 	excludeInput := flag.String("exclude", "", "Comma-separated modules to skip (e.g. network,secrets)")
-	professionalMode := flag.Bool("professional", false, "Professional reporting mode (hides exploit hints, cleaner output)")
-	pMode := flag.Bool("p", false, "Professional reporting mode (shorthand)")
+	ctfMode := flag.Bool("ctf", false, "CTF / offensive mode: focuses on rapid root escalation, exploit 1-liners, and cleartext credentials (default)")
+	auditMode := flag.Bool("audit", false, "Audit / compliance mode: focuses on remediation fix commands, masked credentials, CIS tags")
+	professionalMode := flag.Bool("professional", false, "Alias for --audit")
+	pMode := flag.Bool("p", false, "Alias for --audit (shorthand)")
+	uiMode := flag.Bool("ui", false, "Enable visual summary dashboard card (default: stream clean text report)")
+	noColor := flag.Bool("no-color", false, "Disable ANSI colors (also respects NO_COLOR environment variable)")
 	ioLimit := flag.Int("io-limit", 0, "Max concurrent I/O scanners (default: auto based on RLIMIT_NOFILE)")
 
 	encryptKey := flag.String("encrypt", "", "Encrypt saved report with AES-256-GCM using this passphrase (requires -o)")
 
-	// Custom usage printer — groups core and reporting flags visually
+	// Custom usage printer — groups core, mode, and presentation flags visually
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Talaria - Linux Privilege Escalation & Security Audit Scanner\n")
 		fmt.Fprintf(os.Stderr, "Usage: talaria [flags]\n\n")
@@ -104,8 +108,15 @@ func main() {
 				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
 			}
 		}
-		fmt.Fprintf(os.Stderr, "\nREPORTING FLAGS:\n")
-		for _, name := range []string{"professional", "p"} {
+		fmt.Fprintf(os.Stderr, "\nOPERATIONAL MODES:\n")
+		for _, name := range []string{"ctf", "audit", "professional", "p"} {
+			f := flag.Lookup(name)
+			if f != nil {
+				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "\nPRESENTATION FLAGS:\n")
+		for _, name := range []string{"ui", "no-color"} {
 			f := flag.Lookup(name)
 			if f != nil {
 				fmt.Fprintf(os.Stderr, "  --%-18s %s\n", f.Name, f.Usage)
@@ -116,11 +127,24 @@ func main() {
 
 	flag.Parse()
 
-	isProfessional := *professionalMode || *pMode
+	isAudit := *auditMode || *professionalMode || *pMode
+	if *ctfMode && isAudit {
+		fmt.Fprintf(os.Stderr, "Error: --ctf and --audit/--professional are mutually exclusive\n")
+		os.Exit(1)
+	}
+	isProfessional := isAudit
 
-	// In professional/audit report mode, mask discovered credentials in output.
+	if isAudit {
+		core.Config.Mode = core.ModeAudit
+	} else {
+		core.Config.Mode = core.ModeCTF
+	}
+	core.Config.EnableUI = *uiMode
+	core.Config.NoColor = *noColor
+
+	// In audit report mode, mask discovered credentials in output.
 	// Default (CTF mode): show credentials in cleartext for immediate usability.
-	scanners.AuditCfg.MaskSecrets = isProfessional
+	scanners.AuditCfg.MaskSecrets = isAudit
 
 	scanners.InitUserContext() // Initialize shared user context (D2)
 
@@ -142,7 +166,7 @@ func main() {
 		ScanTime:       time.Now().Format(time.RFC1123),
 		TargetUser:     os.Getenv("USER"),
 		TargetScanPath: *searchPath,
-		AuditMode:      isProfessional,
+		AuditMode:      isAudit,
 	}
 
 	var mu sync.Mutex

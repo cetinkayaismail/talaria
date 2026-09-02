@@ -7,6 +7,18 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #58 — Dual-Engine Architecture & Stream-First Terminal Engine (`core/terminal.go`, `core/reporting.go`, `main.go`, `USAGE.md`, `README.md`)
+**Impact:** ⚡ Decoupled `--ctf` (offensive exploitation) vs `--audit` (compliance remediation); introduced pure Go stdlib `TIOCGWINSZ` terminal dimension detection (zero external tools, works on bare Alpine/BusyBox); stream-first reporting by default with opt-in `--ui` dashboard card.
+
+- **Pure Go Stdlib Terminal Engine (`core/terminal.go`, `core/terminal_test.go`):** Implemented direct kernel `TIOCGWINSZ` ioctl query using standard `syscall.Syscall` with zero cgo, zero external dependencies (`stty`/`tput`), and zero curses. Automatically clamps terminal margins (60–120 cols), detects TTY vs piped output (`isatty`), and handles `NO_COLOR` standard.
+- **Word-Wrapping with Indentation Preservation (`core/terminal.go`):** Implemented whitespace-only word-wrapping that preserves continuous filesystem paths without mid-word splitting and maintains visual tree indentation.
+- **Dual-Engine Operational Profiles (`main.go`, `core/reporting.go`, `core/reporting_test.go`):** Added mutually exclusive `--ctf` and `--audit` CLI modes. In `--ctf` mode (default), exploit 1-liners and cleartext credentials are prioritized while compliance tags and remediation commands are suppressed. In `--audit` mode, remediation fix commands and CIS/NIST tags are displayed while offensive exploit strings are completely suppressed.
+- **Opt-In Visual Dashboard (`--ui`):** Replaced heavy/brittle default Unicode borders with clean, universal streaming text output. Rich visual borders and summary cards are isolated strictly behind the explicit `--ui` flag and automatically degrade when stdout is redirected or piped.
+
+**Files changed:** `core/terminal.go` *(new)*, `core/terminal_test.go` *(new)*, `core/reporting_test.go` *(new)*, `core/reporting.go`, `main.go`, `USAGE.md`, `README.md`, `CHANGELOG.md`
+
+---
+
 ### #57 — Repository Cleanliness: Untrack `.agents/` and `.github/` from Remote Repository (`.gitignore`, `.agents/*`, `.github/*`)
 **Impact:** 🛡️ Removed internal agent rules and GitHub issue/PR templates from remote repository tracking; preserved files strictly on local workstation; updated `.gitignore` to prevent remote re-tracking.
 

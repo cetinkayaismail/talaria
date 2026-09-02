@@ -71,11 +71,20 @@ Provide sudo authentication non-interactively to audit `sudo -l` rules:
 | `--io-limit` | `0` | int | Maximum concurrent I/O scanning goroutines (default `0`: auto-calculated from `RLIMIT_NOFILE`). |
 | `--encrypt` | `""` | string | AES-256-GCM encryption passphrase applied to output report (requires `-o`). |
 
-### Enterprise Reporting Flags
+### Operational Modes (Dual-Engine)
 
 | Flag | Default | Type | Description |
 |---|---|---|---|
-| `--professional`, `-p` | `false` | bool | Enterprise audit mode: masks discovered credentials, provides structured findings. |
+| `--ctf` | `true` | bool | CTF / offensive mode: focuses on rapid root escalation, exploit 1-liners, and cleartext credentials (default). |
+| `--audit` | `false` | bool | Blue team audit / compliance mode: focuses on remediation fix commands, masked credentials, CIS tags. |
+| `--professional`, `-p` | `false` | bool | Alias for `--audit`. |
+
+### Presentation & Formatting Flags
+
+| Flag | Default | Type | Description |
+|---|---|---|---|
+| `--ui` | `false` | bool | Enable visual summary dashboard card (default: stream clean, universal text report). |
+| `--no-color` | `false` | bool | Disable ANSI colors (also automatically enabled if `NO_COLOR` env var is set or non-TTY). |
 
 ---
 

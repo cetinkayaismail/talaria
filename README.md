@@ -114,8 +114,14 @@ CORE FLAGS:
   --io-limit <int>     Max concurrent I/O scanners (default: 0 = auto based on RLIMIT_NOFILE)
   --encrypt <phrase>   Encrypt saved report with AES-256-GCM using this passphrase (requires -o)
 
-REPORTING FLAGS:
-  --professional, -p   Enterprise audit mode: masks discovered secrets and outputs clean compliance data
+OPERATIONAL MODES:
+  --ctf                CTF / offensive mode: rapid root escalation, exploit 1-liners, cleartext creds (default)
+  --audit              Audit / compliance mode: remediation fix commands, masked credentials, CIS tags
+  --professional, -p   Alias for --audit
+
+PRESENTATION FLAGS:
+  --ui                 Enable visual summary dashboard card (default: stream clean text report)
+  --no-color           Disable ANSI colors (also respects NO_COLOR env var or non-TTY)
 ```
 
 ---
