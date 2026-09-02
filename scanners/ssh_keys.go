@@ -25,7 +25,7 @@ type SSHKeyResult struct {
 // privateKeyNames are exact filenames that are always SSH private keys
 var privateKeyNames = []string{
 	"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa",
-	"id_rsa.pub",    // Reveal username/host info
+	"id_rsa.pub", // Reveal username/host info
 	"id_ed25519.pub",
 }
 

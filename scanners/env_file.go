@@ -15,9 +15,9 @@ import (
 // service can be used to inject LD_PRELOAD, PATH, or arbitrary env vars that
 // execute attacker-controlled code the next time the service is (re)started.
 type EnvFileResult struct {
-	ServiceFile   string `json:"service_file"`   // e.g. /etc/systemd/system/myapp.service
-	ServiceName   string `json:"service_name"`   // e.g. myapp
-	EnvFilePath   string `json:"env_file_path"`  // e.g. /etc/default/myapp
+	ServiceFile   string `json:"service_file"`  // e.g. /etc/systemd/system/myapp.service
+	ServiceName   string `json:"service_name"`  // e.g. myapp
+	EnvFilePath   string `json:"env_file_path"` // e.g. /etc/default/myapp
 	IsWritable    bool   `json:"is_writable"`
 	InjectionType string `json:"injection_type"` // "LD_PRELOAD", "PATH", or "GENERIC"
 	RiskLevel     string `json:"risk_level"`     // "CRITICAL" or "HIGH"

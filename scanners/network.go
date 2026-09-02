@@ -232,7 +232,6 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 	return results
 }
 
-
 // buildInodeMap scans /proc to map socket inodes to process names
 func buildInodeMap() map[string]string {
 	m := make(map[string]string)

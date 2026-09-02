@@ -19,8 +19,7 @@ func poolWorkers() int {
 	return n
 }
 
-
-// GlobalIgnoreDirs is a comprehensive list of directories that should be skipped 
+// GlobalIgnoreDirs is a comprehensive list of directories that should be skipped
 // by all scanners to maintain performance and reduce noise.
 var GlobalIgnoreDirs = []string{
 	"/proc", "/sys", "/dev", "/run", "/snap", "/var/cache",

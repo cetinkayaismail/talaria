@@ -58,7 +58,7 @@ func PrintFinding(severity string, title string, details map[string]string, expl
 
 	color := ColorGray
 	label := severity
-	
+
 	switch strings.ToUpper(severity) {
 	case "CRITICAL":
 		color = ColorRed
@@ -73,13 +73,13 @@ func PrintFinding(severity string, title string, details map[string]string, expl
 	}
 
 	fmt.Printf("%s[%s] %s%s\n", color, label, title, ColorReset)
-	
+
 	// Print details in a tree format
 	keys := []string{}
 	for k := range details {
 		keys = append(keys, k)
 	}
-	
+
 	for i, k := range keys {
 		prefix := " ├─"
 		if i == len(keys)-1 && exploit == "" {
@@ -87,7 +87,7 @@ func PrintFinding(severity string, title string, details map[string]string, expl
 		}
 		fmt.Printf("%s %-8s: %s\n", prefix, k, details[k])
 	}
-	
+
 	if exploit != "" {
 		fmt.Printf(" └─ %sExploit : %s%s\n", ColorYellow, exploit, ColorReset)
 	}
@@ -96,7 +96,7 @@ func PrintFinding(severity string, title string, details map[string]string, expl
 // PrintSummary displays the final dashboard of findings
 func PrintSummary(report *models.ScanReport, duration string) {
 	PrintSectionHeader("SCAN SUMMARY")
-	
+
 	critical := 0
 	high := 0
 	medium := 0
@@ -104,35 +104,122 @@ func PrintSummary(report *models.ScanReport, duration string) {
 	// Helper to count by risk level
 	countRisk := func(level string) {
 		switch strings.ToUpper(level) {
-		case "CRITICAL": critical++
-		case "HIGH": high++
-		case "MEDIUM": medium++
+		case "CRITICAL":
+			critical++
+		case "HIGH":
+			high++
+		case "MEDIUM":
+			medium++
 		}
 	}
 
-	for _, s := range report.Secrets { countRisk(s.RiskLevel) }
-	for _, s := range report.SUID { if s.IsDangerous { critical++ } }
-	for _, s := range report.SGID { if s.IsDangerous { critical++ } }
-	for _, s := range report.SudoPrivileges {
-		if s.HasLDPreload || s.IsDangerous { critical++ } else if s.NoPassword { high++ }
+	for _, s := range report.Secrets {
+		countRisk(s.RiskLevel)
 	}
-	for _, s := range report.CronJobs { if s.IsDangerous { critical++ } }
-	for _, s := range report.SystemdTimers { if s.IsDangerous { critical++ } }
-	for _, s := range report.Capabilities { if s.IsDangerous { critical++ } }
-	for _, s := range report.Writeable { if s.RiskLevel == "CRITICAL" { critical++ } else if s.RiskLevel == "HIGH" { high++ } else if s.RiskLevel == "MEDIUM" { medium++ } }
-	for _, s := range report.Vulnerabilities { if s.IsDangerous { critical++ } }
-	for _, s := range report.PATHHijack { if s.IsDangerous { critical++ } }
-	for _, s := range report.SSHKeys { if s.IsDangerous { critical++ } }
-	for _, s := range report.SessionHijack { if s.IsDangerous { critical++ } }
-	for _, s := range report.ContainerEscape { if s.IsDangerous { critical++ } }
-	for _, s := range report.DBusPolicy { if s.IsDangerous { critical++ } }
-	for _, s := range report.KernelConfig { if s.RiskLevel == "CRITICAL" { critical++ } else if s.RiskLevel == "HIGH" { high++ } else if s.RiskLevel == "MEDIUM" { medium++ } }
-	for _, s := range report.HistorySecrets { countRisk(s.RiskLevel) }
-	for _, s := range report.Logrotate { countRisk(s.RiskLevel) }
-	for _, s := range report.EnvFileResults { countRisk(s.RiskLevel) }
-	for _, s := range report.NetworkConnections { countRisk(s.RiskLevel) }
-	for _, s := range report.FilePermissions { if s.IsDangerous { critical++ } else if s.CanWrite { high++ } }
-	for _, s := range report.FilePermsExploit { if s.IsDangerous { critical++ } }
+	for _, s := range report.SUID {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.SGID {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.SudoPrivileges {
+		if s.HasLDPreload || s.IsDangerous {
+			critical++
+		} else if s.NoPassword {
+			high++
+		}
+	}
+	for _, s := range report.CronJobs {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.SystemdTimers {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.Capabilities {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.Writeable {
+		if s.RiskLevel == "CRITICAL" {
+			critical++
+		} else if s.RiskLevel == "HIGH" {
+			high++
+		} else if s.RiskLevel == "MEDIUM" {
+			medium++
+		}
+	}
+	for _, s := range report.Vulnerabilities {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.PATHHijack {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.SSHKeys {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.SessionHijack {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.ContainerEscape {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.DBusPolicy {
+		if s.IsDangerous {
+			critical++
+		}
+	}
+	for _, s := range report.KernelConfig {
+		if s.RiskLevel == "CRITICAL" {
+			critical++
+		} else if s.RiskLevel == "HIGH" {
+			high++
+		} else if s.RiskLevel == "MEDIUM" {
+			medium++
+		}
+	}
+	for _, s := range report.HistorySecrets {
+		countRisk(s.RiskLevel)
+	}
+	for _, s := range report.Logrotate {
+		countRisk(s.RiskLevel)
+	}
+	for _, s := range report.EnvFileResults {
+		countRisk(s.RiskLevel)
+	}
+	for _, s := range report.NetworkConnections {
+		countRisk(s.RiskLevel)
+	}
+	for _, s := range report.FilePermissions {
+		if s.IsDangerous {
+			critical++
+		} else if s.CanWrite {
+			high++
+		}
+	}
+	for _, s := range report.FilePermsExploit {
+		if s.IsDangerous {
+			critical++
+		}
+	}
 
 	// Logic for lateral counts would need RunIntelligenceEngine results or similar
 	// For now, let's keep it simple
@@ -140,7 +227,7 @@ func PrintSummary(report *models.ScanReport, duration string) {
 	fmt.Printf("  %s%-20s: %d%s\n", ColorRed, "CRITICAL FINDINGS", critical, ColorReset)
 	fmt.Printf("  %s%-20s: %d%s\n", ColorPurple, "HIGH RISK", high, ColorReset)
 	fmt.Printf("  %s%-20s: %d%s\n", ColorYellow, "MEDIUM RISK", medium, ColorReset)
-	
+
 	fmt.Printf("\n%s[*] Report saved to: %s%s\n", ColorGreen, "models/ScanReport", ColorReset)
 	fmt.Printf("%s[*] Total execution time: %s%s\n", ColorGray, duration, ColorReset)
 }

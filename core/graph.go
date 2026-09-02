@@ -80,7 +80,7 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 		if targetUser == "" || targetUser == report.TargetUser {
 			continue
 		}
-		
+
 		userGoal := fmt.Sprintf("goal:user:%s", targetUser)
 		if targetUser == "root" || targetUser == "0" {
 			userGoal = "goal:root"
@@ -185,7 +185,7 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 			if targetUser == report.TargetUser {
 				continue
 			}
-			
+
 			userGoal := fmt.Sprintf("goal:user:%s", targetUser)
 			if strings.Contains(targetUser, "root") || targetUser == "0" {
 				userGoal = "goal:root"

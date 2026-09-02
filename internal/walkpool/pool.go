@@ -40,7 +40,7 @@ import (
 
 // WalkEntry is one filesystem entry delivered by [Walk].
 type WalkEntry struct {
-	Path  string     // absolute path to the entry
+	Path  string      // absolute path to the entry
 	Entry fs.DirEntry // lightweight stat (already resolved by os.ReadDir)
 }
 

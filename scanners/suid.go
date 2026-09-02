@@ -113,11 +113,19 @@ func ScanSUID(root string) ([]SUIDResult, error) {
 
 				// Build a concise capability tag string for the reason
 				var caps []string
-				if gtfoEntry.Shell     { caps = append(caps, "shell") }
-				if gtfoEntry.FileRead  { caps = append(caps, "file-read") }
-				if gtfoEntry.FileWrite { caps = append(caps, "file-write") }
+				if gtfoEntry.Shell {
+					caps = append(caps, "shell")
+				}
+				if gtfoEntry.FileRead {
+					caps = append(caps, "file-read")
+				}
+				if gtfoEntry.FileWrite {
+					caps = append(caps, "file-write")
+				}
 				capStr := strings.Join(caps, ", ")
-				if capStr == "" { capStr = "privilege-escalation" }
+				if capStr == "" {
+					capStr = "privilege-escalation"
+				}
 
 				if isRootOwned {
 					reason = fmt.Sprintf(

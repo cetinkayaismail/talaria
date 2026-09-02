@@ -11,9 +11,9 @@ import (
 // ELFRPathResult represents an ELF binary RPATH / RUNPATH security finding.
 type ELFRPathResult struct {
 	Path          string `json:"path"`
-	TagType       string `json:"tag_type"`     // RPATH or RUNPATH
-	Value         string `json:"value"`        // Tag value string
-	RiskLevel     string `json:"risk_level"`   // CRITICAL, HIGH, MEDIUM
+	TagType       string `json:"tag_type"`   // RPATH or RUNPATH
+	Value         string `json:"value"`      // Tag value string
+	RiskLevel     string `json:"risk_level"` // CRITICAL, HIGH, MEDIUM
 	Reason        string `json:"reason"`
 	ExploitHint   string `json:"exploit_hint,omitempty"`
 	Remediation   string `json:"remediation,omitempty"`

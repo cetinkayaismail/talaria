@@ -38,7 +38,7 @@ var GroupExploits = map[string]string{
 	"input":  "cat /dev/input/event* (requires root or CAP_INPUT) or use showkey to log keys.",
 }
 
-// ScanGroups checks if the current user belongs to any high-risk groups 
+// ScanGroups checks if the current user belongs to any high-risk groups
 func ScanGroups() ([]GroupResult, error) {
 	var results []GroupResult
 

@@ -55,11 +55,11 @@ var mediumFilePatterns = []string{
 	".tfvars", "terraform.tfvars", "docker-compose.yml", "docker-compose.yaml",
 	".ovpn",                                    // OpenVPN config
 	"auth.txt", "credentials.txt", "creds.txt", // Plaintext cred files
-	"my.cnf", ".my.cnf",                        // MySQL credentials
-	"wp-config.php",                             // WordPress
-	".htpasswd",                                 // Apache passwords
-	"filezilla.xml",                             // FTP credentials
-	"recentservers.xml",                         // FileZilla
+	"my.cnf", ".my.cnf", // MySQL credentials
+	"wp-config.php",                         // WordPress
+	".htpasswd",                             // Apache passwords
+	"filezilla.xml",                         // FTP credentials
+	"recentservers.xml",                     // FileZilla
 	"Places.sqlite", "History", "Top Sites", // Browser history
 }
 
@@ -87,7 +87,7 @@ var (
 	// OpenVPN auth-user-pass points to a credentials file
 	ovpnAuthRegex = regexp.MustCompile(`(?i)^\s*auth-user-pass\s*(\S+)?`)
 
-	// IRSSI connect_password (tırnaksız, noktalı virgülle biter)
+	// IRSSI connect_password (unquoted, ends with semicolon)
 	irssiPassRegex = regexp.MustCompile(`(?i)(?:connect_)?password\s*=\s*"?([^";\s]+)"?;?`)
 )
 
@@ -532,9 +532,9 @@ func genericContentScan(f *os.File, path string) string {
 		if privateKeyRegex.MatchString(cleanLine) {
 			return "Private Key Header detected"
 		}
-		
+
 		// Netrc check: ONLY apply if the filename actually is a netrc file.
-		if (fileName == ".netrc" || fileName == "_netrc" || fileName == "netrc") {
+		if fileName == ".netrc" || fileName == "_netrc" || fileName == "netrc" {
 			if m := netrcPassRegex.FindStringSubmatch(cleanLine); len(m) > 1 && !isFalsePositive(m[1]) {
 				return "Netrc Password: " + m[1]
 			}
@@ -715,12 +715,12 @@ func isBinary(name string) bool {
 func isBinaryContent(data []byte) bool {
 	// Check magic numbers
 	magicSignatures := [][]byte{
-		{0x7F, 'E', 'L', 'F'},     // ELF
-		{'M', 'Z'},                 // PE (Windows)
-		{0xCA, 0xFE, 0xBA, 0xBE},   // Mach-O (macOS)
-		{0xCF, 0xFA, 0xED, 0xFE},   // Mach-O 64-bit
-		{0x50, 0x4B, 0x03, 0x04},   // ZIP / JAR / APK
-		{0x25, 0x50, 0x44, 0x46},   // PDF
+		{0x7F, 'E', 'L', 'F'},    // ELF
+		{'M', 'Z'},               // PE (Windows)
+		{0xCA, 0xFE, 0xBA, 0xBE}, // Mach-O (macOS)
+		{0xCF, 0xFA, 0xED, 0xFE}, // Mach-O 64-bit
+		{0x50, 0x4B, 0x03, 0x04}, // ZIP / JAR / APK
+		{0x25, 0x50, 0x44, 0x46}, // PDF
 	}
 	for _, sig := range magicSignatures {
 		if len(data) >= len(sig) && bytes.HasPrefix(data, sig) {

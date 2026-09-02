@@ -25,7 +25,7 @@ type FilePermissionResult struct {
 	ComplianceTag   string `json:"compliance_tag,omitempty"`
 }
 
-// CriticalFiles defines standard system files and their safe permission configuratiosn 
+// CriticalFiles defines standard system files and their safe permission configuratiosn
 // This list is not exhaustive, but it covers the most common and critical system files that should be protected
 var CriticalFiles = []struct {
 	Path          string
@@ -42,7 +42,7 @@ var CriticalFiles = []struct {
 	{"/etc/fstab", 0644, "Filesystem mount table"},
 }
 
-// ScanFilePermissions checks for misconfigurations in system files and common writable areas 
+// ScanFilePermissions checks for misconfigurations in system files and common writable areas
 func ScanFilePermissions() ([]FilePermissionResult, error) {
 	var results []FilePermissionResult
 	ctx := GetUserContext()
@@ -144,7 +144,7 @@ func checkSingleFile(path string, expected os.FileMode, ctx *UserContext) *FileP
 	perms := mode.Perm()
 	isSticky := (mode & os.ModeSticky) != 0
 
-	isWorldWritable := (perms & 0o002) != 0 && !isSticky
+	isWorldWritable := (perms&0o002) != 0 && !isSticky
 	isGroupWritable := (perms & 0o020) != 0
 	isWorldReadable := (perms & 0o004) != 0
 

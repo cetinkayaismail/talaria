@@ -383,7 +383,7 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 							cmdLine := strings.TrimPrefix(line, "ExecStart=")
 							cmdLine = strings.TrimPrefix(cmdLine, "ExecStartPre=")
 							cmdLine = strings.TrimPrefix(cmdLine, "ExecStartPost=")
-							
+
 							// Strip systemd modifiers (- ignore error, @ change argv0, + full privs, ! capabilities)
 							cmdLine = strings.TrimLeft(cmdLine, "-@+!")
 							fields := strings.Fields(cmdLine)

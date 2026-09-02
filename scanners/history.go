@@ -127,7 +127,7 @@ func auditHistoryLine(line string, username string, path string, lineNum int) *H
 	reAssign := regexp.MustCompile(`(?i)(?:password|pass|secret|token|key|pwd)\s*(?:=|:)\s*['"]?([^'"\s&|;<>]+)['"]?`)
 	reCliFlag := regexp.MustCompile(`(?i)(?:-p|--password|--pass)\s*['"]?([^'"\s&|;<>]+)['"]?`)
 	reConnection := regexp.MustCompile(`(?i)(?:mysql|postgresql|postgres|redis|mongodb)(?:://[^:]+:([^@]+)@|(?:\s+[^-\s]+)*\s+-p\s*([^-\s]+))`)
-	
+
 	// New patterns for Cloud and API tokens (often exported in history)
 	reAWS := regexp.MustCompile(`\b(AKIA[0-9A-Z]{16})\b`)
 	reBearer := regexp.MustCompile(`(?i)Authorization:\s+Bearer\s+([A-Za-z0-9\-._~+/]+=*)`)
@@ -202,7 +202,7 @@ func auditHistoryLine(line string, username string, path string, lineNum int) *H
 	if strings.HasPrefix(secretVal, "$") || strings.HasPrefix(secretVal, "\\$") {
 		return nil
 	}
-	
+
 	// Extra FP protection for assignments (e.g. export PASS=...)
 	if matchType == "assignment" && calculateEntropy(secretVal) < 2.5 && !strings.Contains(line, "mysql") {
 		return nil

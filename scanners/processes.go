@@ -174,14 +174,14 @@ func checkProcessDanger(cmdline string, uid int, userShells map[int]string) bool
 	cmdBase := filepath.Base(strings.Fields(cmdline)[0])
 	lowerCmd := strings.ToLower(cmdline)
 
-	// CRITICAL!!!: Debug tools are always dangerous (direct exploitation indicators) 
+	// CRITICAL!!!: Debug tools are always dangerous (direct exploitation indicators)
 	for _, critical := range CriticalProcesses {
 		if strings.EqualFold(cmdBase, critical) {
 			return true
 		}
 	}
 
-	//  Network tools with suspicious patterns (nc -l = listening shell) 
+	//  Network tools with suspicious patterns (nc -l = listening shell)
 	if strings.EqualFold(cmdBase, "nc") || strings.EqualFold(cmdBase, "ncat") {
 		// Only flag if listening (-l option) or executing shell
 		if strings.Contains(lowerCmd, " -l") || strings.Contains(lowerCmd, "-e /bin/") {
@@ -189,7 +189,7 @@ func checkProcessDanger(cmdline string, uid int, userShells map[int]string) bool
 		}
 	}
 
-	//  Sensitive keywords in cmdline (potential credential leak) 
+	//  Sensitive keywords in cmdline (potential credential leak)
 	sensitiveKeywords := []string{"pass=", "pwd=", "secret=", "token=", "api_key"}
 	for _, key := range sensitiveKeywords {
 		if strings.Contains(lowerCmd, key) {

@@ -95,7 +95,7 @@ func ScanWriteable(root string) ([]WriteableResult, error) {
 
 			fileName := filepath.Base(path)
 			isSUID := (info.Mode()&os.ModeSetuid != 0)
-			
+
 			// Executable classification guard: zero-byte files, lock/pid/log/sock extensions are not code executables
 			isExecutable := (info.Mode()&0111 != 0)
 			if isExecutable && !isSUID {
@@ -452,11 +452,11 @@ func ScanUdevRules() ([]WriteableResult, error) {
 func ScanMotdProfiledHijack() ([]WriteableResult, error) {
 	var results []WriteableResult
 	targets := []struct {
-		path        string
-		dirType     string
-		fileType    string
-		dirReason   string
-		fileReason  string
+		path       string
+		dirType    string
+		fileType   string
+		dirReason  string
+		fileReason string
 	}{
 		{
 			path:       "/etc/profile.d",
@@ -487,11 +487,11 @@ func ScanMotdProfiledHijack() ([]WriteableResult, error) {
 	}
 
 	checkTarget := func(path string, isDir bool, target struct {
-		path        string
-		dirType     string
-		fileType    string
-		dirReason   string
-		fileReason  string
+		path       string
+		dirType    string
+		fileType   string
+		dirReason  string
+		fileReason string
 	}) {
 		info, err := os.Stat(path)
 		if err != nil {
