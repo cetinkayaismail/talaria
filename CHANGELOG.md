@@ -7,6 +7,18 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #62 — Four Confirmed Bug Fixes (`scanners/secrets.go`, `main.go`)
+**Impact:** 📉 Eliminated false positive + 🔧 Fixed functional gaps in exclude flag and text report completeness
+
+- **BUG-01 — `id_rsa.pub` False Positive (`scanners/secrets.go`):** `matchCriticalPattern()` used `strings.Contains(fileName, "id_rsa")` which matched SSH public keys (`.pub` suffix) as CRITICAL private key findings. Added `.pub` suffix exclusion guard before the `keyPatterns` loop. Verified via adversarial FP test FP-02 (now PASS).
+- **BUG-02 — `services` and `packages` Modules Ignored `--exclude` Flag (`main.go`):** These two module dispatchers lacked `!excludedModules[...]` checks, unlike all other 35+ modules. Running `--exclude services,packages` had no effect. Fixed by adding the missing exclusion condition.
+- **BUG-03 — `CanWrite` Type Safety Note (`scanners/context.go`):** Documented cross-platform fragility of `uint32` mode parameter. No code change required on Linux (where `syscall.Stat_t.Mode` is always `uint32`).
+- **BUG-04 — Text Report Serializer Missing ~50% of Sections (`main.go`):** `saveReport()` for `--format text` only serialized 15 out of 43 report sections. Rewrote the text serializer using a table-driven `textSection` pattern that now covers ALL scanner sections (Secrets, SUID, SGID, Sudo, SudoTokens, Capabilities, Writeable, CronJobs, SystemdTimers, Network, NFS, Processes, Sockets, FilePermissions, FilePermsExploit, Groups, PATHHijack, SSHKeys, PtraceScope, ContainerEscape, DBusPolicy, Services, Packages, Vulnerabilities, SessionHijack, KernelConfig, PolkitRules, HistorySecrets, XAuthority, Logrotate, EnvFile, PAM, Sysctl, SystemdOverrides, SubUID, Mounts, ELF RPATH, Auditd, Udev, CronDirs, ProcEnv, LD/NSS, Modprobe, CloudMeta, VenvWrap). Summary counters now include all 43 fields.
+
+**Files changed:** `scanners/secrets.go`, `main.go`
+
+---
+
 ### #61 — Sudo Token Reuse, TIOCSTI Terminal Hijack & Daemon Socket Expansion (`scanners/sudo_token.go`, `scanners/sockets.go`, `scanners/cronjobs.go`, `main.go`)
 **Impact:** 🎯 Added new detection vectors for live passwordless sudo sessions (`sudo -n true`), writable sudo timestamp directories (`/var/run/sudo/ts`), peer pseudo-terminal command injection (`/dev/pts/*` + `dev.tiocsti_restrict`), writable `/etc/sudoers.d/`, and expanded daemon socket detection to include Podman and CRI-O.
 
