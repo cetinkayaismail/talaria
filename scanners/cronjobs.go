@@ -302,19 +302,14 @@ func ScanAnacronWritability() ([]WriteableResult, error) {
 // ScanSystemdTimers checks for writeable systemd timer or service files this might lead direct root
 func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 	var results []SystemdTimerResult
-	currUser, _ := user.Current()
-	uid, _ := strconv.Atoi(currUser.Uid)
-
-	// Get user groups for accurate permission checking for lateral movement
-	gidStrings, _ := currUser.GroupIds()
-	userGids := make(map[int]bool)
-	for _, g := range gidStrings {
-		id, _ := strconv.Atoi(g)
-		userGids[id] = true
+	userCtx := GetUserContext()
+	if userCtx == nil {
+		return results, nil
 	}
 
 	systemdPaths := []string{
 		"/etc/systemd/system",
+		"/run/systemd/system",
 		"/lib/systemd/system",
 		"/usr/lib/systemd/system",
 	}
@@ -341,13 +336,13 @@ func ScanSystemdTimers() ([]SystemdTimerResult, error) {
 					if !ok {
 						return false, ""
 					}
-					if info.Mode()&0002 != 0 {
-						return true, "world-writeable"
-					}
-					if int(stat.Uid) == uid && info.Mode()&0200 != 0 {
-						return true, "owner-writeable"
-					}
-					if userGids[int(stat.Gid)] && info.Mode()&0020 != 0 {
+					if userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
+						if info.Mode()&0002 != 0 {
+							return true, "world-writeable"
+						}
+						if int(stat.Uid) == userCtx.UID {
+							return true, "owner-writeable"
+						}
 						return true, "group-writeable"
 					}
 					return false, ""

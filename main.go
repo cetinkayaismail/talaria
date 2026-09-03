@@ -439,6 +439,28 @@ func main() {
 					}
 				}
 			}
+
+			// ── Sudo Tokens & TIOCSTI Terminal Hijack ─────────────────────
+			tokenResults, err := scanners.ScanSudoTokensAndTTY()
+			if err == nil && len(tokenResults) > 0 {
+				mu.Lock()
+				report.SudoTokens = tokenResults
+				mu.Unlock()
+				buf := core.NewSectionBuffer("Active Sudo Tokens & TTY Hijack")
+				for _, r := range tokenResults {
+					details := map[string]string{
+						"Vector":      r.Vector,
+						"Reason":      r.Reason,
+						"Remediation": r.Remediation,
+						"Compliance":  r.ComplianceTag,
+					}
+					if r.Path != "" {
+						details["Path"] = r.Path
+					}
+					buf.AddFinding(r.RiskLevel, r.Vector, details, r.ExploitHint)
+				}
+				buf.Flush()
+			}
 		}()
 	}
 

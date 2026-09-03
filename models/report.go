@@ -52,4 +52,5 @@ type ScanReport struct {
 	ModprobeResults    []scanners.ModprobeResult          `json:"modprobe_results,omitempty"`
 	CloudMetaResults   []scanners.CloudMetaResult         `json:"cloud_meta_results,omitempty"`
 	VenvWrapResults    []scanners.VenvWrapResult          `json:"venv_wrap_results,omitempty"`
+	SudoTokens         []scanners.SudoTokenResult         `json:"sudo_tokens,omitempty"`
 }

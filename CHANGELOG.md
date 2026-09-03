@@ -7,6 +7,20 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #61 — Sudo Token Reuse, TIOCSTI Terminal Hijack & Daemon Socket Expansion (`scanners/sudo_token.go`, `scanners/sockets.go`, `scanners/cronjobs.go`, `main.go`)
+**Impact:** 🎯 Added new detection vectors for live passwordless sudo sessions (`sudo -n true`), writable sudo timestamp directories (`/var/run/sudo/ts`), peer pseudo-terminal command injection (`/dev/pts/*` + `dev.tiocsti_restrict`), writable `/etc/sudoers.d/`, and expanded daemon socket detection to include Podman and CRI-O.
+
+- **VEC-01 — Sudo Token Reuse & Timestamp Ticket Audit (`scanners/sudo_token.go` *(new)*):** Implemented live non-interactive sudo verification probe (`sudo -n true`) and filesystem audit of `/var/run/sudo/ts` and `/run/sudo/ts`. Instantly detects active, unexpired sudo credentials allowing passwordless root shell elevation without brute-force or interaction.
+- **VEC-02 — TIOCSTI Terminal Command Injection (`scanners/sudo_token.go` *(new)*):** Audits `/dev/pts/*` for writable peer pseudo-terminals cross-referenced with `/proc/sys/dev/tiocsti_restrict`. Flags writable terminals owned by other users that allow arbitrary command injection into active operator shells via `TIOCSTI` ioctl.
+- **VEC-03 — Writable `/etc/sudoers.d/` Scanner (`scanners/sudo_token.go` *(new)*):** Audits drop-in sudoers directory for current user write permissions to detect immediate privilege escalation via custom rule injection.
+- **VEC-04 — Container & Daemon Socket Coverage Expansion (`scanners/sockets.go`):** Added `podman.sock`, `podman`, and `crio.sock` to dangerous socket signatures. Migrated socket scanner to `GetUserContext()` and `CachedUserName()`, filtering out benign self-owned user sockets.
+- **VEC-05 — Runtime Systemd Timer Audit (`scanners/cronjobs.go`):** Expanded `ScanSystemdTimers` search paths to include `/run/systemd/system` for runtime and transient timer drop-ins, and switched writability checks to `userCtx.CanWrite()`.
+- **TEST-02 — Sudo Token & TTY Unit Test Suite (`scanners/sudo_token_test.go` *(new)*):** Validated scanner execution, risk level categorization, and user context isolation.
+
+**Files changed:** `scanners/sudo_token.go` *(new)*, `scanners/sudo_token_test.go` *(new)*, `models/report.go`, `scanners/sockets.go`, `scanners/cronjobs.go`, `core/reporting.go`, `main.go`, `CHANGELOG.md`
+
+---
+
 ### #60 — High-Throughput Engine Optimizations & Concurrency Hardening (`core/*`, `scanners/*`, `FUTURE_PLANS.md`)
 **Impact:** ⚡ Cut ~35–70ms off total scan execution via user/group memoization, socket early-bail indexing, and graph search fast-bailing; eliminated stdout section interleaving via chunked atomic `SectionBuffer`; added Phase 6 to `FUTURE_PLANS.md`.
 

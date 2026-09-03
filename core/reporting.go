@@ -356,6 +356,9 @@ func PrintSummary(report *models.ScanReport, duration string) {
 			critical++
 		}
 	}
+	for _, s := range report.SudoTokens {
+		countRisk(s.RiskLevel)
+	}
 
 	modeStr := "CTF / OFFENSIVE"
 	if Config.Mode == ModeAudit {

@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -45,25 +43,17 @@ var safeSystemSockets = map[string]bool{
 }
 
 var dangerousSockets = []string{
-	"docker.sock", "docker", "kubernetes", "k8s", "containerd",
-	"cri.sock", "mysql", "postgres",
+	"docker.sock", "docker", "podman.sock", "podman",
+	"containerd.sock", "containerd", "kubernetes", "k8s",
+	"cri.sock", "crio.sock", "mysql", "postgres",
 	"redis", "mongodb", "lxd", "snapd",
 }
 
 func ScanUnixDomainSockets() ([]SocketResult, error) {
 	var results []SocketResult
-
-	// 1. Pre-fetch user info once for performance
-	currentUser, err := user.Current()
-	if err != nil {
-		return nil, err
-	}
-	currentUID, _ := strconv.Atoi(currentUser.Uid)
-	groupIDs, _ := currentUser.GroupIds()
-	userGids := make(map[int]bool)
-	for _, g := range groupIDs {
-		id, _ := strconv.Atoi(g)
-		userGids[id] = true
+	userCtx := GetUserContext()
+	if userCtx == nil {
+		return results, nil
 	}
 
 	searchPaths := []string{"/var/run", "/run", "/tmp", "/var/tmp", "/var/lib", "/home"}
@@ -99,20 +89,8 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 				continue
 			}
 
-			// 3. Permission Check using Syscall Constants
-			mode := stat.Mode
-			isWritable := false
-
-			if currentUID == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
-				isWritable = true
-			} else if userGids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
-				isWritable = true
-			} else if mode&syscall.S_IWOTH != 0 {
-				isWritable = true
-			}
-
-			// We only report sockets we can actually interact with
-			if !isWritable {
+			// 3. Permission Check using user context
+			if !userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
 				continue
 			}
 
@@ -134,16 +112,18 @@ func ScanUnixDomainSockets() ([]SocketResult, error) {
 				}
 			}
 
-			// A socket is dangerous if it matches a known dangerous service pattern
-			// and we can write to it
-			isDangerous := isCriticalSocket
+			// Must not report user's own sockets unless it's an explicit daemon socket
+			if int(stat.Uid) == userCtx.UID && !isCriticalSocket {
+				continue
+			}
 
 			results = append(results, SocketResult{
 				Path:          path,
+				Owner:         CachedUserName(int(stat.Uid)),
 				OwnerUID:      int(stat.Uid),
 				Permissions:   info.Mode().Perm().String(),
-				IsWritable:    isWritable,
-				IsDangerous:   isDangerous,
+				IsWritable:    true,
+				IsDangerous:   isCriticalSocket,
 				Service:       service,
 				Remediation:   fmt.Sprintf("chmod 0660 %s", path),
 				ComplianceTag: "CIS-Linux-5.4.1 / NIST-AC-3",
