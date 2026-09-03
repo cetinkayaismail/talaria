@@ -43,7 +43,10 @@ func ScanCronJobs() ([]CronJobResult, error) {
 	currUser, _ := user.Current()
 	uid, _ := strconv.Atoi(currUser.Uid)
 
-	cronPaths := []string{"/etc/crontab", "/etc/cron.d", "/var/spool/cron/crontabs"}
+	// Search standard cron paths: /etc/crontab, /etc/cron.d,
+	// Debian/Ubuntu (/var/spool/cron/crontabs), and RHEL/CentOS/Fedora (/var/spool/cron)
+	cronPaths := []string{"/etc/crontab", "/etc/cron.d", "/var/spool/cron", "/var/spool/cron/crontabs"}
+	seenFiles := make(map[string]bool)
 
 	for _, path := range cronPaths {
 		info, err := os.Stat(path)
@@ -55,11 +58,18 @@ func ScanCronJobs() ([]CronJobResult, error) {
 			entries, _ := os.ReadDir(path)
 			for _, entry := range entries {
 				if !entry.IsDir() {
-					results = append(results, parseFile(filepath.Join(path, entry.Name()), uid)...)
+					targetPath := filepath.Join(path, entry.Name())
+					if !seenFiles[targetPath] {
+						seenFiles[targetPath] = true
+						results = append(results, parseFile(targetPath, uid)...)
+					}
 				}
 			}
 		} else {
-			results = append(results, parseFile(path, uid)...)
+			if !seenFiles[path] {
+				seenFiles[path] = true
+				results = append(results, parseFile(path, uid)...)
+			}
 		}
 	}
 	return results, nil

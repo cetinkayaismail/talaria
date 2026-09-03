@@ -69,29 +69,47 @@ func ScanAuditdAuditor(procResults []ProcessResult) ([]AuditdResult, error) {
 func countAuditRules() int {
 	count := 0
 	ruleDir := "/etc/audit/rules.d"
-	entries, err := os.ReadDir(ruleDir)
-	if err != nil {
-		return 0
+	parsedFiles := make(map[string]bool)
+
+	// 1. Audit rules in /etc/audit/rules.d/ (RHEL 7/8/9, Debian 10+)
+	if entries, err := os.ReadDir(ruleDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".rules") && entry.Name() != "audit.rules") {
+				continue
+			}
+			filePath := filepath.Join(ruleDir, entry.Name())
+			parsedFiles[filePath] = true
+			count += parseRuleFile(filePath)
+		}
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() || (!strings.HasSuffix(entry.Name(), ".rules") && entry.Name() != "audit.rules") {
-			continue
-		}
-		path := filepath.Join(ruleDir, entry.Name())
-		file, err := os.Open(path)
-		if err != nil {
-			continue
-		}
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line != "" && !strings.HasPrefix(line, "#") && strings.HasPrefix(line, "-a") {
-				count++
-			}
-		}
-		file.Close()
+	// 2. Direct /etc/audit/audit.rules fallback (older RHEL/CentOS or systems without rules.d)
+	directRules := "/etc/audit/audit.rules"
+	if !parsedFiles[directRules] {
+		count += parseRuleFile(directRules)
 	}
 
 	return count
+}
+
+func parseRuleFile(path string) int {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	fileCount := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Count syscall audit rules (-a) and file watch rules (-w)
+		if strings.HasPrefix(line, "-a") || strings.HasPrefix(line, "-w") {
+			fileCount++
+		}
+	}
+	return fileCount
 }
