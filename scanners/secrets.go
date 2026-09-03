@@ -63,6 +63,10 @@ func matchCriticalPattern(fileName, path string) (bool, string) {
 	}
 
 	// 3. Cryptographic key and password database patterns (contained in filename)
+	// Guard: public keys (.pub) are NOT secrets — skip them before checking private key patterns.
+	if strings.HasSuffix(fileName, ".pub") {
+		return false, ""
+	}
 	keyPatterns := []string{
 		"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa",
 		".p12", ".pfx", ".kdbx",
