@@ -32,8 +32,11 @@ type NetworkConnectionResult struct {
 func ScanNetworkConnections() ([]NetworkConnectionResult, error) {
 	var results []NetworkConnectionResult
 
-	// Build inode -> process name map once per scan for efficiency
-	inodeMap := buildInodeMap()
+	// Collect active connection inodes first to filter /proc exploration (O4)
+	targetInodes := getTargetInodes()
+
+	// Build inode -> process name/PID map filtered strictly to active connection inodes
+	inodeMap := buildInodeMap(targetInodes)
 
 	// Scan TCP IPv4 and IPv6
 	results = append(results, scanNetFile("/proc/net/tcp", "tcp", inodeMap)...)
@@ -239,9 +242,40 @@ type socketProcessInfo struct {
 	PID  int
 }
 
-// buildInodeMap scans /proc to map socket inodes to process names and PIDs
-func buildInodeMap() map[string]socketProcessInfo {
+// getTargetInodes reads network connection tables to extract active socket inodes
+func getTargetInodes() map[string]bool {
+	targets := make(map[string]bool)
+	files := []string{"/proc/net/tcp", "/proc/net/tcp6", "/proc/net/udp", "/proc/net/udp6"}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
+			if i == 0 || line == "" {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) >= 10 {
+				inode := fields[9]
+				if inode != "0" {
+					targets[inode] = true
+				}
+			}
+		}
+	}
+	return targets
+}
+
+// buildInodeMap scans /proc to map socket inodes to process names and PIDs,
+// filtering exclusively against active connection inodes for performance.
+func buildInodeMap(targetInodes map[string]bool) map[string]socketProcessInfo {
 	m := make(map[string]socketProcessInfo)
+	if len(targetInodes) == 0 {
+		return m
+	}
+
 	pDir, err := os.Open("/proc")
 	if err != nil {
 		return m
@@ -261,30 +295,21 @@ func buildInodeMap() map[string]socketProcessInfo {
 			continue
 		}
 
-		// Check if any socket exists before reading comm
-		hasSocket := false
-		for _, fd := range fds {
-			link, err := os.Readlink(filepath.Join(fdPath, fd.Name()))
-			if err == nil && strings.HasPrefix(link, "socket:[") {
-				hasSocket = true
-				break
-			}
-		}
-		if !hasSocket {
-			continue
-		}
-
-		comm, _ := os.ReadFile(filepath.Join("/proc", entry, "comm"))
-		procName := strings.TrimSpace(string(comm))
-		if procName == "" {
-			procName = fmt.Sprintf("PID %d", pid)
-		}
-
+		procName := ""
 		for _, fd := range fds {
 			link, err := os.Readlink(filepath.Join(fdPath, fd.Name()))
 			if err == nil && strings.HasPrefix(link, "socket:[") {
 				inode := strings.TrimPrefix(strings.TrimSuffix(link, "]"), "socket:[")
-				m[inode] = socketProcessInfo{Name: procName, PID: pid}
+				if targetInodes[inode] {
+					if procName == "" {
+						comm, _ := os.ReadFile(filepath.Join("/proc", entry, "comm"))
+						procName = strings.TrimSpace(string(comm))
+						if procName == "" {
+							procName = fmt.Sprintf("PID %d", pid)
+						}
+					}
+					m[inode] = socketProcessInfo{Name: procName, PID: pid}
+				}
 			}
 		}
 	}

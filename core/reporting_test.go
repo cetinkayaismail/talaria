@@ -108,3 +108,24 @@ func TestPrintSummaryModes(t *testing.T) {
 		t.Errorf("Unexpected Audit summary output:\n%s", outAudit)
 	}
 }
+
+func TestSectionBufferAtomicFlush(t *testing.T) {
+	Config.Mode = ModeCTF
+	Config.NoColor = true
+	Config.EnableUI = false
+
+	buf := NewSectionBuffer("Test Section")
+	buf.AddFinding("CRITICAL", "Buffer Finding 1", map[string]string{"Path": "/tmp/test1"}, "cat /tmp/test1")
+	buf.AddFinding("HIGH", "Buffer Finding 2", map[string]string{"Path": "/tmp/test2"}, "")
+
+	out := captureOutput(func() {
+		buf.Flush()
+	})
+
+	if !strings.Contains(out, "=== TEST SECTION ===") {
+		t.Errorf("Expected section header in flushed output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Buffer Finding 1") || !strings.Contains(out, "Buffer Finding 2") {
+		t.Errorf("Expected both findings in flushed output, got:\n%s", out)
+	}
+}

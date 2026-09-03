@@ -1,8 +1,11 @@
 package scanners
 
 import (
+	"bufio"
+	"os"
 	"os/user"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -81,9 +84,12 @@ func (ctx *UserContext) CanRead(fileUID, fileGID int, mode uint32) bool {
 	return mode&syscall.S_IROTH != 0
 }
 
-// --- GID Name Cache (D4) ---
+// --- GID & UID Name Cache (D4) ---
 
-var gidNameCache sync.Map
+var (
+	gidNameCache sync.Map
+	uidNameCache sync.Map
+)
 
 // CachedGroupName converts a GID to a group name with caching to avoid repeated lookups.
 func CachedGroupName(gid int) string {
@@ -96,4 +102,76 @@ func CachedGroupName(gid int) string {
 	}
 	gidNameCache.Store(gid, name)
 	return name
+}
+
+// CachedUserName converts a UID to a username with caching to avoid repeated lookups.
+func CachedUserName(uid int) string {
+	if name, ok := uidNameCache.Load(uid); ok {
+		return name.(string)
+	}
+	name := strconv.Itoa(uid)
+	if u, err := user.LookupId(strconv.Itoa(uid)); err == nil {
+		name = u.Username
+	}
+	uidNameCache.Store(uid, name)
+	return name
+}
+
+// SystemUserInfo represents a system user with an active home directory.
+type SystemUserInfo struct {
+	Username string
+	HomeDir  string
+}
+
+var (
+	systemUsersOnce  sync.Once
+	cachedSystemUser []SystemUserInfo
+)
+
+// CachedSystemUsers returns the list of system users with valid home directories, parsed once.
+func CachedSystemUsers() []SystemUserInfo {
+	systemUsersOnce.Do(func() {
+		u, err := getSystemUsersFromPasswd()
+		if err == nil {
+			cachedSystemUser = u
+		}
+	})
+	return cachedSystemUser
+}
+
+func getSystemUsersFromPasswd() ([]SystemUserInfo, error) {
+	var users []SystemUserInfo
+
+	file, err := os.Open("/etc/passwd")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#") || line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, ":")
+		if len(parts) < 6 {
+			continue
+		}
+
+		username := parts[0]
+		homeDir := parts[5]
+
+		// Focus strictly on real users (home directory under /home or root's home)
+		if strings.HasPrefix(homeDir, "/home/") || homeDir == "/root" {
+			if info, err := os.Stat(homeDir); err == nil && info.IsDir() {
+				users = append(users, SystemUserInfo{
+					Username: username,
+					HomeDir:  homeDir,
+				})
+			}
+		}
+	}
+	return users, nil
 }

@@ -91,7 +91,10 @@ func PrintBanner() {
 func PrintSectionHeader(title string) {
 	printMu.Lock()
 	defer printMu.Unlock()
+	renderSectionHeaderLocked(title)
+}
 
+func renderSectionHeaderLocked(title string) {
 	upperTitle := strings.ToUpper(strings.TrimSpace(title))
 
 	if Config.EnableUI && IsTerminal() {
@@ -113,7 +116,10 @@ func PrintSectionHeader(title string) {
 func PrintFinding(severity string, title string, details map[string]string, exploit string) {
 	printMu.Lock()
 	defer printMu.Unlock()
+	renderFindingLocked(severity, title, details, exploit)
+}
 
+func renderFindingLocked(severity string, title string, details map[string]string, exploit string) {
 	sevColor := c(rawGray)
 	switch strings.ToUpper(severity) {
 	case "CRITICAL":
@@ -179,6 +185,53 @@ func PrintFinding(severity string, title string, details map[string]string, expl
 		if exploit != "" {
 			fmt.Printf("  %s[!] Exploit     : %s%s\n", c(rawYellow), exploit, c(rawReset))
 		}
+	}
+}
+
+// SectionFinding holds an in-memory finding item for batch flushing.
+type SectionFinding struct {
+	Severity string
+	Title    string
+	Details  map[string]string
+	Exploit  string
+}
+
+// SectionBuffer buffers section headers and findings to output them atomically,
+// preventing concurrent scanners from interleaving their output on stdout.
+type SectionBuffer struct {
+	Title    string
+	Findings []SectionFinding
+}
+
+// NewSectionBuffer creates a new in-memory section buffer.
+func NewSectionBuffer(title string) *SectionBuffer {
+	return &SectionBuffer{
+		Title:    title,
+		Findings: make([]SectionFinding, 0),
+	}
+}
+
+// AddFinding queues a finding into the section buffer.
+func (sb *SectionBuffer) AddFinding(severity string, title string, details map[string]string, exploit string) {
+	sb.Findings = append(sb.Findings, SectionFinding{
+		Severity: severity,
+		Title:    title,
+		Details:  details,
+		Exploit:  exploit,
+	})
+}
+
+// Flush atomically renders the section header and all queued findings under a single mutex lock.
+func (sb *SectionBuffer) Flush() {
+	if len(sb.Findings) == 0 {
+		return
+	}
+	printMu.Lock()
+	defer printMu.Unlock()
+
+	renderSectionHeaderLocked(sb.Title)
+	for _, f := range sb.Findings {
+		renderFindingLocked(f.Severity, f.Title, f.Details, f.Exploit)
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -67,11 +66,7 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 			}
 
 			if userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
-				// Look up the target user name
-				targetUsername := targetUID
-				if u, err := user.LookupId(targetUID); err == nil {
-					targetUsername = u.Username
-				}
+				targetUsername := CachedUserName(int(stat.Uid))
 				results = append(results, SessionHijackResult{
 					Path:          path,
 					TargetUser:    targetUsername,
@@ -120,11 +115,7 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 					}
 
 					if userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
-						targetUsername := entry.Name()
-						targetUsername = strings.TrimPrefix(targetUsername, "S-")
-						if u, err := user.Lookup(targetUsername); err == nil {
-							targetUsername = u.Username
-						}
+						targetUsername := CachedUserName(int(stat.Uid))
 						results = append(results, SessionHijackResult{
 							Path:          sockPath,
 							TargetUser:    targetUsername,

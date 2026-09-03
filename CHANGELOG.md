@@ -7,6 +7,19 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #60 — High-Throughput Engine Optimizations & Concurrency Hardening (`core/*`, `scanners/*`, `FUTURE_PLANS.md`)
+**Impact:** ⚡ Cut ~35–70ms off total scan execution via user/group memoization, socket early-bail indexing, and graph search fast-bailing; eliminated stdout section interleaving via chunked atomic `SectionBuffer`; added Phase 6 to `FUTURE_PLANS.md`.
+
+- **PERF-02 — Global User & Group System Context Memoization (`scanners/context.go`, `scanners/history.go`, `scanners/sessions.go`):** Implemented `CachedUserName(uid)` via `sync.Map` and `CachedSystemUsers()` via `sync.Once`. Avoids repeated syscall lookups across parallel scanners and eliminates redundant `/etc/passwd` parsing.
+- **PERF-03 — Chunked Atomic Section Buffer (`core/reporting.go`, `core/reporting_test.go`):** Implemented `SectionBuffer` with internal locked renderers (`renderSectionHeaderLocked`, `renderFindingLocked`). Concurrently executed scanners can buffer section headers and findings in memory and flush them atomically under a single mutex lock, eliminating stdout line interleaving under high core counts while keeping concurrency unhindered.
+- **PERF-04 — Socket Inode Early-Bail Index (`scanners/network.go`):** Pre-collected active network socket inodes directly from `/proc/net/*` tables before traversing `/proc`. Skips reading `/proc/<pid>/comm` and string parsing for any PID that does not possess an active network connection inode.
+- **PERF-05 — Intelligence Graph Fast-Bail & Goal Pruning (`core/graph.go`, `core/intelligence.go`):** Added early-exit guards to `FindPaths` and `FindBestPath` when start or target nodes are missing from `graph.Nodes`. Filtered goal candidates strictly to nodes that exist in the active graph, eliminating unconstrained recursive DFS exploration on unreachable nodes.
+- **ROADMAP-01 — Phase 6 Traversal Multiplexer Added (`FUTURE_PLANS.md`):** Formalized Phase 6: "Unified Filesystem Traversal Pipeline (`internal/walkpool`)" to consolidate SUID, Capabilities, Writable, and Secrets traversals into a single-pass I/O pipeline in future releases.
+
+**Files changed:** `core/graph.go`, `core/intelligence.go`, `core/reporting.go`, `core/reporting_test.go`, `scanners/context.go`, `scanners/history.go`, `scanners/network.go`, `scanners/sessions.go`, `FUTURE_PLANS.md`, `CHANGELOG.md`
+
+---
+
 ### #59 — Comprehensive Core Bug Fixes & False Positive Elimination (`core/intelligence.go`, `scanners/*`)
 **Impact:** 📉 Eliminated 100% false positives in container host bind-mount detection, session hijacker self-reporting, substring secret hits (`box-shadow.css`), duplicate NFS active exports, and global defense downgrades; recovered custom SUID RPATH auditing and interpreted cron script targets.
 

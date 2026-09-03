@@ -465,6 +465,10 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 
 // FindBestPath finds the highest-weighted path from start to target, not just shortest
 func (g *Graph) FindBestPath(startID, targetID string, maxDepth int) []Edge {
+	if g.Nodes[startID] == nil || g.Nodes[targetID] == nil {
+		return nil
+	}
+
 	type scoredPath struct {
 		path  []Edge
 		score int
@@ -509,6 +513,10 @@ func (g *Graph) FindBestPath(startID, targetID string, maxDepth int) []Edge {
 
 // FindPaths finds all paths from startID to targetID up to maxDepth (backward compat)
 func (g *Graph) FindPaths(startID, targetID string, maxDepth int) [][]Edge {
+	if g.Nodes[startID] == nil || g.Nodes[targetID] == nil {
+		return nil
+	}
+
 	var allPaths [][]Edge
 	var currentPath []Edge
 	visited := make(map[string]bool)

@@ -34,11 +34,8 @@ var (
 func ScanHistoryFiles() ([]HistorySecretResult, error) {
 	var results []HistorySecretResult
 
-	// Discover users and their home directories from /etc/passwd
-	users, err := getSystemUsers()
-	if err != nil {
-		return nil, err
-	}
+	// Discover users and their home directories from cached system users
+	users := CachedSystemUsers()
 
 	historyFiles := []string{
 		".bash_history",
@@ -82,47 +79,7 @@ func ScanHistoryFiles() ([]HistorySecretResult, error) {
 	return results, nil
 }
 
-type userInfo struct {
-	Username string
-	HomeDir  string
-}
 
-// getSystemUsers parses /etc/passwd to extract users with active home directories
-func getSystemUsers() ([]userInfo, error) {
-	var users []userInfo
-
-	file, err := os.Open("/etc/passwd")
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "#") || line == "" {
-			continue
-		}
-
-		parts := strings.Split(line, ":")
-		if len(parts) < 6 {
-			continue
-		}
-
-		username := parts[0]
-		homeDir := parts[5]
-
-		// Focus strictly on real users (home directory under /home or root's home)
-		if strings.HasPrefix(homeDir, "/home") || homeDir == "/root" {
-			users = append(users, userInfo{
-				Username: username,
-				HomeDir:  homeDir,
-			})
-		}
-	}
-
-	return users, nil
-}
 
 // auditHistoryLine checks a single history line for hardcoded credentials and masks them
 func auditHistoryLine(line string, username string, path string, lineNum int) *HistorySecretResult {

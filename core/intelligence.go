@@ -76,51 +76,60 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 	graph := BuildIntelligenceGraph(report)
 	startNode := fmt.Sprintf("user:%s", report.TargetUser)
 
-	// Dynamically build goals list from discovered graph nodes
-	goals := []string{"goal:root", "goal:sudo", "goal:shadow", "goal:docker_group"}
-	for id := range graph.Nodes {
-		if strings.HasPrefix(id, "goal:user:") {
-			goals = append(goals, id)
-		}
-	}
-
-	// Helper to collect all file paths from an edge path for defense checking
-	collectTargetPaths := func(path []Edge) []string {
-		var paths []string
-		for _, edge := range path {
-			if strings.HasPrefix(edge.To.ID, "file:") || strings.HasPrefix(edge.To.ID, "suid:") {
-				p := strings.TrimPrefix(edge.To.ID, "file:")
-				p = strings.TrimPrefix(p, "suid:")
-				paths = append(paths, p)
-			}
-			if strings.HasPrefix(edge.From.ID, "file:") || strings.HasPrefix(edge.From.ID, "suid:") {
-				p := strings.TrimPrefix(edge.From.ID, "file:")
-				p = strings.TrimPrefix(p, "suid:")
-				paths = append(paths, p)
+	// Fast-bail: If startNode is not in graph.Nodes, no path from user is possible (O6)
+	if _, ok := graph.Nodes[startNode]; ok {
+		// Dynamically build goals list from discovered graph nodes that actually exist in graph
+		candidates := []string{"goal:root", "goal:sudo", "goal:shadow", "goal:docker_group"}
+		for id := range graph.Nodes {
+			if strings.HasPrefix(id, "goal:user:") {
+				candidates = append(candidates, id)
 			}
 		}
-		return paths
-	}
 
-	// Check if ANY file in the path is blocked by AppArmor
-	isAnyPathBlocked := func(targetPaths []string) (bool, string) {
-		for _, tp := range targetPaths {
-			if tp == "" {
-				continue
-			}
-			defenses := assessDefenses(tp)
-			if defenses.AppArmorEnabled {
-				return true, fmt.Sprintf(" [DEFENSE: %s is confined by AppArmor]", tp)
+		var goals []string
+		for _, g := range candidates {
+			if _, ok := graph.Nodes[g]; ok {
+				goals = append(goals, g)
 			}
 		}
-		return false, ""
-	}
 
-	for _, goal := range goals {
-		paths := graph.FindPaths(startNode, goal, 5)
+		// Helper to collect all file paths from an edge path for defense checking
+		collectTargetPaths := func(path []Edge) []string {
+			var paths []string
+			for _, edge := range path {
+				if strings.HasPrefix(edge.To.ID, "file:") || strings.HasPrefix(edge.To.ID, "suid:") {
+					p := strings.TrimPrefix(edge.To.ID, "file:")
+					p = strings.TrimPrefix(p, "suid:")
+					paths = append(paths, p)
+				}
+				if strings.HasPrefix(edge.From.ID, "file:") || strings.HasPrefix(edge.From.ID, "suid:") {
+					p := strings.TrimPrefix(edge.From.ID, "file:")
+					p = strings.TrimPrefix(p, "suid:")
+					paths = append(paths, p)
+				}
+			}
+			return paths
+		}
 
-		// FindBestPath first — used to deduplicate identical single-path cases
-		bestPath := graph.FindBestPath(startNode, goal, 5)
+		// Check if ANY file in the path is blocked by AppArmor
+		isAnyPathBlocked := func(targetPaths []string) (bool, string) {
+			for _, tp := range targetPaths {
+				if tp == "" {
+					continue
+				}
+				defenses := assessDefenses(tp)
+				if defenses.AppArmorEnabled {
+					return true, fmt.Sprintf(" [DEFENSE: %s is confined by AppArmor]", tp)
+				}
+			}
+			return false, ""
+		}
+
+		for _, goal := range goals {
+			paths := graph.FindPaths(startNode, goal, 5)
+
+			// FindBestPath first — used to deduplicate identical single-path cases
+			bestPath := graph.FindBestPath(startNode, goal, 5)
 		bestPathKey := ""
 		if bestPath != nil {
 			for _, e := range bestPath {
@@ -202,6 +211,7 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 			})
 		}
 	}
+}
 
 	if len(allResults) == 0 {
 		fmt.Printf("%s[+] No confirmed chained attack vectors found via cross-reference.%s\n", ColorGreen, ColorReset)
