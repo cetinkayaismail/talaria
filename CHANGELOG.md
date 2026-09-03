@@ -7,6 +7,16 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #63 — Red Hat Enterprise Linux Distro Parity Enhancements (`scanners/cronjobs.go`, `scanners/auditd.go`)
+**Impact:** 🎯 Full parity with RHEL/CentOS/Fedora/Rocky/AlmaLinux crontab paths and auditd rules
+
+- **RHEL-01 — Red Hat User Crontabs Path Support (`scanners/cronjobs.go`):** Extended `cronPaths` to include `/var/spool/cron` alongside Debian's `/var/spool/cron/crontabs`. On RHEL and Fedora, the `cronie` daemon stores user crontabs directly in `/var/spool/cron/<username>`. Added path-level deduplication to prevent double-processing on hybrid or symlinked systems.
+- **RHEL-02 — Multi-Format Auditd Rule Auditing (`scanners/auditd.go`):** Enhanced `countAuditRules()` to audit both modern drop-in directory rules (`/etc/audit/rules.d/*.rules`) and legacy/direct rules files (`/etc/audit/audit.rules`). Added support for counting both system call auditing (`-a`) and file watch auditing rules (`-w`), ensuring accurate audit coverage metrics on RHEL and Debian.
+
+**Files changed:** `scanners/cronjobs.go`, `scanners/auditd.go`
+
+---
+
 ### #62 — Four Confirmed Bug Fixes (`scanners/secrets.go`, `main.go`)
 **Impact:** 📉 Eliminated false positive + 🔧 Fixed functional gaps in exclude flag and text report completeness
 
