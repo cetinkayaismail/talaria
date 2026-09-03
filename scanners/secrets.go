@@ -37,34 +37,67 @@ type SensitiveContentResult struct {
 	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
-// --- Pattern definitions ---
+// matchCriticalPattern checks if a file matches high-value secret patterns with exact or path-suffix matching.
+func matchCriticalPattern(fileName, path string) (bool, string) {
+	// 1. Path suffix matches for files located inside specific directories
+	pathSuffixes := []string{
+		"/.aws/credentials", "/.aws/config", "/.kube/config",
+		"/.docker/config.json", "/.gnupg/secring.gpg",
+	}
+	for _, ps := range pathSuffixes {
+		if strings.HasSuffix(path, ps) {
+			return true, filepath.Base(ps)
+		}
+	}
 
-// criticalFilePatterns: filenames that are ALWAYS critical regardless of content
-var criticalFilePatterns = []string{
-	"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa",
-	".p12", ".pfx", ".kdbx",
-	".bash_history", ".zsh_history", ".sh_history", ".history",
-	".netrc", ".aws/credentials", ".kube/config",
-	"logins.json", "Cookies", "Login Data", "Web Data", // Browser secrets
-	"shadow", "gshadow", "sudoers", // Critical system files
+	// 2. Exact matches for critical system and user secret files (avoids box-shadow.css matching 'shadow')
+	exactFiles := []string{
+		"shadow", "gshadow", "sudoers", "shadow-", "gshadow-",
+		".netrc", ".bash_history", ".zsh_history", ".sh_history", ".history",
+		"logins.json", "cookies", "login data", "web data",
+	}
+	for _, ef := range exactFiles {
+		if fileName == ef {
+			return true, ef
+		}
+	}
+
+	// 3. Cryptographic key and password database patterns (contained in filename)
+	keyPatterns := []string{
+		"id_rsa", "id_dsa", "id_ed25519", "id_ecdsa",
+		".p12", ".pfx", ".kdbx",
+	}
+	for _, kp := range keyPatterns {
+		if strings.Contains(fileName, kp) {
+			return true, kp
+		}
+	}
+
+	return false, ""
 }
 
-// mediumFilePatterns: filenames that warrant content inspection
-var mediumFilePatterns = []string{
-	".env", "config.php", "settings.py", "database.yml", "database.yaml",
-	".tfvars", "terraform.tfvars", "docker-compose.yml", "docker-compose.yaml",
-	".ovpn",                                    // OpenVPN config
-	"auth.txt", "credentials.txt", "creds.txt", // Plaintext cred files
-	"my.cnf", ".my.cnf", // MySQL credentials
-	"wp-config.php",                         // WordPress
-	".htpasswd",                             // Apache passwords
-	"filezilla.xml",                         // FTP credentials
-	"recentservers.xml",                     // FileZilla
-	"Places.sqlite", "History", "Top Sites", // Browser history
+// matchMediumPattern checks if a file is a configuration or credential store requiring content inspection.
+func matchMediumPattern(fileName string) (bool, string) {
+	exactMedium := []string{
+		".env", "config.php", "settings.py", "database.yml", "database.yaml",
+		".tfvars", "terraform.tfvars", "docker-compose.yml", "docker-compose.yaml",
+		"auth.txt", "credentials.txt", "creds.txt", "my.cnf", ".my.cnf",
+		"wp-config.php", ".htpasswd", "filezilla.xml", "recentservers.xml",
+		"places.sqlite",
+	}
+	for _, em := range exactMedium {
+		if fileName == em {
+			return true, em
+		}
+	}
+	if strings.HasSuffix(fileName, ".ovpn") {
+		return true, ".ovpn"
+	}
+	if strings.HasPrefix(fileName, ".env.") {
+		return true, ".env.*"
+	}
+	return false, ""
 }
-
-// ignoreDirs: never descend into these — they cause freezes and noise
-// ignoreDirs is now handled by GlobalIgnoreDirs in common.go
 
 // Regexes compiled once at package init
 var (
@@ -77,7 +110,6 @@ var (
 	netrcPassRegex    = regexp.MustCompile(`(?i)password\s+(\S{6,})`)
 
 	// Assignment regex — supports BOTH quoted and unquoted values
-	// Matches: password = "secret", password = secret, password: secret;
 	assignmentRegex = regexp.MustCompile(
 		`(?i)(?:password|passwd|pass|pwd|secret|api[_-]?key|token|credential|auth)[^a-z0-9]{0,5}` +
 			`(?:[=:]\s*)` +
@@ -89,6 +121,9 @@ var (
 
 	// IRSSI connect_password (unquoted, ends with semicolon)
 	irssiPassRegex = regexp.MustCompile(`(?i)(?:connect_)?password\s*=\s*"?([^";\s]+)"?;?`)
+
+	// Key name extractor regex
+	keyExtractRegex = regexp.MustCompile(`(?i)([\w_-]+)\s*[=:]`)
 )
 
 // ScanSecrets walks the given root path searching for credentials and sensitive files.
@@ -114,44 +149,39 @@ func ScanSecrets(rootPath string) ([]SensitiveFileResult, []SensitiveContentResu
 		isInteresting := false
 
 		// --- TIER 1: Critical filenames — flag based on readability ---
-		for _, pattern := range criticalFilePatterns {
-			if strings.Contains(fileName, pattern) {
-				// Verify the file is actually readable before flagging as CRITICAL.
-				// Files like /etc/shadow exist on every system but are only a finding
-				// if the current user can read them.
-				snippet := previewFirstLine(path)
-				if snippet != "" {
-					fileResults = append(fileResults, SensitiveFileResult{
-						Path:          path,
-						Type:          "Critical File (" + pattern + ")",
-						RiskLevel:     "CRITICAL",
-						Remediation:   "chmod 0600 " + path,
-						ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
-					})
-					contentResults = append(contentResults, SensitiveContentResult{
-						Path:          path,
-						Snippet:       "Preview: " + snippet,
-						Remediation:   "chmod 0600 " + path,
-						ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
-					})
-				}
-				goto nextEntry
+		if isCrit, pattern := matchCriticalPattern(fileName, path); isCrit {
+			// Verify the file is actually readable before flagging as CRITICAL.
+			// Files like /etc/shadow exist on every system but are only a finding
+			// if the current user can read them.
+			snippet := previewFirstLine(path)
+			if snippet != "" {
+				fileResults = append(fileResults, SensitiveFileResult{
+					Path:          path,
+					Type:          "Critical File (" + pattern + ")",
+					RiskLevel:     "CRITICAL",
+					Remediation:   "chmod 0600 " + path,
+					ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
+				})
+				contentResults = append(contentResults, SensitiveContentResult{
+					Path:          path,
+					Snippet:       "Preview: " + snippet,
+					Remediation:   "chmod 0600 " + path,
+					ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
+				})
 			}
+			goto nextEntry
 		}
 
 		// --- TIER 2: Medium-risk filenames — flag + do content scan ---
-		for _, pattern := range mediumFilePatterns {
-			if strings.Contains(fileName, pattern) {
-				fileResults = append(fileResults, SensitiveFileResult{
-					Path:          path,
-					Type:          "Config File (" + pattern + ")",
-					RiskLevel:     "MEDIUM",
-					Remediation:   "chmod 0600 " + path,
-					ComplianceTag: "CIS-Linux-5.4.3 / NIST-SC-28",
-				})
-				isInteresting = true
-				break
-			}
+		if isMed, pattern := matchMediumPattern(fileName); isMed {
+			fileResults = append(fileResults, SensitiveFileResult{
+				Path:          path,
+				Type:          "Config File (" + pattern + ")",
+				RiskLevel:     "MEDIUM",
+				Remediation:   "chmod 0600 " + path,
+				ComplianceTag: "CIS-Linux-5.4.3 / NIST-SC-28",
+			})
+			isInteresting = true
 		}
 
 		// --- TIER 3: Content scan ---
@@ -220,18 +250,15 @@ func ScanRootSecrets() ([]SensitiveFileResult, []SensitiveContentResult) {
 
 			// Check if filename matches critical patterns
 			isCritical := false
-			for _, pattern := range criticalFilePatterns {
-				if strings.Contains(fileName, pattern) {
-					fileResults = append(fileResults, SensitiveFileResult{
-						Path:          path,
-						Type:          "Root Hidden Secret (" + pattern + ")",
-						RiskLevel:     "CRITICAL",
-						Remediation:   "chmod 0600 " + path,
-						ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
-					})
-					isCritical = true
-					break
-				}
+			if isCrit, pattern := matchCriticalPattern(fileName, path); isCrit {
+				fileResults = append(fileResults, SensitiveFileResult{
+					Path:          path,
+					Type:          "Root Hidden Secret (" + pattern + ")",
+					RiskLevel:     "CRITICAL",
+					Remediation:   "chmod 0600 " + path,
+					ComplianceTag: "CIS-Linux-5.4.3 / NIST-IA-5(1)",
+				})
+				isCritical = true
 			}
 
 			// If not critical filename, check content
@@ -593,8 +620,7 @@ func genericContentScan(f *os.File, path string) string {
 
 // extractKeyName finds the variable name before the assignment operator
 func extractKeyName(line string) string {
-	re := regexp.MustCompile(`(?i)([\w_-]+)\s*[=:]`)
-	if m := re.FindStringSubmatch(line); len(m) > 1 {
+	if m := keyExtractRegex.FindStringSubmatch(line); len(m) > 1 {
 		return strings.TrimSpace(m[1])
 	}
 	return "Secret"

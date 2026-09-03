@@ -46,7 +46,7 @@ func ScanNetworkConnections() ([]NetworkConnectionResult, error) {
 	return results, nil
 }
 
-func scanNetFile(filePath string, protocol string, inodeMap map[string]string) []NetworkConnectionResult {
+func scanNetFile(filePath string, protocol string, inodeMap map[string]socketProcessInfo) []NetworkConnectionResult {
 	var results []NetworkConnectionResult
 
 	file, err := os.Open(filePath)
@@ -88,12 +88,14 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 			continue
 		}
 
-		// 1. Resolve Process Name via Inode
+		// 1. Resolve Process Name and PID via Inode
 		procName := "unknown"
+		procPID := 0
 		if len(fields) >= 10 {
 			inode := fields[9]
-			if name, ok := inodeMap[inode]; ok {
-				procName = name
+			if info, ok := inodeMap[inode]; ok {
+				procName = info.Name
+				procPID = info.PID
 			}
 		}
 
@@ -220,7 +222,7 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 			RemoteAddr:    remoteIP,
 			RemotePort:    remotePort,
 			State:         state,
-			PID:           0,
+			PID:           procPID,
 			ProcessName:   procName,
 			IsDangerous:   isDangerous,
 			RiskLevel:     finalRisk,
@@ -232,9 +234,14 @@ func scanNetFile(filePath string, protocol string, inodeMap map[string]string) [
 	return results
 }
 
-// buildInodeMap scans /proc to map socket inodes to process names
-func buildInodeMap() map[string]string {
-	m := make(map[string]string)
+type socketProcessInfo struct {
+	Name string
+	PID  int
+}
+
+// buildInodeMap scans /proc to map socket inodes to process names and PIDs
+func buildInodeMap() map[string]socketProcessInfo {
+	m := make(map[string]socketProcessInfo)
 	pDir, err := os.Open("/proc")
 	if err != nil {
 		return m
@@ -243,7 +250,8 @@ func buildInodeMap() map[string]string {
 
 	entries, _ := pDir.Readdirnames(-1)
 	for _, entry := range entries {
-		if _, err := strconv.Atoi(entry); err != nil {
+		pid, err := strconv.Atoi(entry)
+		if err != nil {
 			continue
 		}
 
@@ -253,15 +261,30 @@ func buildInodeMap() map[string]string {
 			continue
 		}
 
-		// Get process name (comm is enough for short names)
+		// Check if any socket exists before reading comm
+		hasSocket := false
+		for _, fd := range fds {
+			link, err := os.Readlink(filepath.Join(fdPath, fd.Name()))
+			if err == nil && strings.HasPrefix(link, "socket:[") {
+				hasSocket = true
+				break
+			}
+		}
+		if !hasSocket {
+			continue
+		}
+
 		comm, _ := os.ReadFile(filepath.Join("/proc", entry, "comm"))
 		procName := strings.TrimSpace(string(comm))
+		if procName == "" {
+			procName = fmt.Sprintf("PID %d", pid)
+		}
 
 		for _, fd := range fds {
 			link, err := os.Readlink(filepath.Join(fdPath, fd.Name()))
 			if err == nil && strings.HasPrefix(link, "socket:[") {
 				inode := strings.TrimPrefix(strings.TrimSuffix(link, "]"), "socket:[")
-				m[inode] = procName
+				m[inode] = socketProcessInfo{Name: procName, PID: pid}
 			}
 		}
 	}

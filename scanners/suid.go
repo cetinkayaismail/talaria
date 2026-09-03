@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"talaria/internal/walkpool"
@@ -39,13 +40,19 @@ var privilegedSGIDGroups = map[string]bool{
 	"audio": true, "video": true, "staff": true,
 }
 
+var (
+	apparmorProfilesOnce   sync.Once
+	cachedApparmorProfiles string
+)
+
 // hasAppArmorProfile checks if a specific profile name pattern is loaded in AppArmor.
 func hasAppArmorProfile(name string) bool {
-	data, err := os.ReadFile("/sys/kernel/security/apparmor/profiles")
-	if err != nil {
-		return false
-	}
-	return strings.Contains(string(data), name)
+	apparmorProfilesOnce.Do(func() {
+		if data, err := os.ReadFile("/sys/kernel/security/apparmor/profiles"); err == nil {
+			cachedApparmorProfiles = string(data)
+		}
+	})
+	return strings.Contains(cachedApparmorProfiles, name)
 }
 
 func ScanSUID(root string) ([]SUIDResult, error) {
@@ -216,11 +223,21 @@ func checkRPATH(path string) []string {
 	defer f.Close()
 
 	var paths []string
+	addTags := func(tags []string) {
+		for _, tag := range tags {
+			for _, p := range strings.Split(tag, ":") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					paths = append(paths, p)
+				}
+			}
+		}
+	}
 	if tags, err := f.DynString(elf.DT_RPATH); err == nil {
-		paths = append(paths, tags...)
+		addTags(tags)
 	}
 	if tags, err := f.DynString(elf.DT_RUNPATH); err == nil {
-		paths = append(paths, tags...)
+		addTags(tags)
 	}
 
 	if len(paths) == 0 {

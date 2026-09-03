@@ -102,9 +102,8 @@ func parseFile(filePath string, currentUID int) []CronJobResult {
 					// Check if the crontab file itself is writable by the current user
 					if info, statErr := os.Stat(filePath); statErr == nil {
 						if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-							isWritable := (info.Mode()&0002 != 0) ||
-								(int(stat.Uid) == currentUID && info.Mode()&0200 != 0)
-							if isWritable {
+							userCtx := GetUserContext()
+							if userCtx != nil && userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
 								results = append(results, CronJobResult{
 									Owner:       "root",
 									Schedule:    "env",
@@ -162,15 +161,35 @@ func analyzeCronLine(line string, filePath string, currentUID int) *CronJobResul
 	isDangerous := false
 	reason := ""
 
-	// Check for writable command (Critical finding)
+	// Check for writable command or interpreted script (Critical finding)
 	cmdParts := strings.Fields(command)
 	if len(cmdParts) > 0 {
 		execPath := cmdParts[0]
-		if info, err := os.Stat(execPath); err == nil {
-			stat, ok := info.Sys().(*syscall.Stat_t)
-			if ok && ((info.Mode()&0002 != 0) || (int(stat.Uid) == currentUID && info.Mode()&0200 != 0)) {
-				isDangerous = true
-				reason = "Cron executes a WRITABLE binary"
+		interpreters := map[string]bool{
+			"python": true, "python2": true, "python3": true,
+			"bash": true, "sh": true, "dash": true, "zsh": true,
+			"perl": true, "ruby": true, "php": true, "node": true,
+		}
+		targetPaths := []string{execPath}
+		baseExec := filepath.Base(execPath)
+		if interpreters[baseExec] && len(cmdParts) > 1 {
+			for _, arg := range cmdParts[1:] {
+				if !strings.HasPrefix(arg, "-") {
+					targetPaths = append(targetPaths, arg)
+					break
+				}
+			}
+		}
+
+		userCtx := GetUserContext()
+		for _, target := range targetPaths {
+			if info, err := os.Stat(target); err == nil {
+				stat, ok := info.Sys().(*syscall.Stat_t)
+				if ok && userCtx != nil && userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
+					isDangerous = true
+					reason = fmt.Sprintf("Cron executes a WRITABLE target: %s", target)
+					break
+				}
 			}
 		}
 	}

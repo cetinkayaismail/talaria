@@ -21,6 +21,15 @@ type HistorySecretResult struct {
 	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
+// Pre-compiled regex patterns for shell history auditing
+var (
+	reAssign     = regexp.MustCompile(`(?i)(?:password|pass|secret|token|key|pwd)\s*(?:=|:)\s*['"]?([^'"\s&|;<>]+)['"]?`)
+	reCliFlag    = regexp.MustCompile(`(?i)(?:-p|--password|--pass)\s*['"]?([^'"\s&|;<>]+)['"]?`)
+	reConnection = regexp.MustCompile(`(?i)(?:mysql|postgresql|postgres|redis|mongodb)(?:://[^:]+:([^@]+)@|(?:\s+[^-\s]+)*\s+-p\s*([^-\s]+))`)
+	reAWS        = regexp.MustCompile(`\b(AKIA[0-9A-Z]{16})\b`)
+	reBearer     = regexp.MustCompile(`(?i)Authorization:\s+Bearer\s+([A-Za-z0-9\-._~+/]+=*)`)
+)
+
 // ScanHistoryFiles audits all local user shell histories for leaked credentials
 func ScanHistoryFiles() ([]HistorySecretResult, error) {
 	var results []HistorySecretResult
@@ -122,15 +131,6 @@ func auditHistoryLine(line string, username string, path string, lineNum int) *H
 	if strings.HasPrefix(trimmed, "#") {
 		return nil
 	}
-
-	// Standard credential assignment patterns:
-	reAssign := regexp.MustCompile(`(?i)(?:password|pass|secret|token|key|pwd)\s*(?:=|:)\s*['"]?([^'"\s&|;<>]+)['"]?`)
-	reCliFlag := regexp.MustCompile(`(?i)(?:-p|--password|--pass)\s*['"]?([^'"\s&|;<>]+)['"]?`)
-	reConnection := regexp.MustCompile(`(?i)(?:mysql|postgresql|postgres|redis|mongodb)(?:://[^:]+:([^@]+)@|(?:\s+[^-\s]+)*\s+-p\s*([^-\s]+))`)
-
-	// New patterns for Cloud and API tokens (often exported in history)
-	reAWS := regexp.MustCompile(`\b(AKIA[0-9A-Z]{16})\b`)
-	reBearer := regexp.MustCompile(`(?i)Authorization:\s+Bearer\s+([A-Za-z0-9\-._~+/]+=*)`)
 
 	var secretVal string
 	var matchType string

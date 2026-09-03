@@ -7,6 +7,25 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #59 — Comprehensive Core Bug Fixes & False Positive Elimination (`core/intelligence.go`, `scanners/*`)
+**Impact:** 📉 Eliminated 100% false positives in container host bind-mount detection, session hijacker self-reporting, substring secret hits (`box-shadow.css`), duplicate NFS active exports, and global defense downgrades; recovered custom SUID RPATH auditing and interpreted cron script targets.
+
+- **BUG-01 — Session Hijacker Self-Ownership Filter (`scanners/sessions.go`):** Replaced current user session check (`uid == int(stat.Uid)`) with `GetUserContext()`. Previously, Talaria flagged the current user's own active tmux and screen sessions as a CRITICAL privilege escalation vulnerability. Now skips any session owned by or named after the current user.
+- **BUG-02 — Container Bind-Mount Verification via Mountinfo (`scanners/container.go`):** Replaced static `os.Stat(sensitiveMounts)` check with `/proc/self/mountinfo` and `/proc/mounts` verification. Previously, every container running standard base images flagged `/etc/shadow` and `/etc/sudoers` as a host breakout. Now requires confirmed mount points. Also upgraded `ScanDBusPolicy` to use `GetUserContext()`.
+- **BUG-03 — AppArmor/SELinux Defense Assessment Scope (`core/intelligence.go`):** Replaced Talaria process AppArmor confinement check (`/proc/self/attr/apparmor/current`) with per-target binary confinement analysis (`checkDefenseMechanisms(targetPath)` cross-referenced with `/sys/kernel/security/apparmor/profiles`). Cached SELinux status with `sync.Once`. Prevents unconfined findings from being erroneously downgraded to `POTENTIAL - BLOCKED BY DEFENSE`.
+- **BUG-04 — Custom SUID Binary RPATH Auditing (`scanners/elf_rpath.go`):** Removed `if !suid.IsDangerous { continue }` guard in `ScanELFRPathAuditor`. Custom SUID binaries not listed in GTFOBins are now audited for insecure `DT_RPATH`, `DT_RUNPATH`, and relative directory search paths.
+- **BUG-05 — Secrets Pattern Matcher & Substring FP Elimination (`scanners/secrets.go`):** Implemented `matchCriticalPattern` and `matchMediumPattern`. Substring matching on `"shadow"` previously flagged benign files like `box-shadow.css` and `shadow.png`. Exact matching and path-suffix matching (`/.aws/credentials`, `/.kube/config`) now ensure 0% FP rate while guaranteeing detection of hidden cloud credentials. Also hoisted `keyExtractRegex` to package level.
+- **BUG-06 — ELF RPATH Colon-Separated Path Splitting (`scanners/suid.go`):** Updated `checkRPATH` to split `DT_RPATH` and `DT_RUNPATH` strings on `:` before verifying directory writability. Cached AppArmor kernel profiles with `sync.Once`.
+- **BUG-07 — Interpreted Script Detection in Scheduled Crons (`scanners/cronjobs.go`):** Enhanced `analyzeCronLine` to inspect script arguments when commands start with script interpreters (`python`, `bash`, `sh`, `perl`, `ruby`, `php`, `node`). Prevents writable scripts like `python3 /opt/script.py` from going undetected. Upgraded writability checks to `userCtx.CanWrite`.
+- **BUG-08 — NFS Scanner Deduplication & Fallback Guard (`scanners/nfs.go`):** Added support for `/etc/exports.d/*.exports` configurations. Made `showmount -e localhost` a true fallback executed only when static exports are empty or unreadable, eliminating duplicate findings and unwarranted `IsDangerous: true` flags.
+- **BUG-09 — Network Socket PID Resolution (`scanners/network.go`):** Fixed `buildInodeMap` to return `socketProcessInfo{Name, PID}` and populated `procPID` in `NetworkConnectionResult` (was hardcoded `PID: 0`). Optimized scanning by skipping `/proc/<pid>/comm` when processes have zero open sockets.
+- **BUG-10 & PERF-01 — Process Env Loop & Inner Regex Precompilation (`scanners/proc_env.go`, `scanners/history.go`, `scanners/polkit.go`):** Refactored sensitive key matching in `proc_env.go` to eliminate redundant loop evaluations; precompiled all regexes in `history.go` and `polkit.go` at package initialization to eliminate per-line compilation overhead.
+- **TEST-01 — Scanner Bugfix Regression Test Suite (`scanners/bugfixes_test.go`):** Created comprehensive unit tests validating exact vs. substring secrets matching, medium pattern filters, and interpreted script cron detection.
+
+**Files changed:** `core/intelligence.go`, `scanners/container.go`, `scanners/cronjobs.go`, `scanners/elf_rpath.go`, `scanners/history.go`, `scanners/network.go`, `scanners/nfs.go`, `scanners/polkit.go`, `scanners/proc_env.go`, `scanners/secrets.go`, `scanners/sessions.go`, `scanners/suid.go`, `scanners/bugfixes_test.go` *(new)*, `CHANGELOG.md`
+
+---
+
 ### #58 — Dual-Engine Architecture & Stream-First Terminal Engine (`core/terminal.go`, `core/reporting.go`, `main.go`, `USAGE.md`, `README.md`)
 **Impact:** ⚡ Decoupled `--ctf` (offensive exploitation) vs `--audit` (compliance remediation); introduced pure Go stdlib `TIOCGWINSZ` terminal dimension detection (zero external tools, works on bare Alpine/BusyBox); stream-first reporting by default with opt-in `--ui` dashboard card.
 

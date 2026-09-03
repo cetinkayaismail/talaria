@@ -28,18 +28,9 @@ type SessionHijackResult struct {
 func ScanSessionHijack() ([]SessionHijackResult, error) {
 	var results []SessionHijackResult
 
-	currentUser, err := user.Current()
-	if err != nil {
-		return results, err
-	}
-	uid, _ := strconv.Atoi(currentUser.Uid)
-
-	gidStrings, _ := currentUser.GroupIds()
-	userGids := make(map[int]bool)
-	for _, g := range gidStrings {
-		id, _ := strconv.Atoi(g)
-		userGids[id] = true
-	}
+	userCtx := GetUserContext()
+	uid := userCtx.UID
+	username := userCtx.Username
 
 	// Check /tmp/tmux-* directories (tmux sockets)
 	tmuxDirs, _ := filepath.Glob("/tmp/tmux-*")
@@ -55,6 +46,11 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 			}
 			targetUID := parts[len(parts)-1]
 
+			// Skip current user's own tmux sessions
+			if targetUID == strconv.Itoa(uid) {
+				continue
+			}
+
 			info, err := d.Info()
 			if err != nil {
 				continue
@@ -65,16 +61,12 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 				continue
 			}
 
-			isWritable := false
-			if uid == int(stat.Uid) && (stat.Mode&syscall.S_IWUSR != 0) {
-				isWritable = true
-			} else if userGids[int(stat.Gid)] && (stat.Mode&syscall.S_IWGRP != 0) {
-				isWritable = true
-			} else if stat.Mode&syscall.S_IWOTH != 0 {
-				isWritable = true
+			// Must not be owned by current user (can't hijack yourself)
+			if int(stat.Uid) == uid {
+				continue
 			}
 
-			if isWritable {
+			if userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
 				// Look up the target user name
 				targetUsername := targetUID
 				if u, err := user.LookupId(targetUID); err == nil {
@@ -101,6 +93,11 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 				if !entry.IsDir() {
 					continue
 				}
+				// Skip current user's own screen directory (e.g. S-username or S-uid)
+				if entry.Name() == username || entry.Name() == "S-"+username || entry.Name() == strconv.Itoa(uid) || entry.Name() == "S-"+strconv.Itoa(uid) {
+					continue
+				}
+
 				userDir := filepath.Join(screenDir, entry.Name())
 				sockEntries, err := os.ReadDir(userDir)
 				if err != nil {
@@ -117,17 +114,14 @@ func ScanSessionHijack() ([]SessionHijackResult, error) {
 						continue
 					}
 
-					isWritable := false
-					if uid == int(stat.Uid) && (stat.Mode&syscall.S_IWUSR != 0) {
-						isWritable = true
-					} else if userGids[int(stat.Gid)] && (stat.Mode&syscall.S_IWGRP != 0) {
-						isWritable = true
-					} else if stat.Mode&syscall.S_IWOTH != 0 {
-						isWritable = true
+					// Must not be owned by current user
+					if int(stat.Uid) == uid {
+						continue
 					}
 
-					if isWritable {
+					if userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
 						targetUsername := entry.Name()
+						targetUsername = strings.TrimPrefix(targetUsername, "S-")
 						if u, err := user.Lookup(targetUsername); err == nil {
 							targetUsername = u.Username
 						}

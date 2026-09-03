@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/user"
-	"strconv"
 	"strings"
 	"syscall"
 )
@@ -149,14 +147,31 @@ func ScanContainer() ([]ContainerEscapeResult, error) {
 		})
 	}
 
-	// 6. Check for sensitive host paths mounted inside container
-	sensitiveMounts := []string{"/etc/shadow", "/etc/sudoers", "/root/.ssh"}
+	// 6. Check for sensitive host paths mounted inside container via mountinfo
+	mountedTargets := make(map[string]bool)
+	mountData, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		mountData, _ = os.ReadFile("/proc/mounts")
+	}
+	if len(mountData) > 0 {
+		for _, line := range strings.Split(string(mountData), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 5 {
+				mountedTargets[fields[4]] = true
+			}
+			if len(fields) >= 2 {
+				mountedTargets[fields[1]] = true
+			}
+		}
+	}
+
+	sensitiveMounts := []string{"/etc/shadow", "/etc/sudoers", "/root/.ssh", "/host", "/hostfs", "/rootfs"}
 	for _, p := range sensitiveMounts {
-		if _, err := os.Stat(p); err == nil {
+		if mountedTargets[p] {
 			results = append(results, ContainerEscapeResult{
 				Vector:        "Sensitive Host Path Mounted: " + p,
 				IsDangerous:   true,
-				Reason:        "Host path " + p + " is accessible inside the container — may be a bind mount of the host filesystem.",
+				Reason:        "Host path " + p + " is confirmed mounted inside container — permits host filesystem tampering or direct breakout.",
 				Remediation:   "Remove bind mounts of sensitive host paths from container configuration",
 				ComplianceTag: "CIS-Docker-5.4 / NIST-AC-6",
 			})
@@ -179,20 +194,12 @@ type DBusPolicyResult struct {
 
 func ScanDBusPolicy() ([]DBusPolicyResult, error) {
 	var results []DBusPolicyResult
+	userCtx := GetUserContext()
+	if userCtx == nil {
+		return results, nil
+	}
 
 	configDirs := []string{"/etc/dbus-1/system.d", "/usr/share/dbus-1/system.d"}
-
-	// Pre-fetch user info once outside the loop
-	currUser, err := user.Current()
-	if err != nil {
-		return results, err
-	}
-	uid, _ := strconv.Atoi(currUser.Uid)
-	gids := make(map[int]bool)
-	for _, g := range func() []string { gs, _ := currUser.GroupIds(); return gs }() {
-		id, _ := strconv.Atoi(g)
-		gids[id] = true
-	}
 
 	for _, dir := range configDirs {
 		entries, err := os.ReadDir(dir)
@@ -215,17 +222,8 @@ func ScanDBusPolicy() ([]DBusPolicyResult, error) {
 			if !ok {
 				continue
 			}
-			mode := stat.Mode
-			fileWritable := false
-			if uid == int(stat.Uid) && (mode&syscall.S_IWUSR != 0) {
-				fileWritable = true
-			} else if gids[int(stat.Gid)] && (mode&syscall.S_IWGRP != 0) {
-				fileWritable = true
-			} else if mode&syscall.S_IWOTH != 0 {
-				fileWritable = true
-			}
 
-			if fileWritable {
+			if userCtx.CanWrite(int(stat.Uid), int(stat.Gid), stat.Mode) {
 				results = append(results, DBusPolicyResult{
 					ConfigFile:    filePath,
 					ServiceName:   strings.TrimSuffix(entry.Name(), ".conf"),

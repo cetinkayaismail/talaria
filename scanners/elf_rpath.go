@@ -27,7 +27,7 @@ func ScanELFRPathAuditor(suidResults []SUIDResult) ([]ELFRPathResult, error) {
 	userCtx := GetUserContext()
 
 	for _, suid := range suidResults {
-		if !suid.IsDangerous {
+		if suid.Path == "" {
 			continue
 		}
 

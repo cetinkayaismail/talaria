@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -30,50 +31,61 @@ func ScanNFSExports(timeout time.Duration) ([]NFSExportResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// 1. Primary Check: Read /etc/exports (Standard configuration file)
-	// Native file reading is preferred over shell commands for stealth
-	if content, err := os.ReadFile("/etc/exports"); err == nil {
-		scanner := bufio.NewScanner(strings.NewReader(string(content)))
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			// Ignore comments and empty lines
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-
-			result := parseNFSExportLine(line)
-			if result != nil {
-				results = append(results, *result)
+	// 1. Primary Check: Read /etc/exports and /etc/exports.d/*.exports
+	exportFiles := []string{"/etc/exports"}
+	if entries, err := os.ReadDir("/etc/exports.d"); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".exports") {
+				exportFiles = append(exportFiles, filepath.Join("/etc/exports.d", e.Name()))
 			}
 		}
 	}
 
-	// 2. Dynamic Check: Use showmount to see active exports (Fallback)
-	cmd := exec.CommandContext(ctx, "showmount", "-e", "localhost")
-	if output, err := cmd.Output(); err == nil {
-		scanner := bufio.NewScanner(strings.NewReader(string(output)))
-		isFirstLine := true
-		for scanner.Scan() {
-			if isFirstLine {
-				isFirstLine = false // Skip "Export list for localhost:" header
-				continue
-			}
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
-				continue
-			}
+	for _, file := range exportFiles {
+		if content, err := os.ReadFile(file); err == nil {
+			scanner := bufio.NewScanner(strings.NewReader(string(content)))
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
 
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				results = append(results, NFSExportResult{
-					Path:          parts[0],
-					ExportedTo:    parts[1],
-					Options:       "Active Export",
-					IsDangerous:   true,
-					RiskSummary:   "NFS share is active - check /etc/exports for squash options",
-					Remediation:   "Ensure 'root_squash' option is configured in /etc/exports",
-					ComplianceTag: "CIS-Linux-2.2.7 / DISA-STIG-V-230300",
-				})
+				result := parseNFSExportLine(line)
+				if result != nil {
+					results = append(results, *result)
+				}
+			}
+		}
+	}
+
+	// 2. Dynamic Fallback: Use showmount only if static export files were unreadable/empty
+	if len(results) == 0 {
+		cmd := exec.CommandContext(ctx, "showmount", "-e", "localhost")
+		if output, err := cmd.Output(); err == nil {
+			scanner := bufio.NewScanner(strings.NewReader(string(output)))
+			isFirstLine := true
+			for scanner.Scan() {
+				if isFirstLine {
+					isFirstLine = false // Skip header
+					continue
+				}
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" {
+					continue
+				}
+
+				parts := strings.Fields(line)
+				if len(parts) >= 2 {
+					results = append(results, NFSExportResult{
+						Path:          parts[0],
+						ExportedTo:    parts[1],
+						Options:       "Active Export (options unverified)",
+						IsDangerous:   false,
+						RiskSummary:   "NFS share is active — verify if no_root_squash is enabled in /etc/exports",
+						Remediation:   "Ensure 'root_squash' option is configured in /etc/exports",
+						ComplianceTag: "CIS-Linux-2.2.7 / DISA-STIG-V-230300",
+					})
+				}
 			}
 		}
 	}

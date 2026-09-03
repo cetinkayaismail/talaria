@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"talaria/models"
 )
 
@@ -101,7 +102,7 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 		return paths
 	}
 
-	// Check if ANY file in the path is blocked by defenses
+	// Check if ANY file in the path is blocked by AppArmor
 	isAnyPathBlocked := func(targetPaths []string) (bool, string) {
 		for _, tp := range targetPaths {
 			if tp == "" {
@@ -110,12 +111,6 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 			defenses := assessDefenses(tp)
 			if defenses.AppArmorEnabled {
 				return true, fmt.Sprintf(" [DEFENSE: %s is confined by AppArmor]", tp)
-			}
-			if defenses.SELinuxEnabled {
-				return true, " [DEFENSE: SELinux enforcing on this system]"
-			}
-			if checkDefenseMechanisms(tp) {
-				return true, fmt.Sprintf(" [DEFENSE ACTIVE: %s is confined by AppArmor]", tp)
 			}
 		}
 		return false, ""
@@ -213,28 +208,16 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 		return
 	}
 
-	// Apply Context-Aware Downgrading (AppArmor / SELinux Checks) (#9)
+	// Apply Context-Aware Downgrading (AppArmor Checks on Target Binaries) (#9)
 	for i, res := range allResults {
-		if res.RiskLevel == "100% CONFIRMED" {
+		if res.RiskLevel == "100% CONFIRMED" && res.TargetPath != "" {
 			defenses := assessDefenses(res.TargetPath)
-			if defenses.AppArmorEnabled || defenses.SELinuxEnabled {
-				allResults[i].RiskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
-				sb := res.Description
-				if defenses.AppArmorEnabled {
-					sb += fmt.Sprintf(" [DEFENSE: %s is confined by AppArmor]", res.TargetPath)
+			if defenses.AppArmorEnabled {
+				allResults[i].RiskLevel = "POTENTIAL - BLOCKED BY APPARMOR"
+				if allResults[i].Description != "" {
+					allResults[i].Description += " "
 				}
-				if defenses.SELinuxEnabled {
-					sb += fmt.Sprintf(" [DEFENSE: SELinux enforcing on this system]")
-				}
-				allResults[i].Description = sb
-			} else if res.TargetPath != "" {
-				if checkDefenseMechanisms(res.TargetPath) {
-					allResults[i].RiskLevel = "POTENTIAL - BLOCKED BY APPARMOR"
-					if allResults[i].Description != "" {
-						allResults[i].Description += " | "
-					}
-					allResults[i].Description += fmt.Sprintf("[DEFENSE ACTIVE: %s is confined by AppArmor]", res.TargetPath)
-				}
+				allResults[i].Description += fmt.Sprintf("[DEFENSE: %s is confined by AppArmor profile]", res.TargetPath)
 			}
 		}
 	}
@@ -293,33 +276,34 @@ type DefenseStatus struct {
 	IsContainer     bool
 }
 
-// assessDefenses checks multiple defense layers for a target path
-func assessDefenses(targetPath string) DefenseStatus {
-	status := DefenseStatus{}
+var (
+	selinuxOnce      sync.Once
+	selinuxEnforcing bool
+)
 
-	// Check AppArmor via /proc/self/attr/apparmor/current
-	if data, err := os.ReadFile("/proc/self/attr/apparmor/current"); err == nil {
-		profile := strings.TrimSpace(string(data))
-		if profile != "" && profile != "unconfined" {
-			status.AppArmorEnabled = true
-		}
-	}
-
-	// Check SELinux via /proc/self/attr/current or /selinux/enforce
-	if data, err := os.ReadFile("/proc/self/attr/current"); err == nil {
-		ctx := strings.TrimSpace(string(data))
-		if len(ctx) > 0 && !strings.Contains(ctx, "unconfined") && strings.Contains(ctx, ":") {
-			status.SELinuxEnabled = true
-		}
-	}
-
-	// Check /selinux/enforce as alternative
-	if _, err := os.Stat("/selinux/enforce"); err == nil {
-		if data, err := os.ReadFile("/selinux/enforce"); err == nil {
-			if strings.TrimSpace(string(data)) == "1" {
-				status.SELinuxEnabled = true
+func isSELinuxEnforcing() bool {
+	selinuxOnce.Do(func() {
+		paths := []string{"/sys/fs/selinux/enforce", "/selinux/enforce"}
+		for _, p := range paths {
+			if data, err := os.ReadFile(p); err == nil {
+				if strings.TrimSpace(string(data)) == "1" {
+					selinuxEnforcing = true
+					return
+				}
 			}
 		}
+	})
+	return selinuxEnforcing
+}
+
+// assessDefenses checks if a specific target path is confined by security mechanisms
+func assessDefenses(targetPath string) DefenseStatus {
+	status := DefenseStatus{
+		SELinuxEnabled: isSELinuxEnforcing(),
+	}
+
+	if targetPath != "" && checkDefenseMechanisms(targetPath) {
+		status.AppArmorEnabled = true
 	}
 
 	return status
@@ -736,6 +720,14 @@ func checkDefenseMechanisms(targetPath string) bool {
 	apparmorProfile := fmt.Sprintf("/etc/apparmor.d/%s", profileName)
 	if _, err := os.Stat(apparmorProfile); err == nil {
 		return true
+	}
+
+	// Check kernel-loaded profiles in /sys/kernel/security/apparmor/profiles
+	if data, err := os.ReadFile("/sys/kernel/security/apparmor/profiles"); err == nil {
+		content := string(data)
+		if strings.Contains(content, targetPath) || strings.Contains(content, profileName) {
+			return true
+		}
 	}
 
 	return false

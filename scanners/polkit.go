@@ -19,6 +19,18 @@ type PolkitRuleResult struct {
 	ComplianceTag string `json:"compliance_tag,omitempty"`
 }
 
+// Pre-compiled regex patterns for polkit rule parsing
+var (
+	actionPattern   = regexp.MustCompile(`action\.id\s*(?:==|===|=~)\s*"([^"]+)"`)
+	actionPatternSq = regexp.MustCompile(`action\.id\s*(?:==|===|=~)\s*'([^']+)'`)
+	groupPattern    = regexp.MustCompile(`subject\.isInGroup\s*\(\s*"([^"]+)"\s*\)`)
+	groupPatternSq  = regexp.MustCompile(`subject\.isInGroup\s*\(\s*'([^']+)'\s*\)`)
+	userPattern     = regexp.MustCompile(`subject\.user\s*(?:==|===)\s*"([^"]+)"`)
+	userPatternSq   = regexp.MustCompile(`subject\.user\s*(?:==|===)\s*'([^']+)'`)
+	reSingleComment = regexp.MustCompile(`//.*`)
+	reMultiComment  = regexp.MustCompile(`/\*[\s\S]*?\*/`)
+)
+
 // ScanPolkitRules audits custom rules in /etc/polkit-1/rules.d/
 func ScanPolkitRules() ([]PolkitRuleResult, error) {
 	var results []PolkitRuleResult
@@ -137,25 +149,19 @@ func auditRuleBlock(block string, filePath string) *PolkitRuleResult {
 
 	// 1. Extract action ID check (supporting double and single quotes)
 	action := "Any Action"
-	actionPattern := regexp.MustCompile(`action\.id\s*(?:==|===|=~)\s*"([^"]+)"`)
 	if m := actionPattern.FindStringSubmatch(block); len(m) > 1 {
 		action = m[1]
-	} else {
-		actionPatternSq := regexp.MustCompile(`action\.id\s*(?:==|===|=~)\s*'([^']+)'`)
-		if mSq := actionPatternSq.FindStringSubmatch(block); len(mSq) > 1 {
-			action = mSq[1]
-		}
+	} else if mSq := actionPatternSq.FindStringSubmatch(block); len(mSq) > 1 {
+		action = mSq[1]
 	}
 
 	// 2. Extract groups checked (subject.isInGroup)
 	var groups []string
-	groupPattern := regexp.MustCompile(`subject\.isInGroup\s*\(\s*"([^"]+)"\s*\)`)
 	for _, m := range groupPattern.FindAllStringSubmatch(block, -1) {
 		if len(m) > 1 {
 			groups = append(groups, m[1])
 		}
 	}
-	groupPatternSq := regexp.MustCompile(`subject\.isInGroup\s*\(\s*'([^']+)'\s*\)`)
 	for _, m := range groupPatternSq.FindAllStringSubmatch(block, -1) {
 		if len(m) > 1 {
 			groups = append(groups, m[1])
@@ -164,13 +170,11 @@ func auditRuleBlock(block string, filePath string) *PolkitRuleResult {
 
 	// 3. Extract user checks (subject.user)
 	var users []string
-	userPattern := regexp.MustCompile(`subject\.user\s*(?:==|===)\s*"([^"]+)"`)
 	for _, m := range userPattern.FindAllStringSubmatch(block, -1) {
 		if len(m) > 1 {
 			users = append(users, m[1])
 		}
 	}
-	userPatternSq := regexp.MustCompile(`subject\.user\s*(?:==|===)\s*'([^']+)'`)
 	for _, m := range userPatternSq.FindAllStringSubmatch(block, -1) {
 		if len(m) > 1 {
 			users = append(users, m[1])
@@ -236,13 +240,7 @@ func auditRuleBlock(block string, filePath string) *PolkitRuleResult {
 
 // stripComments removes JavaScript single and multi-line comments
 func stripComments(content string) string {
-	// Strip single line comments // ...
-	reSingle := regexp.MustCompile(`//.*`)
-	content = reSingle.ReplaceAllString(content, "")
-
-	// Strip multi-line comments /* ... */
-	reMulti := regexp.MustCompile(`/\*[\s\S]*?\*/`)
-	content = reMulti.ReplaceAllString(content, "")
-
+	content = reSingleComment.ReplaceAllString(content, "")
+	content = reMultiComment.ReplaceAllString(content, "")
 	return content
 }

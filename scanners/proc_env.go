@@ -92,31 +92,39 @@ func ScanProcEnvAuditor(procResults []ProcessResult) ([]ProcEnvResult, error) {
 			val := parts[1]
 			keyUpper := strings.ToUpper(key)
 
+			if isFalsePositiveEnvValue(val) {
+				continue
+			}
+
+			isSensitive := false
 			for _, sKey := range sensitiveEnvKeys {
-				if keyUpper == sKey || strings.Contains(keyUpper, "PASSWORD") || strings.Contains(keyUpper, "SECRET") || strings.Contains(keyUpper, "AUTH_TOKEN") {
-					if isFalsePositiveEnvValue(val) {
-						continue
-					}
-
-					valPreview := val
-					if len(valPreview) > 16 {
-						valPreview = valPreview[:16] + "..."
-					}
-
-					results = append(results, ProcEnvResult{
-						PID:           pid,
-						ProcessName:   procName,
-						Key:           key,
-						ValueSample:   valPreview,
-						RiskLevel:     "CRITICAL",
-						Reason:        fmt.Sprintf("Process '%s' (PID %d) exposes sensitive environment variable '%s' in /proc/%d/environ", procName, pid, key, pid),
-						ExploitHint:   fmt.Sprintf("cat /proc/%d/environ | tr '\\0' '\\n' | grep %s", pid, key),
-						Remediation:   "mount -o remount,hidepid=2 /proc (and avoid passing credentials in env variables)",
-						ComplianceTag: "NIST-SC-28 / DISA-STIG-V-230420",
-						IsDangerous:   true,
-					})
+				if keyUpper == sKey {
+					isSensitive = true
 					break
 				}
+			}
+			if !isSensitive && (strings.Contains(keyUpper, "PASSWORD") || strings.Contains(keyUpper, "SECRET") || strings.Contains(keyUpper, "AUTH_TOKEN")) {
+				isSensitive = true
+			}
+
+			if isSensitive {
+				valPreview := val
+				if len(valPreview) > 16 {
+					valPreview = valPreview[:16] + "..."
+				}
+
+				results = append(results, ProcEnvResult{
+					PID:           pid,
+					ProcessName:   procName,
+					Key:           key,
+					ValueSample:   valPreview,
+					RiskLevel:     "CRITICAL",
+					Reason:        fmt.Sprintf("Process '%s' (PID %d) exposes sensitive environment variable '%s' in /proc/%d/environ", procName, pid, key, pid),
+					ExploitHint:   fmt.Sprintf("cat /proc/%d/environ | tr '\\0' '\\n' | grep %s", pid, key),
+					Remediation:   "mount -o remount,hidepid=2 /proc (and avoid passing credentials in env variables)",
+					ComplianceTag: "NIST-SC-28 / DISA-STIG-V-230420",
+					IsDangerous:   true,
+				})
 			}
 		}
 	}
