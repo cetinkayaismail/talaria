@@ -69,24 +69,17 @@ func ParseFlags(args []string) (*Config, error) {
 		cfg.FailOn = normalized
 	}
 
-	return cfg, nil
-}
-
-// PrintBanner outputs the Talaria ASCII logo unless in quiet mode.
-func PrintBanner(quiet bool) {
-	if quiet {
-		return
+	// Validate mode mutual exclusivity
+	if cfg.CTFMode && cfg.AuditMode {
+		return nil, fmt.Errorf("cannot specify both --ctf and --audit modes")
 	}
-	banner := `
-  ████████╗ █████╗ ██╗      █████╗ ██████╗ ██╗ █████╗ 
-  ╚══██╔══╝██╔══██╗██║     ██╔══██╗██╔══██╗██║██╔══██╗
-     ██║   ███████║██║     ███████║██████╔╝██║███████║
-     ██║   ██╔══██║██║     ██╔══██║██╔══██╗██║██╔══██║
-     ██║   ██║  ██║███████╗██║  ██║██║  ██║██║██║  ██║
-     ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝
-    >> Linux Privilege Escalation & Lateral Intelligence <<
-`
-	fmt.Println(banner)
+
+	// Validate encryption flag requires output file
+	if cfg.EncryptKey != "" && cfg.OutputFile == "" {
+		return nil, fmt.Errorf("--encrypt requires -o (output file path)")
+	}
+
+	return cfg, nil
 }
 
 // PrintUsage prints the full CLI reference documentation.
@@ -119,5 +112,5 @@ func PrintUsage() {
 	fmt.Println("  pathhijack, sshkeys, vulnerabilities, container, dbus, services, packages,")
 	fmt.Println("  sessions, kernelconfig, polkit, environmentfile, pam, sysctl, systemdoverrides,")
 	fmt.Println("  subuid, mounts, elfrpath, auditd, udev, crondirs, procenv, ldnss, modprobe,")
-	fmt.Println("  cloudmeta, venvwrap, sudokens, wildcards, python_hijack")
+	fmt.Println("  cloudmeta, venvwrap, sudokens, wildcards, python_hijack, initscripts, logrotate")
 }

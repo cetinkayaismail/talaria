@@ -152,81 +152,81 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 				}
 			}
 
-		for _, path := range paths {
-			if len(path) == 0 {
-				continue
+			for _, path := range paths {
+				if len(path) == 0 {
+					continue
+				}
+
+				// Skip if this path is identical to bestPath — it will be shown as Best Attack Graph
+				pathKey := ""
+				for _, e := range path {
+					pathKey += e.From.ID + e.To.ID
+				}
+				if pathKey == bestPathKey {
+					continue
+				}
+
+				desc := "Attack Path:\n"
+				for i, edge := range path {
+					desc += fmt.Sprintf("  %d. %s -> (%s) -> %s (weight:%d)\n", i+1, edge.From.ID, edge.Description, edge.To.ID, edge.Weight)
+				}
+
+				targetPaths := collectTargetPaths(path)
+
+				goalName := strings.TrimPrefix(goal, "goal:")
+				riskLevel := "100% CONFIRMED"
+				if strings.HasPrefix(goal, "goal:user:") {
+					riskLevel = "LATERAL MOVEMENT CONFIRMED"
+					desc += "\n  [!] Tactical Advice: Once you have gained access as this user, run Talaria again to explore further paths."
+				}
+
+				blocked, blockMsg := isAnyPathBlocked(targetPaths)
+				if blocked {
+					riskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
+					desc += blockMsg
+				}
+
+				allResults = append(allResults, ChainResult{
+					Name:        fmt.Sprintf("Attack Graph: %s (%d steps) → %s", goalName, len(path), goalName),
+					Description: desc,
+					RiskLevel:   riskLevel,
+					TargetPath:  strings.Join(targetPaths, ","),
+				})
 			}
 
-			// Skip if this path is identical to bestPath — it will be shown as Best Attack Graph
-			pathKey := ""
-			for _, e := range path {
-				pathKey += e.From.ID + e.To.ID
+			// Best path entry — always shown if a path exists
+			if bestPath != nil {
+				totalWeight := 0
+				desc := "Best Attack Path:\n"
+				for i, edge := range bestPath {
+					totalWeight += edge.Weight
+					desc += fmt.Sprintf("  %d. %s -> (%s) [weight:%d] -> %s\n", i+1, edge.From.ID, edge.Description, edge.Weight, edge.To.ID)
+				}
+
+				targetPaths := collectTargetPaths(bestPath)
+
+				goalName := strings.TrimPrefix(goal, "goal:")
+				riskLevel := "100% CONFIRMED"
+				if strings.HasPrefix(goal, "goal:user:") {
+					riskLevel = "LATERAL MOVEMENT CONFIRMED"
+					desc += "\n  [!] Tactical Advice: Once you have gained access as this user, run Talaria again to explore further paths."
+				}
+
+				blocked, blockMsg := isAnyPathBlocked(targetPaths)
+				if blocked {
+					riskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
+					desc += blockMsg
+				}
+
+				allResults = append(allResults, ChainResult{
+					Name:        fmt.Sprintf("Best Attack Graph: %s (%d steps, score=%d) → %s", goalName, len(bestPath), totalWeight, goalName),
+					Description: desc,
+					RiskLevel:   riskLevel,
+					TargetPath:  strings.Join(targetPaths, ","),
+				})
 			}
-			if pathKey == bestPathKey {
-				continue
-			}
-
-			desc := "Attack Path:\n"
-			for i, edge := range path {
-				desc += fmt.Sprintf("  %d. %s -> (%s) -> %s (weight:%d)\n", i+1, edge.From.ID, edge.Description, edge.To.ID, edge.Weight)
-			}
-
-			targetPaths := collectTargetPaths(path)
-
-			goalName := strings.TrimPrefix(goal, "goal:")
-			riskLevel := "100% CONFIRMED"
-			if strings.HasPrefix(goal, "goal:user:") {
-				riskLevel = "LATERAL MOVEMENT CONFIRMED"
-				desc += "\n  [!] Tactical Advice: Once you have gained access as this user, run Talaria again to explore further paths."
-			}
-
-			blocked, blockMsg := isAnyPathBlocked(targetPaths)
-			if blocked {
-				riskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
-				desc += blockMsg
-			}
-
-			allResults = append(allResults, ChainResult{
-				Name:        fmt.Sprintf("Attack Graph: %s (%d steps) → %s", goalName, len(path), goalName),
-				Description: desc,
-				RiskLevel:   riskLevel,
-				TargetPath:  strings.Join(targetPaths, ","),
-			})
-		}
-
-		// Best path entry — always shown if a path exists
-		if bestPath != nil {
-			totalWeight := 0
-			desc := "Best Attack Path:\n"
-			for i, edge := range bestPath {
-				totalWeight += edge.Weight
-				desc += fmt.Sprintf("  %d. %s -> (%s) [weight:%d] -> %s\n", i+1, edge.From.ID, edge.Description, edge.Weight, edge.To.ID)
-			}
-
-			targetPaths := collectTargetPaths(bestPath)
-
-			goalName := strings.TrimPrefix(goal, "goal:")
-			riskLevel := "100% CONFIRMED"
-			if strings.HasPrefix(goal, "goal:user:") {
-				riskLevel = "LATERAL MOVEMENT CONFIRMED"
-				desc += "\n  [!] Tactical Advice: Once you have gained access as this user, run Talaria again to explore further paths."
-			}
-
-			blocked, blockMsg := isAnyPathBlocked(targetPaths)
-			if blocked {
-				riskLevel = "POTENTIAL - BLOCKED BY DEFENSE"
-				desc += blockMsg
-			}
-
-			allResults = append(allResults, ChainResult{
-				Name:        fmt.Sprintf("Best Attack Graph: %s (%d steps, score=%d) → %s", goalName, len(bestPath), totalWeight, goalName),
-				Description: desc,
-				RiskLevel:   riskLevel,
-				TargetPath:  strings.Join(targetPaths, ","),
-			})
 		}
 	}
-}
 
 	if len(allResults) == 0 {
 		fmt.Printf("%s[+] No confirmed chained attack vectors found via cross-reference.%s\n", ColorGreen, ColorReset)

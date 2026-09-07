@@ -29,6 +29,16 @@ type WildcardResult struct {
 
 var vulnerableWildcardCmds = []string{"tar", "rsync", "chmod", "chown", "7z", "zip"}
 
+var wildcardPatterns map[string]*regexp.Regexp
+
+func init() {
+	wildcardPatterns = make(map[string]*regexp.Regexp, len(vulnerableWildcardCmds))
+	for _, vCmd := range vulnerableWildcardCmds {
+		pattern := fmt.Sprintf(`(?:^|[;&|]\s*)%s(?:\s+-[^\s]+)*\s+.*\*`, regexp.QuoteMeta(vCmd))
+		wildcardPatterns[vCmd] = regexp.MustCompile(pattern)
+	}
+}
+
 var reCdDir = regexp.MustCompile(`(?m)^\s*cd\s+([^\s;&|]+)`)
 
 // ScanWildcardInjections audits cron files and systemd service scripts for wildcard injection vulnerabilities.
@@ -252,7 +262,9 @@ func inspectScriptContent(sourceFile, scriptPath, specifiedWorkingDir string, us
 }
 
 func hasWildcardCall(line, vCmd string) bool {
-	// Look for command followed by space/flags and an unquoted '*'
+	if re, ok := wildcardPatterns[vCmd]; ok {
+		return re.MatchString(line)
+	}
 	pattern := fmt.Sprintf(`(?:^|[;&|]\s*)%s(?:\s+-[^\s]+)*\s+.*\*`, regexp.QuoteMeta(vCmd))
 	matched, _ := regexp.MatchString(pattern, line)
 	return matched

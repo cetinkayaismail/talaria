@@ -37,3 +37,28 @@ func TestParseFlagsInvalidFailOn(t *testing.T) {
 		t.Fatal("Expected error for invalid --fail-on value, got nil")
 	}
 }
+
+func TestParseFlagsCtfAndAuditConflict(t *testing.T) {
+	_, err := ParseFlags([]string{"--ctf", "--audit"})
+	if err == nil {
+		t.Fatal("Expected error when both --ctf and --audit are provided, got nil")
+	}
+}
+
+func TestParseFlagsEncryptWithoutOutput(t *testing.T) {
+	_, err := ParseFlags([]string{"--encrypt", "secretpass"})
+	if err == nil {
+		t.Fatal("Expected error when --encrypt is provided without -o, got nil")
+	}
+}
+
+func TestParseFlagsEncryptWithOutput(t *testing.T) {
+	cfg, err := ParseFlags([]string{"--encrypt", "secretpass", "-o", "/tmp/report.json"})
+	if err != nil {
+		t.Fatalf("Unexpected error for --encrypt with -o: %v", err)
+	}
+	if cfg.EncryptKey != "secretpass" || cfg.OutputFile != "/tmp/report.json" {
+		t.Errorf("Expected EncryptKey 'secretpass' and OutputFile '/tmp/report.json', got %q and %q", cfg.EncryptKey, cfg.OutputFile)
+	}
+}
+

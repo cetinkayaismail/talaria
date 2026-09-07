@@ -178,6 +178,7 @@ func BuildModuleRegistry() []ModuleDescriptor {
 		},
 		{
 			Name:    "cronjobs",
+			Aliases: []string{"cron", "wildcards"},
 			Phase:   1,
 			NeedsIO: true,
 			Run: func(ctx *DispatchContext) error {
@@ -241,6 +242,7 @@ func BuildModuleRegistry() []ModuleDescriptor {
 		},
 		{
 			Name:    "sudo",
+			Aliases: []string{"sudotokens", "sudokens"},
 			Phase:   1,
 			NeedsIO: false,
 			Run: func(ctx *DispatchContext) error {
@@ -408,6 +410,7 @@ func BuildModuleRegistry() []ModuleDescriptor {
 		},
 		{
 			Name:    "writeable",
+			Aliases: []string{"writable"},
 			Phase:   1,
 			NeedsIO: true,
 			Run: func(ctx *DispatchContext) error {
@@ -428,6 +431,149 @@ func BuildModuleRegistry() []ModuleDescriptor {
 								"Reason": r.Reason,
 							}, r.Remediation)
 						}
+					}
+				}
+
+				if genResults, err := scanners.ScanSystemdGenerators(); err == nil && len(genResults) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.Writeable = append(ctx.Report.Writeable, genResults...)
+					ctx.Mu.Unlock()
+					for _, r := range genResults {
+						core.PrintFinding("CRITICAL", "Systemd Generator Writable", map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, r.Remediation)
+					}
+				}
+
+				if svcResults, err := scanners.ScanWritableServices(); err == nil && len(svcResults) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.Writeable = append(ctx.Report.Writeable, svcResults...)
+					ctx.Mu.Unlock()
+					for _, r := range svcResults {
+						core.PrintFinding("CRITICAL", "Writable Systemd Service", map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, r.Remediation)
+					}
+				}
+
+				if motdResults, err := scanners.ScanMotdProfiledHijack(); err == nil && len(motdResults) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.Writeable = append(ctx.Report.Writeable, motdResults...)
+					ctx.Mu.Unlock()
+					for _, r := range motdResults {
+						core.PrintFinding("CRITICAL", r.Type, map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, r.Remediation)
+					}
+				}
+
+				if anacronResults, err := scanners.ScanAnacronWritability(); err == nil && len(anacronResults) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.Writeable = append(ctx.Report.Writeable, anacronResults...)
+					ctx.Mu.Unlock()
+					for _, r := range anacronResults {
+						core.PrintFinding("CRITICAL", r.Type, map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, r.Remediation)
+					}
+				}
+
+				if atResults, err := scanners.ScanAtJobs(); err == nil && len(atResults) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.Writeable = append(ctx.Report.Writeable, atResults...)
+					ctx.Mu.Unlock()
+					for _, r := range atResults {
+						core.PrintFinding("CRITICAL", r.Type, map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, r.Remediation)
+					}
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:    "initscripts",
+			Aliases: []string{"sysv", "init"},
+			Phase:   1,
+			NeedsIO: true,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanInitScripts()
+				if err != nil {
+					return err
+				}
+				ctx.Mu.Lock()
+				ctx.Report.Writeable = append(ctx.Report.Writeable, results...)
+				ctx.Mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("SysV Init Scripts")
+					for _, r := range results {
+						core.PrintFinding(r.RiskLevel, "Writable SysV Init Script", map[string]string{
+							"Path":   r.Path,
+							"Type":   r.Type,
+							"Reason": r.Reason,
+						}, r.Remediation)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "logrotate",
+			Aliases: []string{"logrotated"},
+			Phase:   1,
+			NeedsIO: true,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanLogrotate()
+				if err != nil {
+					return err
+				}
+				ctx.Mu.Lock()
+				ctx.Report.Logrotate = results
+				ctx.Mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Logrotate Configurations")
+					for _, r := range results {
+						core.PrintFinding(r.RiskLevel, "Writable Logrotate Config", map[string]string{
+							"Path":   r.ConfigPath,
+							"Reason": r.Reason,
+						}, "")
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "environmentfile",
+			Aliases: []string{"envfile", "envfiles"},
+			Phase:   1,
+			NeedsIO: true,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanSystemdEnvFiles()
+				if err != nil {
+					return err
+				}
+				ctx.Mu.Lock()
+				ctx.Report.EnvFileResults = results
+				ctx.Mu.Unlock()
+				if len(results) > 0 {
+					core.PrintSectionHeader("Systemd EnvironmentFile")
+					for _, r := range results {
+						hint := ""
+						if ctx.Config != nil && !ctx.Config.AuditMode {
+							hint = fmt.Sprintf("echo 'LD_PRELOAD=/tmp/evil.so' >> %s && systemctl restart %s", r.EnvFilePath, r.ServiceName)
+						}
+						core.PrintFinding(r.RiskLevel, "Writable Systemd EnvironmentFile", map[string]string{
+							"ServiceFile": r.ServiceFile,
+							"EnvFile":     r.EnvFilePath,
+							"Injection":   r.InjectionType,
+							"Reason":      r.Reason,
+						}, hint)
 					}
 				}
 				return nil
@@ -759,6 +905,7 @@ func BuildModuleRegistry() []ModuleDescriptor {
 		},
 		{
 			Name:    "sessions",
+			Aliases: []string{"xauthority", "xauth"},
 			Phase:   1,
 			NeedsIO: false,
 			Run: func(ctx *DispatchContext) error {
@@ -1220,6 +1367,7 @@ func BuildModuleRegistry() []ModuleDescriptor {
 		},
 		{
 			Name:    "python_hijack",
+			Aliases: []string{"python", "pythonhijack"},
 			Phase:   1,
 			NeedsIO: false,
 			Run: func(ctx *DispatchContext) error {
@@ -1372,7 +1520,29 @@ func runPhase(ctx *DispatchContext, registry []ModuleDescriptor, phase int) {
 		}
 
 		mod := module
-		isSelected := (ctx.RunAll || ctx.SelectedModules[mod.Name]) && !ctx.ExcludedModules[mod.Name]
+
+		isExcluded := ctx.ExcludedModules[mod.Name]
+		if !isExcluded {
+			for _, alias := range mod.Aliases {
+				if ctx.ExcludedModules[alias] {
+					isExcluded = true
+					break
+				}
+			}
+		}
+		if isExcluded {
+			continue
+		}
+
+		isSelected := ctx.RunAll || ctx.SelectedModules[mod.Name]
+		if !isSelected {
+			for _, alias := range mod.Aliases {
+				if ctx.SelectedModules[alias] {
+					isSelected = true
+					break
+				}
+			}
+		}
 		if !isSelected {
 			continue
 		}
