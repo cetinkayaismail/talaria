@@ -266,10 +266,16 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 
 	// 12. Map NFS Exports with no_root_squash
 	for _, nfs := range report.NFSExports {
-		if nfs.IsDangerous && nfs.IsWritable && nfs.HasNoRootSquash {
+		if nfs.IsDangerous && nfs.HasNoRootSquash {
 			nfsID := fmt.Sprintf("file:%s", nfs.Path)
 			g.AddNode(nfsID, "File")
-			g.AddEdgeWeight(currentUser, nfsID, fmt.Sprintf("Can access writable NFS export %s", nfs.Path), 9)
+			weight := 8
+			desc := fmt.Sprintf("Can access NFS export %s", nfs.Path)
+			if nfs.IsWritable {
+				weight = 10
+				desc = fmt.Sprintf("Can write to NFS export %s", nfs.Path)
+			}
+			g.AddEdgeWeight(currentUser, nfsID, desc, weight)
 			g.AddEdgeWeight(nfsID, "goal:root", "NFS export has no_root_squash (upload SUID binary)", 10)
 		}
 	}
@@ -460,31 +466,68 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 		g.AddEdgeWeight(vwID, "goal:root", "Execution of poisoned package or wrapper by root grants root", 10)
 	}
 
+	// 29. Map Wildcard Injections
+	for _, w := range report.Wildcards {
+		if !w.IsDangerous {
+			continue
+		}
+		wID := fmt.Sprintf("cmd:wildcard:%s:%s", w.VulnerableCmd, w.SourceFile)
+		g.AddNode(wID, "Command")
+		weight := 7
+		desc := fmt.Sprintf("Wildcard expansion on %s in %s", w.VulnerableCmd, w.SourceFile)
+		if w.IsWritableDir {
+			weight = 10
+			desc = fmt.Sprintf("Can plant wildcard files in writable dir %s for %s", w.WorkingDir, w.VulnerableCmd)
+		}
+		g.AddEdgeWeight(currentUser, wID, desc, weight)
+		g.AddEdgeWeight(wID, "goal:root", fmt.Sprintf("Wildcard injection in %s executes arbitrary commands as root", w.VulnerableCmd), weight)
+	}
+
+	// 30. Map Python Library Hijacking Vectors
+	for _, ph := range report.PythonHijack {
+		if !ph.IsDangerous {
+			continue
+		}
+		phID := fmt.Sprintf("file:%s", ph.Path)
+		g.AddNode(phID, "File")
+		weight := 8
+		if ph.Type == "Writable Script Directory" {
+			weight = 10
+		}
+		g.AddEdgeWeight(currentUser, phID, fmt.Sprintf("Can plant hijacking module in %s (%s)", ph.Path, ph.Type), weight)
+		g.AddEdgeWeight(phID, "goal:root", "Python module hijacking yields arbitrary root code execution", weight)
+	}
+
 	return g
 }
 
-// FindBestPath finds the highest-weighted path from start to target, not just shortest
-func (g *Graph) FindBestPath(startID, targetID string, maxDepth int) []Edge {
+// FindPathsAndBest executes a single depth-bounded DFS traversal that simultaneously
+// discovers all valid paths to targetID and identifies the highest-weighted best path.
+// This eliminates redundant graph traversals (OPT-05).
+func (g *Graph) FindPathsAndBest(startID, targetID string, maxDepth int) ([][]Edge, []Edge) {
 	if g.Nodes[startID] == nil || g.Nodes[targetID] == nil {
-		return nil
+		return nil, nil
 	}
 
-	type scoredPath struct {
-		path  []Edge
-		score int
-	}
+	var allPaths [][]Edge
+	var bestPath []Edge
+	bestScore := -1
 
-	var best *scoredPath
 	var currentPath []Edge
 	visited := make(map[string]bool)
 
-	var dfs func(curr string, depth int, score int)
-	dfs = func(curr string, depth int, score int) {
+	var dfs func(curr string, depth int, currentScore int)
+	dfs = func(curr string, depth int, currentScore int) {
 		if curr == targetID {
 			pathCopy := make([]Edge, len(currentPath))
 			copy(pathCopy, currentPath)
-			if best == nil || score > best.score {
-				best = &scoredPath{path: pathCopy, score: score}
+			allPaths = append(allPaths, pathCopy)
+
+			if bestPath == nil || currentScore > bestScore {
+				bestPathCopy := make([]Edge, len(currentPath))
+				copy(bestPathCopy, currentPath)
+				bestPath = bestPathCopy
+				bestScore = currentScore
 			}
 			return
 		}
@@ -496,7 +539,7 @@ func (g *Graph) FindBestPath(startID, targetID string, maxDepth int) []Edge {
 		for _, edge := range g.Edges[curr] {
 			if !visited[edge.To.ID] {
 				currentPath = append(currentPath, edge)
-				dfs(edge.To.ID, depth+1, score+edge.Weight)
+				dfs(edge.To.ID, depth+1, currentScore+edge.Weight)
 				currentPath = currentPath[:len(currentPath)-1]
 			}
 		}
@@ -504,46 +547,17 @@ func (g *Graph) FindBestPath(startID, targetID string, maxDepth int) []Edge {
 	}
 
 	dfs(startID, 0, 0)
-
-	if best != nil {
-		return best.path
-	}
-	return nil
+	return allPaths, bestPath
 }
 
-// FindPaths finds all paths from startID to targetID up to maxDepth (backward compat)
+// FindBestPath finds the highest-weighted path from start to target using single-pass traversal.
+func (g *Graph) FindBestPath(startID, targetID string, maxDepth int) []Edge {
+	_, best := g.FindPathsAndBest(startID, targetID, maxDepth)
+	return best
+}
+
+// FindPaths finds all paths from startID to targetID up to maxDepth using single-pass traversal.
 func (g *Graph) FindPaths(startID, targetID string, maxDepth int) [][]Edge {
-	if g.Nodes[startID] == nil || g.Nodes[targetID] == nil {
-		return nil
-	}
-
-	var allPaths [][]Edge
-	var currentPath []Edge
-	visited := make(map[string]bool)
-
-	var dfs func(curr string, depth int)
-	dfs = func(curr string, depth int) {
-		if curr == targetID {
-			pathCopy := make([]Edge, len(currentPath))
-			copy(pathCopy, currentPath)
-			allPaths = append(allPaths, pathCopy)
-			return
-		}
-		if depth >= maxDepth {
-			return
-		}
-
-		visited[curr] = true
-		for _, edge := range g.Edges[curr] {
-			if !visited[edge.To.ID] {
-				currentPath = append(currentPath, edge)
-				dfs(edge.To.ID, depth+1)
-				currentPath = currentPath[:len(currentPath)-1]
-			}
-		}
-		visited[curr] = false
-	}
-
-	dfs(startID, 0)
-	return allPaths
+	paths, _ := g.FindPathsAndBest(startID, targetID, maxDepth)
+	return paths
 }

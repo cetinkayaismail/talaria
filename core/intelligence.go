@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"talaria/models"
+	"talaria/scanners"
 )
 
 type ChainResult struct {
@@ -60,16 +62,30 @@ func init() {
 		&ModprobeChain{},              // Modprobe kernel module execution chain
 		&CloudMetaChain{},             // Cloud IMDS & K8s ServiceAccount token chain
 		&VenvWrapChain{},              // Python virtualenv & wrapper script chain
+		&PasswordReuseChain{},         // E3: Cross-reference secret leakage against system accounts
+		&WildcardInjectionChain{},     // Internal #4: Shell script wildcard argument injection chain
+		&PythonHijackChain{},          // Internal #5: Python module search path & script dir hijack chain
 	}
 }
 
 func RunIntelligenceEngine(report *models.ScanReport) {
 	PrintSectionHeader("Intelligence Engine: Cross-Reference Analysis")
 
+	// OPT-03: Concurrent Intelligence Chain Evaluation
+	chainResults := make([][]ChainResult, len(registeredChains))
+	var chainWg sync.WaitGroup
+	for i, chain := range registeredChains {
+		chainWg.Add(1)
+		go func(idx int, c AttackChain) {
+			defer chainWg.Done()
+			chainResults[idx] = c.Evaluate(report)
+		}(i, chain)
+	}
+	chainWg.Wait()
+
 	var allResults []ChainResult
-	for _, chain := range registeredChains {
-		results := chain.Evaluate(report)
-		allResults = append(allResults, results...)
+	for _, res := range chainResults {
+		allResults = append(allResults, res...)
 	}
 
 	// Run DFS Graph Analysis — search for ALL goal types
@@ -126,16 +142,15 @@ func RunIntelligenceEngine(report *models.ScanReport) {
 		}
 
 		for _, goal := range goals {
-			paths := graph.FindPaths(startNode, goal, 5)
+			// OPT-05: Single-pass DFS discovers all paths and tracks best path concurrently
+			paths, bestPath := graph.FindPathsAndBest(startNode, goal, 5)
 
-			// FindBestPath first — used to deduplicate identical single-path cases
-			bestPath := graph.FindBestPath(startNode, goal, 5)
-		bestPathKey := ""
-		if bestPath != nil {
-			for _, e := range bestPath {
-				bestPathKey += e.From.ID + e.To.ID
+			bestPathKey := ""
+			if bestPath != nil {
+				for _, e := range bestPath {
+					bestPathKey += e.From.ID + e.To.ID
+				}
 			}
-		}
 
 		for _, path := range paths {
 			if len(path) == 0 {
@@ -809,20 +824,60 @@ func (c *DangerousCapabilitiesChain) Evaluate(report *models.ScanReport) []Chain
 			continue
 		}
 		capsLower := strings.ToLower(capResult.Capabilities)
-		if strings.Contains(capsLower, "cap_setuid") || strings.Contains(capsLower, "cap_sys_admin") || strings.Contains(capsLower, "cap_dac_override") {
+		if strings.Contains(capsLower, "cap_setuid") {
+			exploit := capResult.ExploitHint
+			if exploit == "" {
+				exploit = fmt.Sprintf("%s (invoke setuid(0) shell or sub-process)", capResult.Path)
+			}
 			results = append(results, ChainResult{
-				Name:        fmt.Sprintf("Binary '%s' possesses dangerous capability: %s", capResult.Path, capResult.Capabilities),
+				Name:        fmt.Sprintf("Binary '%s' possesses CAP_SETUID capability: %s", capResult.Path, capResult.Capabilities),
 				RiskLevel:   "100% CONFIRMED",
-				Description: "Abuse the capability on the binary to gain full root capabilities.",
-				Exploit:     capResult.ExploitHint,
+				Description: "Binary can manipulate its process UID to 0 (root). If the binary provides execution parameters or a shell spawn, root privilege is achieved.",
+				Exploit:     exploit,
+				TargetPath:  capResult.Path,
+			})
+		} else if strings.Contains(capsLower, "cap_sys_admin") {
+			exploit := capResult.ExploitHint
+			if exploit == "" {
+				exploit = fmt.Sprintf("%s -> mount -o rw /dev/sdX /mnt or abuse cgroups release_agent / debugfs", capResult.Path)
+			}
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Binary '%s' possesses CAP_SYS_ADMIN capability: %s", capResult.Path, capResult.Capabilities),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "CAP_SYS_ADMIN provides broad kernel administrative capabilities (raw disk mounts, namespace operations, debugfs). Abuse binary execution to mount root filesystems or escape containment.",
+				Exploit:     exploit,
+				TargetPath:  capResult.Path,
+			})
+		} else if strings.Contains(capsLower, "cap_dac_override") {
+			exploit := capResult.ExploitHint
+			if exploit == "" {
+				exploit = fmt.Sprintf("echo 'root2::0:0::/root:/bin/bash' >> /etc/passwd via %s", capResult.Path)
+			}
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Binary '%s' possesses CAP_DAC_OVERRIDE capability: %s", capResult.Path, capResult.Capabilities),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "CAP_DAC_OVERRIDE bypasses all filesystem permission checks. The binary can read and overwrite /etc/passwd or /etc/shadow to grant immediate root access.",
+				Exploit:     exploit,
 				TargetPath:  capResult.Path,
 			})
 		} else if strings.Contains(capsLower, "cap_dac_read_search") {
+			exploit := capResult.ExploitHint
+			if exploit == "" {
+				exploit = fmt.Sprintf("%s /etc/shadow", capResult.Path)
+			}
 			results = append(results, ChainResult{
-				Name:        fmt.Sprintf("Binary '%s' possesses file read bypass capability: %s", capResult.Path, capResult.Capabilities),
+				Name:        fmt.Sprintf("Binary '%s' possesses CAP_DAC_READ_SEARCH capability: %s", capResult.Path, capResult.Capabilities),
 				RiskLevel:   "100% CONFIRMED",
-				Description: "Abuse capability to read sensitive files (e.g. /etc/shadow) directly.",
-				Exploit:     fmt.Sprintf("%s /etc/shadow", capResult.Path),
+				Description: "Abuse capability to bypass directory search and file read checks (e.g. read /etc/shadow or root SSH private keys).",
+				Exploit:     exploit,
+				TargetPath:  capResult.Path,
+			})
+		} else {
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Binary '%s' possesses dangerous capability: %s", capResult.Path, capResult.Capabilities),
+				RiskLevel:   "100% CONFIRMED",
+				Description: "Abuse capability on binary to escalate privileges.",
+				Exploit:     capResult.ExploitHint,
 				TargetPath:  capResult.Path,
 			})
 		}
@@ -836,11 +891,15 @@ type NfsNoRootSquashChain struct{}
 func (c *NfsNoRootSquashChain) Evaluate(report *models.ScanReport) []ChainResult {
 	var results []ChainResult
 	for _, nfs := range report.NFSExports {
-		if nfs.IsDangerous && nfs.IsWritable && nfs.HasNoRootSquash {
+		if nfs.IsDangerous && nfs.HasNoRootSquash {
+			desc := "Mount the share from a remote client as root, upload a SUID root shell (e.g. /bin/bash with chmod u+s), and execute it locally."
+			if nfs.IsWritable {
+				desc += " The NFS export directory is also directly writable by the current local user."
+			}
 			results = append(results, ChainResult{
-				Name:        fmt.Sprintf("NFS Export '%s' is writable with no_root_squash", nfs.Path),
+				Name:        fmt.Sprintf("NFS Export '%s' has no_root_squash", nfs.Path),
 				RiskLevel:   "100% CONFIRMED",
-				Description: "Mount the share from a remote client, upload a SUID root shell, and execute it locally.",
+				Description: desc,
 				Exploit:     fmt.Sprintf("Mount %s remotely -> cp /bin/bash ./shell && chmod +s ./shell -> run locally", nfs.Path),
 				TargetPath:  nfs.Path,
 			})
@@ -1375,6 +1434,177 @@ func (c *VenvWrapChain) Evaluate(report *models.ScanReport) []ChainResult {
 			Description: vw.Reason,
 			Exploit:     vw.ExploitHint,
 			TargetPath:  vw.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 35: Local Account Password Reuse (E3) ───────────────
+type PasswordReuseChain struct{}
+
+var (
+	reAssignPwd  = regexp.MustCompile(`(?i)(?:password|pass|secret|token|key|pwd)\s*(?:=|:)\s*['"]?([^'"\s&|;<>]+)['"]?`)
+	reCliFlagPwd = regexp.MustCompile(`(?i)(?:-p|--password|--pass)\s*['"]?([^'"\s&|;<>]+)['"]?`)
+)
+
+func (c *PasswordReuseChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+
+	// Collect target users from cached system users and report.TargetUser
+	systemUsers := scanners.CachedSystemUsers()
+	targetUsers := make(map[string]bool)
+	targetUsers["root"] = true
+	if report.TargetUser != "" {
+		targetUsers[report.TargetUser] = true
+	}
+	for _, u := range systemUsers {
+		if u.Username != "" && u.Username != "nobody" {
+			targetUsers[u.Username] = true
+		}
+	}
+
+	type candidateCred struct {
+		Source   string
+		User     string
+		Password string
+	}
+	var candidates []candidateCred
+
+	// 1. From SecretContent snippets
+	for _, sc := range report.SecretContent {
+		snippetLower := strings.ToLower(sc.Snippet)
+		if strings.Contains(snippetLower, "pass") || strings.Contains(snippetLower, "secret") || strings.Contains(snippetLower, "pwd") {
+			parts := strings.SplitN(sc.Snippet, ":", 2)
+			if len(parts) == 2 {
+				val := strings.TrimSpace(parts[1])
+				if len(val) >= 4 && len(val) <= 64 && !strings.Contains(val, " ") {
+					candidates = append(candidates, candidateCred{
+						Source:   sc.Path,
+						User:     "",
+						Password: val,
+					})
+				}
+			}
+		}
+	}
+
+	// 2. From HistorySecrets
+	for _, hs := range report.HistorySecrets {
+		cmd := hs.Command
+		if matches := reAssignPwd.FindStringSubmatch(cmd); len(matches) > 1 {
+			pwd := strings.TrimSpace(matches[1])
+			if len(pwd) >= 4 && len(pwd) <= 64 {
+				candidates = append(candidates, candidateCred{
+					Source:   hs.HistoryFile,
+					User:     hs.User,
+					Password: pwd,
+				})
+			}
+		}
+		if flagMatches := reCliFlagPwd.FindStringSubmatch(cmd); len(flagMatches) > 1 {
+			pwd := strings.TrimSpace(flagMatches[1])
+			if len(pwd) >= 4 && len(pwd) <= 64 {
+				candidates = append(candidates, candidateCred{
+					Source:   hs.HistoryFile,
+					User:     hs.User,
+					Password: pwd,
+				})
+			}
+		}
+	}
+
+	// 3. From ProcEnvResults
+	for _, pe := range report.ProcEnvResults {
+		if pe.IsDangerous {
+			keyUpper := strings.ToUpper(pe.Key)
+			if strings.Contains(keyUpper, "PASS") || strings.Contains(keyUpper, "SECRET") || strings.Contains(keyUpper, "PWD") {
+				val := strings.TrimSpace(pe.ValueSample)
+				if len(val) >= 4 && len(val) <= 64 {
+					candidates = append(candidates, candidateCred{
+						Source:   fmt.Sprintf("/proc/%d/environ (%s)", pe.PID, pe.ProcessName),
+						User:     "",
+						Password: val,
+					})
+				}
+			}
+		}
+	}
+
+	// Cross-reference candidate passwords against system users
+	seen := make(map[string]bool)
+	for _, cand := range candidates {
+		for targetUser := range targetUsers {
+			if targetUser == cand.User {
+				continue
+			}
+
+			key := targetUser + "|" + cand.Password
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+
+			// E3 constraint: Report as POTENTIAL only, never active PAM calls
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Potential Credential Reuse: %s credential found in %s", targetUser, cand.Source),
+				RiskLevel:   "POTENTIAL - PASSWORD REUSE",
+				Description: fmt.Sprintf("A plaintext credential was identified in '%s'. Account '%s' may share this password across local authentication services.", cand.Source, targetUser),
+				Exploit:     fmt.Sprintf("Verify offline or test manually: su - %s", targetUser),
+				TargetPath:  cand.Source,
+			})
+
+			if len(results) >= 5 {
+				return results
+			}
+		}
+	}
+
+	return results
+}
+
+// ── CHAIN 36: Shell Script Wildcard Injection ───────────────
+type WildcardInjectionChain struct{}
+
+func (c *WildcardInjectionChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, w := range report.Wildcards {
+		if !w.IsDangerous {
+			continue
+		}
+		risk := "100% CONFIRMED"
+		if !w.IsWritableDir {
+			risk = "POTENTIAL"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Wildcard Injection via %s in %s", w.VulnerableCmd, filepath.Base(w.SourceFile)),
+			RiskLevel:   risk,
+			Description: fmt.Sprintf("%s. Working directory: %s (User writable: %v)", w.Reason, w.WorkingDir, w.IsWritableDir),
+			Exploit:     w.ExploitHint,
+			TargetPath:  w.WorkingDir,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 37: Python Library & Path Hijacking ───────────────
+type PythonHijackChain struct{}
+
+func (c *PythonHijackChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, ph := range report.PythonHijack {
+		if !ph.IsDangerous {
+			continue
+		}
+		risk := "100% CONFIRMED"
+		if ph.Type != "Writable Script Directory" {
+			risk = "POTENTIAL"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Python Library Hijacking: %s (%s)", ph.Type, filepath.Base(ph.Path)),
+			RiskLevel:   risk,
+			Description: ph.Reason,
+			Exploit:     ph.ExploitHint,
+			TargetPath:  ph.Path,
 		})
 	}
 	return results

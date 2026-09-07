@@ -53,4 +53,6 @@ type ScanReport struct {
 	CloudMetaResults   []scanners.CloudMetaResult         `json:"cloud_meta_results,omitempty"`
 	VenvWrapResults    []scanners.VenvWrapResult          `json:"venv_wrap_results,omitempty"`
 	SudoTokens         []scanners.SudoTokenResult         `json:"sudo_tokens,omitempty"`
+	Wildcards          []scanners.WildcardResult          `json:"wildcards,omitempty"`
+	PythonHijack       []scanners.PythonHijackResult      `json:"python_hijack,omitempty"`
 }

@@ -79,3 +79,46 @@ func TestBuildIntelligenceGraph(t *testing.T) {
 		t.Fatal("Expected edge from group:docker to goal:root")
 	}
 }
+
+func TestFindPathsAndBestSinglePass(t *testing.T) {
+	g := NewGraph()
+	g.AddNode("user:test", "User")
+	g.AddNode("node:stepA", "File")
+	g.AddNode("node:stepB", "File")
+	g.AddNode("goal:root", "Goal")
+
+	// Path 1: test -> stepA -> root (weight: 3 + 4 = 7)
+	g.AddEdgeWeight("user:test", "node:stepA", "stepA", 3)
+	g.AddEdgeWeight("node:stepA", "goal:root", "reach root via A", 4)
+
+	// Path 2: test -> stepB -> root (weight: 2 + 10 = 12) (best path)
+	g.AddEdgeWeight("user:test", "node:stepB", "stepB", 2)
+	g.AddEdgeWeight("node:stepB", "goal:root", "reach root via B", 10)
+
+	allPaths, bestPath := g.FindPathsAndBest("user:test", "goal:root", 5)
+
+	if len(allPaths) != 2 {
+		t.Fatalf("Expected 2 paths, got %d", len(allPaths))
+	}
+
+	if len(bestPath) != 2 {
+		t.Fatalf("Expected best path of length 2, got %d", len(bestPath))
+	}
+
+	if bestPath[0].To.ID != "node:stepB" || bestPath[1].To.ID != "goal:root" {
+		t.Fatalf("Expected best path through node:stepB, got %+v", bestPath)
+	}
+
+	// Verify FindPaths wrapper matches allPaths
+	pathsOnly := g.FindPaths("user:test", "goal:root", 5)
+	if len(pathsOnly) != 2 {
+		t.Fatalf("Expected FindPaths to return 2 paths, got %d", len(pathsOnly))
+	}
+
+	// Verify FindBestPath wrapper matches bestPath
+	bestOnly := g.FindBestPath("user:test", "goal:root", 5)
+	if len(bestOnly) != 2 || bestOnly[0].To.ID != "node:stepB" {
+		t.Fatalf("Expected FindBestPath to return path through stepB, got %+v", bestOnly)
+	}
+}
+
