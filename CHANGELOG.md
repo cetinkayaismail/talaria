@@ -7,6 +7,17 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #67 — Phase 5: Enterprise Export Formats — SARIF v2.1.0 & Metric Specifications (`core/sarif.go`, `cmd/*`, `FUTURE_PLANS.md`)
+**Impact:** 🛡️ Native OASIS SARIF v2.1.0 output for GitHub Security Tab / GitLab Vulnerability Reporting + 🧠 Enterprise SIEM metric properties
+
+- **Phase 5 — SARIF v2.1.0 Exporter Engine (`core/sarif.go` *(new)*, `core/sarif_test.go` *(new)*):** Implemented OASIS SARIF v2.1.0 exporter serializing Talaria scan results into standard Static Analysis Results Interchange Format. Features dynamic rule indexing (`TAL-SEC-001`, `TAL-SUID-001`, `TAL-WILD-001`, etc.), severity level mapping (`error`, `warning`, `note`), physical artifact locations, automated remediation fixes (`chmod`/`chown`), compliance tags (CIS/NIST), and execution invocation metrics.
+- **Phase 5 — CLI & Report Integration (`cmd/cli.go`, `cmd/cli_test.go`, `cmd/report.go`, `cmd/report_test.go`):** Added `--format=sarif` (accepting `text`, `json`, and `sarif`), integrated SARIF serialization into `SaveReport()`, and added CLI flag validation and tests.
+- **Phase 5 — Strategic Roadmap Milestone (`FUTURE_PLANS.md`):** Updated Phase 5 to completed status (`✅ DONE`).
+
+**Files changed:** `core/sarif.go` *(new)*, `core/sarif_test.go` *(new)*, `cmd/cli.go`, `cmd/cli_test.go`, `cmd/report.go`, `cmd/report_test.go`, `FUTURE_PLANS.md`, `CHANGELOG.md`
+
+---
+
 ### #66 — Codebase Bug Audit Fixes, Module Registration Recovery & Alias Engine (`cmd/*`, `scanners/*`, `core/*`)
 **Impact:** 🎯 Restored 3 missing scanner modules (`initscripts`, `logrotate`, `environmentfile`) + 🔧 Full alias resolution engine + ⚡ 10–50x faster wildcard regex matching + 🛡️ CLI mode exclusivity & encryption validation
 

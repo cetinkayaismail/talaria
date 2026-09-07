@@ -62,3 +62,21 @@ func TestParseFlagsEncryptWithOutput(t *testing.T) {
 	}
 }
 
+func TestParseFlagsFormatSarif(t *testing.T) {
+	cfg, err := ParseFlags([]string{"--format", "sarif"})
+	if err != nil {
+		t.Fatalf("Unexpected error for --format sarif: %v", err)
+	}
+	if cfg.OutputFormat != "sarif" {
+		t.Errorf("Expected OutputFormat 'sarif', got %q", cfg.OutputFormat)
+	}
+}
+
+func TestParseFlagsInvalidFormat(t *testing.T) {
+	_, err := ParseFlags([]string{"--format", "yaml"})
+	if err == nil {
+		t.Fatal("Expected error for invalid --format value 'yaml', got nil")
+	}
+}
+
+

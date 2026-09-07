@@ -34,7 +34,7 @@ func ParseFlags(args []string) (*Config, error) {
 	fs.StringVar(&cfg.ExcludeModules, "exclude", "", "Comma-separated list of modules to skip.")
 	fs.StringVar(&cfg.RootPath, "path", "/", "Root directory for filesystem scans.")
 	fs.StringVar(&cfg.OutputFile, "o", "", "Save report to file (requires --format).")
-	fs.StringVar(&cfg.OutputFormat, "format", "text", "Report format: 'text' or 'json'.")
+	fs.StringVar(&cfg.OutputFormat, "format", "text", "Report format: 'text', 'json', or 'sarif'.")
 	fs.StringVar(&cfg.SudoPassword, "pass", "", "Sudo password for sudo -l checks (optional).")
 	fs.IntVar(&cfg.IOLimit, "io-limit", 0, "Max concurrent I/O scanners (default: auto based on RLIMIT_NOFILE).")
 	fs.StringVar(&cfg.EncryptKey, "encrypt", "", "Encrypt saved report with AES-256-GCM using this passphrase (requires -o).")
@@ -79,6 +79,13 @@ func ParseFlags(args []string) (*Config, error) {
 		return nil, fmt.Errorf("--encrypt requires -o (output file path)")
 	}
 
+	// Validate report output format
+	fmtNorm := strings.ToLower(cfg.OutputFormat)
+	if fmtNorm != "text" && fmtNorm != "json" && fmtNorm != "sarif" {
+		return nil, fmt.Errorf("invalid --format value '%s': must be 'text', 'json', or 'sarif'", cfg.OutputFormat)
+	}
+	cfg.OutputFormat = fmtNorm
+
 	return cfg, nil
 }
 
@@ -91,7 +98,7 @@ func PrintUsage() {
 	fmt.Println("  --exclude            Comma-separated modules to skip (e.g. network,secrets)")
 	fmt.Println("  --path               Root directory for filesystem scans (default: /)")
 	fmt.Println("  --o                  Save report to file (combine with --format)")
-	fmt.Println("  --format             Report format: text or json")
+	fmt.Println("  --format             Report format: text, json, or sarif")
 	fmt.Println("  --pass               Sudo password for sudo -l checks (optional)")
 	fmt.Println("  --io-limit           Max concurrent I/O scanners (default: auto based on RLIMIT_NOFILE)")
 	fmt.Println("  --encrypt            Encrypt saved report with AES-256-GCM using this passphrase (requires -o)")

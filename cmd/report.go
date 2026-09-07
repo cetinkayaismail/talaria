@@ -15,17 +15,24 @@ type textSection struct {
 	Lines []string
 }
 
-// SaveReport writes the scan results to disk in the requested format (text or json), with optional encryption.
+// SaveReport writes the scan results to disk in the requested format (text, json, or sarif), with optional encryption.
 func SaveReport(report *models.ScanReport, path, format, encryptKey string) error {
 	var data []byte
 
-	if strings.ToLower(format) == "json" {
+	switch strings.ToLower(format) {
+	case "json":
 		jsonData, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
 			return fmt.Errorf("JSON serialization failed: %w", err)
 		}
 		data = jsonData
-	} else {
+	case "sarif":
+		sarifData, err := core.GenerateSARIFReport(report)
+		if err != nil {
+			return fmt.Errorf("SARIF serialization failed: %w", err)
+		}
+		data = sarifData
+	default:
 		data = []byte(GenerateTextReport(report))
 	}
 
