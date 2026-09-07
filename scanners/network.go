@@ -270,12 +270,24 @@ func getTargetInodes() map[string]bool {
 
 // buildInodeMap scans /proc to map socket inodes to process names and PIDs,
 // filtering exclusively against active connection inodes for performance.
+// Uses unified ProcSnapshot when available (OPT-04) with direct walk fallback.
 func buildInodeMap(targetInodes map[string]bool) map[string]socketProcessInfo {
 	m := make(map[string]socketProcessInfo)
 	if len(targetInodes) == 0 {
 		return m
 	}
 
+	// 1. Resolve from unified ProcSnapshot if available (OPT-04)
+	if snap, err := GetProcSnapshot(); err == nil && snap != nil {
+		for inode := range targetInodes {
+			if info, ok := snap.GetSocketProcessInfo(inode); ok {
+				m[inode] = info
+			}
+		}
+		return m
+	}
+
+	// 2. Standalone fallback to direct /proc walk
 	pDir, err := os.Open("/proc")
 	if err != nil {
 		return m

@@ -7,6 +7,17 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #68 — OPT-04: Unified `/proc` Process Snapshot Engine (`scanners/proc_snapshot.go`, `scanners/*`)
+**Impact:** ⚡ 50–150ms faster execution via single coordinated `/proc` traversal + 🛡️ decoupled error handling preserving process enumeration under unprivileged permissions
+
+- **OPT-04 — Unified `/proc` Process Snapshot Engine (`scanners/proc_snapshot.go` *(new)*, `scanners/proc_snapshot_test.go` *(new)*):** Introduced thread-safe `GetProcSnapshot()` with 3-second TTL caching (`snapshotTTL`) and mutex synchronization. Consolidates three previously redundant `/proc` traversals in `ScanProcesses()`, `ScanProcEnvAuditor()`, and `ScanNetworkConnections()` into a single point-in-time snapshot capturing PID, UID, command line, comm, raw environ, and socket inode links. Decoupled permission error handling ensures that unreadable `/proc/[pid]/environ` or `/proc/[pid]/fd` descriptors (EACCES) never drop process entries from command or UID auditing.
+- **OPT-04 — Scanner Integration & Inode Resolution (`scanners/processes.go`, `scanners/proc_env.go`, `scanners/network.go`):** Refactored `ScanProcesses` to consume `snap.Processes` directly; refactored `ScanProcEnvAuditor` to evaluate in-memory process environment variables with zero disk I/O; and refactored `buildInodeMap` to resolve active network socket inodes directly from `snap.GetSocketProcessInfo()` with seamless fallback to direct walk for standalone scanner invocations.
+- **OPT-04 — Strategic Optimization Milestone (`FUTURE_PLANS.md`):** Updated OPT-04 to completed status (`✅ DONE`).
+
+**Files changed:** `scanners/proc_snapshot.go` *(new)*, `scanners/proc_snapshot_test.go` *(new)*, `scanners/processes.go`, `scanners/proc_env.go`, `scanners/network.go`, `FUTURE_PLANS.md`, `CHANGELOG.md`
+
+---
+
 ### #67 — Phase 5: Enterprise Export Formats — SARIF v2.1.0 & Metric Specifications (`core/sarif.go`, `cmd/*`, `FUTURE_PLANS.md`)
 **Impact:** 🛡️ Native OASIS SARIF v2.1.0 output for GitHub Security Tab / GitLab Vulnerability Reporting + 🧠 Enterprise SIEM metric properties
 

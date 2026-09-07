@@ -67,57 +67,40 @@ func ScanProcesses() ([]ProcessResult, error) {
 	currentUID, _ := strconv.Atoi(currentUser.Uid)
 	userShells := getSystemUserShells()
 
-	// Open /proc directory
-	procDir, err := os.Open("/proc")
-	if err != nil {
-		return nil, err
-	}
-	defer procDir.Close()
-
-	entries, err := procDir.Readdirnames(-1)
+	snap, err := GetProcSnapshot()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, entry := range entries {
-		// PIDs are always numeric directory names
-		pid, err := strconv.Atoi(entry)
-		if err != nil {
-			continue
-		}
-
-		// Read process UID from /proc/[pid]/status
-		uid, err := getProcessUID(entry)
-		if err != nil {
-			continue
-		}
-
+	for _, p := range snap.Processes {
 		// Skip processes owned by the current user to reduce noise
-		if uid == currentUID {
+		if p.UID == currentUID {
 			continue
 		}
 
 		// Read full command line from /proc/[pid]/cmdline
-		cmdline, err := getProcessCmdline(entry)
-		if err != nil || cmdline == "" {
+		if p.Cmdline == "" {
 			continue
 		}
 
 		// Identify if the process is a potential PrivEsc vector
-		userName := lookupUsername(uid)
-		isDangerous := checkProcessDanger(cmdline, uid, userShells)
+		userName := lookupUsername(p.UID)
+		isDangerous := checkProcessDanger(p.Cmdline, p.UID, userShells)
 
 		// Read environment variables for exposed secrets
-		envSecrets, _ := getProcessEnviron(entry)
-		if len(envSecrets) > 0 {
-			isDangerous = true
+		var envSecrets []string
+		if len(p.EnvironRaw) > 0 {
+			envSecrets = parseEnviron(p.EnvironRaw)
+			if len(envSecrets) > 0 {
+				isDangerous = true
+			}
 		}
 
 		results = append(results, ProcessResult{
-			PID:         pid,
+			PID:         p.PID,
 			User:        userName,
-			UID:         uid,
-			Command:     cmdline,
+			UID:         p.UID,
+			Command:     p.Cmdline,
 			IsDangerous: isDangerous,
 			EnvSecrets:  envSecrets,
 		})

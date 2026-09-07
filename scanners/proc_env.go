@@ -2,9 +2,6 @@ package scanners
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -41,7 +38,7 @@ var sensitiveEnvKeys = []string{
 	"AUTH_TOKEN",
 }
 
-// ScanProcEnvAuditor inspects readable /proc/[pid]/environ files for exposed credentials.
+// ScanProcEnvAuditor inspects readable process environment variables for exposed credentials using ProcSnapshot (OPT-04).
 func ScanProcEnvAuditor(procResults []ProcessResult) ([]ProcEnvResult, error) {
 	var results []ProcEnvResult
 
@@ -50,34 +47,30 @@ func ScanProcEnvAuditor(procResults []ProcessResult) ([]ProcEnvResult, error) {
 		procMap[p.PID] = p.Command
 	}
 
-	entries, err := os.ReadDir("/proc")
+	snap, err := GetProcSnapshot()
 	if err != nil {
 		return results, err
 	}
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for _, p := range snap.Processes {
+		if len(p.EnvironRaw) == 0 {
 			continue
 		}
 
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-
-		envPath := filepath.Join("/proc", entry.Name(), "environ")
-		data, err := os.ReadFile(envPath)
-		if err != nil || len(data) == 0 {
-			continue
-		}
-
+		pid := p.PID
 		procName := procMap[pid]
 		if procName == "" {
-			procName = fmt.Sprintf("PID %d", pid)
+			if p.Cmdline != "" {
+				procName = p.Cmdline
+			} else if p.Comm != "" {
+				procName = p.Comm
+			} else {
+				procName = fmt.Sprintf("PID %d", pid)
+			}
 		}
 
 		// Environment variables in /proc/[pid]/environ are null-byte (\x00) separated
-		envVars := strings.Split(string(data), "\x00")
+		envVars := strings.Split(string(p.EnvironRaw), "\x00")
 		for _, envVar := range envVars {
 			if envVar == "" {
 				continue
