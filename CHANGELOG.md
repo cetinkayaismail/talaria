@@ -7,6 +7,15 @@ This release introduces 16 major improvements including: a completely modernized
 
 ## Detailed Changes
 
+### #69 — Repository Hardening: Untrack Unit Test Files & Add to .gitignore (`.gitignore`)
+**Impact:** 🛡️ Unit test suites preserved locally for developer verification while permanently excluded from Git tracking & remote pushes
+
+- **SEC-TEST — Git Index Untracking & Exclusion (`.gitignore`):** Removed all 16 `*_test.go` files from Git tracking (`git rm --cached`) while preserving every test file intact on the local filesystem. Added `*_test.go` to `.gitignore` under Section 2 ("Test Outputs, Coverage Profiles & Execution Traces") ensuring local test suites are permanently excluded from Git index, commits, and remote pushes.
+
+**Files changed:** `.gitignore`, `CHANGELOG.md`
+
+---
+
 ### #68 — OPT-04: Unified `/proc` Process Snapshot Engine (`scanners/proc_snapshot.go`, `scanners/*`)
 **Impact:** ⚡ 50–150ms faster execution via single coordinated `/proc` traversal + 🛡️ decoupled error handling preserving process enumeration under unprivileged permissions
 

@@ -32,6 +32,7 @@ talaria.sh
 *.coverprofile
 coverage.*
 profile.cov
+*_test.go
 
 # ------------------------------------------------------------------------------
 # 3. Core Dumps, Logs & Crash Stack Traces
