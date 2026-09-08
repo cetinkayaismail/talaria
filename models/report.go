@@ -55,4 +55,11 @@ type ScanReport struct {
 	SudoTokens         []scanners.SudoTokenResult         `json:"sudo_tokens,omitempty"`
 	Wildcards          []scanners.WildcardResult          `json:"wildcards,omitempty"`
 	PythonHijack       []scanners.PythonHijackResult      `json:"python_hijack,omitempty"`
+	SudoersDropin      []scanners.SudoersDropinResult     `json:"sudoers_dropin,omitempty"`
+	ShellRC            []scanners.ShellRCResult           `json:"shell_rc,omitempty"`
+	AtJobs             []scanners.AtJobResult             `json:"at_jobs,omitempty"`
+	Fstab              []scanners.FstabResult             `json:"fstab,omitempty"`
+	SnapAudit          []scanners.SnapAuditResult         `json:"snap_audit,omitempty"`
+	GitHooks           []scanners.GitHookResult           `json:"git_hooks,omitempty"`
+	Xinetd             []scanners.XinetdResult            `json:"xinetd,omitempty"`
 }

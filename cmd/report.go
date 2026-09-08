@@ -652,6 +652,69 @@ func GenerateTextReport(report *models.ScanReport) string {
 		}
 	}
 
+	// Sudoers Drop-In Configurations
+	if len(report.SudoersDropin) > 0 {
+		var lines []string
+		for _, r := range report.SudoersDropin {
+			lines = append(lines, fmt.Sprintf("[%s] %s\n  Reason: %s\n  Remediation: %s", r.RiskLevel, r.Path, r.Reason, r.Remediation))
+		}
+		sections = append(sections, textSection{"Sudoers Drop-In Files", lines})
+	}
+
+	// Shell Startup RC Files
+	if len(report.ShellRC) > 0 {
+		var lines []string
+		for _, r := range report.ShellRC {
+			lines = append(lines, fmt.Sprintf("[%s] %s\n  Reason: %s\n  Remediation: %s", r.RiskLevel, r.Path, r.Reason, r.Remediation))
+		}
+		sections = append(sections, textSection{"Shell Startup & Environment Files", lines})
+	}
+
+	// at Daemon Jobs & Spool
+	if len(report.AtJobs) > 0 {
+		var lines []string
+		for _, r := range report.AtJobs {
+			lines = append(lines, fmt.Sprintf("[%s] %s\n  Reason: %s\n  Remediation: %s", r.RiskLevel, r.Path, r.Reason, r.Remediation))
+		}
+		sections = append(sections, textSection{"at Daemon Scheduled Jobs", lines})
+	}
+
+	// Fstab Persistent Mounts
+	if len(report.Fstab) > 0 {
+		var lines []string
+		for _, r := range report.Fstab {
+			lines = append(lines, fmt.Sprintf("[%s] %s (%s, opts: %s)\n  Reason: %s\n  Remediation: %s", r.RiskLevel, r.MountPoint, r.FSType, r.Options, r.Reason, r.Remediation))
+		}
+		sections = append(sections, textSection{"Persistent Fstab Mount Configuration", lines})
+	}
+
+	// Snap & Flatpak SUID Audit
+	if len(report.SnapAudit) > 0 {
+		var lines []string
+		for _, r := range report.SnapAudit {
+			lines = append(lines, fmt.Sprintf("[%s] %s (%s %s)\n  Reason: %s\n  Remediation: %s", r.RiskLevel, r.Binary, r.CVE, r.Version, r.Reason, r.Remediation))
+		}
+		sections = append(sections, textSection{"Snap & Flatpak SUID Confinement", lines})
+	}
+
+	// Shared Git Repository Hooks
+	if len(report.GitHooks) > 0 {
+		var lines []string
+		for _, r := range report.GitHooks {
+			lines = append(lines, fmt.Sprintf("[%s] %s (Hook: %s, Owner UID: %d)\n  Reason: %s\n  Remediation: %s", r.RiskLevel, r.RepoPath, r.HookName, r.OwnerUID, r.Reason, r.Remediation))
+		}
+		sections = append(sections, textSection{"Shared Git Repository Hooks", lines})
+	}
+
+	// xinetd Services
+	if len(report.Xinetd) > 0 {
+		var lines []string
+		for _, r := range report.Xinetd {
+			lines = append(lines, fmt.Sprintf("[%s] %s (Config: %s, Binary: %s)\n  Reason: %s\n  Remediation: %s", r.RiskLevel, r.ServiceName, r.ConfigFile, r.ServerBinary, r.Reason, r.Remediation))
+		}
+		sections = append(sections, textSection{"xinetd Service Configurations", lines})
+	}
+
 	// Render all sections
 	for _, sec := range sections {
 		sb.WriteString(fmt.Sprintf("=== %s ===\n", sec.Title))
@@ -661,7 +724,7 @@ func GenerateTextReport(report *models.ScanReport) string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("\nSummary Counts:\nSecrets: %d | SUID: %d | SGID: %d | Sudo: %d | Sudo Tokens: %d\nCapabilities: %d | CronJobs: %d | Timers: %d | Writeable: %d\nNetwork: %d | NFS: %d | Processes: %d | Sockets: %d\nFilePerms: %d | FilePermsExploit: %d | Groups: %d | PATH Hijack: %d\nSSH Keys: %d | Container: %d | D-Bus: %d | Services: %d | Packages: %d\nVulnerabilities: %d | Sessions: %d | KernelConfig: %d | Polkit: %d\nHistory: %d | XAuth: %d | Logrotate: %d | EnvFile: %d\nPAM: %d | Sysctl: %d | SystemdOverrides: %d | SubUID: %d\nMounts: %d | ELF RPATH: %d | Auditd: %d | Udev: %d\nCronDirs: %d | ProcEnv: %d | LD/NSS: %d | Modprobe: %d\nCloudMeta: %d | VenvWrap: %d | Wildcards: %d | PythonHijack: %d\n",
+	sb.WriteString(fmt.Sprintf("\nSummary Counts:\nSecrets: %d | SUID: %d | SGID: %d | Sudo: %d | Sudo Tokens: %d\nCapabilities: %d | CronJobs: %d | Timers: %d | Writeable: %d\nNetwork: %d | NFS: %d | Processes: %d | Sockets: %d\nFilePerms: %d | FilePermsExploit: %d | Groups: %d | PATH Hijack: %d\nSSH Keys: %d | Container: %d | D-Bus: %d | Services: %d | Packages: %d\nVulnerabilities: %d | Sessions: %d | KernelConfig: %d | Polkit: %d\nHistory: %d | XAuth: %d | Logrotate: %d | EnvFile: %d\nPAM: %d | Sysctl: %d | SystemdOverrides: %d | SubUID: %d\nMounts: %d | ELF RPATH: %d | Auditd: %d | Udev: %d\nCronDirs: %d | ProcEnv: %d | LD/NSS: %d | Modprobe: %d\nCloudMeta: %d | VenvWrap: %d | Wildcards: %d | PythonHijack: %d\nSudoersDropin: %d | ShellRC: %d | AtJobs: %d | Fstab: %d\nSnapAudit: %d | GitHooks: %d | Xinetd: %d\n",
 		len(report.Secrets), len(report.SUID), len(report.SGID), len(report.SudoPrivileges), len(report.SudoTokens),
 		len(report.Capabilities), len(report.CronJobs), len(report.SystemdTimers), len(report.Writeable),
 		len(report.NetworkConnections), len(report.NFSExports), len(report.Processes), len(report.Sockets),
@@ -672,7 +735,9 @@ func GenerateTextReport(report *models.ScanReport) string {
 		len(report.PAMResults), len(report.SysctlResults), len(report.SystemdOverrides), len(report.SubUIDResults),
 		len(report.MountResults), len(report.ELFRPathResults), len(report.AuditdResults), len(report.UdevResults),
 		len(report.CronDirResults), len(report.ProcEnvResults), len(report.LDNSSResults), len(report.ModprobeResults),
-		len(report.CloudMetaResults), len(report.VenvWrapResults), len(report.Wildcards), len(report.PythonHijack)))
+		len(report.CloudMetaResults), len(report.VenvWrapResults), len(report.Wildcards), len(report.PythonHijack),
+		len(report.SudoersDropin), len(report.ShellRC), len(report.AtJobs), len(report.Fstab),
+		len(report.SnapAudit), len(report.GitHooks), len(report.Xinetd)))
 
 	return sb.String()
 }
@@ -953,6 +1018,27 @@ func countFindingsBySeverity(report *models.ScanReport) (int, int, int) {
 		if a.IsDangerous {
 			addSeverity(a.RiskLevel)
 		}
+	}
+	for _, s := range report.SudoersDropin {
+		addSeverity(s.RiskLevel)
+	}
+	for _, s := range report.ShellRC {
+		addSeverity(s.RiskLevel)
+	}
+	for _, a := range report.AtJobs {
+		addSeverity(a.RiskLevel)
+	}
+	for _, f := range report.Fstab {
+		addSeverity(f.RiskLevel)
+	}
+	for _, s := range report.SnapAudit {
+		addSeverity(s.RiskLevel)
+	}
+	for _, g := range report.GitHooks {
+		addSeverity(g.RiskLevel)
+	}
+	for _, x := range report.Xinetd {
+		addSeverity(x.RiskLevel)
 	}
 
 	return critical, high, medium

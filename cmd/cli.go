@@ -31,6 +31,8 @@ func ParseFlags(args []string) (*Config, error) {
 	cfg := &Config{}
 
 	fs.StringVar(&cfg.ScanModules, "scan", "all", "Comma-separated list of modules to run, or 'all'.")
+	fs.StringVar(&cfg.ScanModules, "module", "all", "Alias for --scan.")
+	fs.StringVar(&cfg.ScanModules, "modules", "all", "Alias for --scan.")
 	fs.StringVar(&cfg.ExcludeModules, "exclude", "", "Comma-separated list of modules to skip.")
 	fs.StringVar(&cfg.RootPath, "path", "/", "Root directory for filesystem scans.")
 	fs.StringVar(&cfg.OutputFile, "o", "", "Save report to file (requires --format).")
@@ -119,5 +121,6 @@ func PrintUsage() {
 	fmt.Println("  pathhijack, sshkeys, vulnerabilities, container, dbus, services, packages,")
 	fmt.Println("  sessions, kernelconfig, polkit, environmentfile, pam, sysctl, systemdoverrides,")
 	fmt.Println("  subuid, mounts, elfrpath, auditd, udev, crondirs, procenv, ldnss, modprobe,")
-	fmt.Println("  cloudmeta, venvwrap, sudokens, wildcards, python_hijack, initscripts, logrotate")
+	fmt.Println("  cloudmeta, venvwrap, sudokens, wildcards, python_hijack, initscripts, logrotate,")
+	fmt.Println("  sudoers_dropin, shell_rc, at_jobs, fstab, snap_audit, git_hooks, xinetd")
 }

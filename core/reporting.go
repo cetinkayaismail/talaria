@@ -359,6 +359,27 @@ func PrintSummary(report *models.ScanReport, duration string) {
 	for _, s := range report.SudoTokens {
 		countRisk(s.RiskLevel)
 	}
+	for _, s := range report.SudoersDropin {
+		countRisk(s.RiskLevel)
+	}
+	for _, s := range report.ShellRC {
+		countRisk(s.RiskLevel)
+	}
+	for _, a := range report.AtJobs {
+		countRisk(a.RiskLevel)
+	}
+	for _, f := range report.Fstab {
+		countRisk(f.RiskLevel)
+	}
+	for _, s := range report.SnapAudit {
+		countRisk(s.RiskLevel)
+	}
+	for _, g := range report.GitHooks {
+		countRisk(g.RiskLevel)
+	}
+	for _, x := range report.Xinetd {
+		countRisk(x.RiskLevel)
+	}
 
 	modeStr := "CTF / OFFENSIVE"
 	if Config.Mode == ModeAudit {

